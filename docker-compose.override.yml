@@ -1,0 +1,20 @@
+﻿# This file overrides docker-compose.yml for local development
+# Uncomment and modify as needed for your local setup
+
+version: "3.9"
+
+services:
+  # Override auth-service for local debugging
+  # auth-service:
+  #   ports:
+  #     - "6001:6001"
+  #   environment:
+  #     ASPNETCORE_ENVIRONMENT: Development
+  #     ASPNETCORE_URLS: http://+:6001
+
+  # Override frontend for hot reload
+  # frontend:
+  #   environment:
+  #     VITE_API_URL: http://localhost:8080/api/v1
+  #   volumes:
+  #     - ./frontend/src:/app/src

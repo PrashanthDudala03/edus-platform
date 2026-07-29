@@ -1,0 +1,119 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+RUN cat > server.js << 'EOFJS'
+const http = require('http');
+const PORT = process.env.PORT || 5000;
+
+const students = [
+  { id: '1', rollNumber: 'STU-001', firstName: 'Alice', lastName: 'Johnson', currentClass: '10A', email: 'alice@school.edu', status: 'Active' },
+  { id: '2', rollNumber: 'STU-002', firstName: 'Bob', lastName: 'Smith', currentClass: '10B', email: 'bob@school.edu', status: 'Active' }
+];
+
+const teachers = [
+  { id: '1', employeeCode: 'TCH-001', firstName: 'Robert', lastName: 'Williams', email: 'robert@school.edu', department: 'Mathematics', status: 'Active' },
+  { id: '2', employeeCode: 'TCH-002', firstName: 'Sarah', lastName: 'Brown', email: 'sarah@school.edu', department: 'English', status: 'Active' }
+];
+
+const parents = [
+  { id: '1', firstName: 'Margaret', lastName: 'Johnson', email: 'margaret@example.com', phoneNumber: '555-0101' },
+  { id: '2', firstName: 'David', lastName: 'Smith', email: 'david@example.com', phoneNumber: '555-0102' }
+];
+
+const server = http.createServer((req, res) => {
+  // Set CORS headers FIRST for all responses
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, HEAD');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.setHeader('Access-Control-Max-Age', '86400');
+  res.setHeader('Content-Type', 'application/json');
+
+  // Handle OPTIONS preflight requests
+  if (req.method === 'OPTIONS') {
+    res.writeHead(200);
+    res.end();
+    return;
+  }
+
+  // Health check
+  if (req.url === '/health' || req.url === '/api/health') {
+    res.writeHead(200);
+    res.end(JSON.stringify({ status: 'ok' }));
+    return;
+  }
+
+  // Auth endpoints
+  if (req.url === '/api/auth/login' && req.method === 'POST') {
+    res.writeHead(200);
+    res.end(JSON.stringify({
+      statusCode: 200,
+      data: {
+        accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLTEiLCJ1c2VybmFtZSI6ImFkbWluIiwic2Nob29sX2lkIjoiNTUwZTg0MDAtZTI5Yi00MWQ0LWE3MTYtNDQ2NjU1NDQwMDAwIn0.sig',
+        refreshToken: 'refresh-token-' + Date.now(),
+        expiresIn: 3600,
+        user: {
+          id: 'user-1',
+          username: 'admin',
+          email: 'admin@gvhs.edu',
+          firstName: 'Admin',
+          lastName: 'User',
+          schoolId: '550e8400-e29b-41d4-a716-446655440000',
+          roles: ['SuperAdmin', 'Principal'],
+          permissions: ['*']
+        }
+      }
+    }));
+    return;
+  }
+
+  // Students endpoints
+  if (req.url === '/api/students' && req.method === 'GET') {
+    res.writeHead(200);
+    res.end(JSON.stringify({
+      statusCode: 200,
+      data: { totalCount: students.length, pageSize: 20, currentPage: 1, items: students }
+    }));
+    return;
+  }
+
+  if (req.url === '/api/students' && req.method === 'POST') {
+    res.writeHead(201);
+    res.end(JSON.stringify({
+      statusCode: 201,
+      message: 'Student created',
+      data: { id: Date.now().toString(), ...students[0] }
+    }));
+    return;
+  }
+
+  // Teachers endpoints
+  if (req.url === '/api/teachers' && req.method === 'GET') {
+    res.writeHead(200);
+    res.end(JSON.stringify({
+      statusCode: 200,
+      data: { totalCount: teachers.length, pageSize: 20, currentPage: 1, items: teachers }
+    }));
+    return;
+  }
+
+  // Parents endpoints
+  if (req.url === '/api/parents' && req.method === 'GET') {
+    res.writeHead(200);
+    res.end(JSON.stringify({
+      statusCode: 200,
+      data: { totalCount: parents.length, pageSize: 20, currentPage: 1, items: parents }
+    }));
+    return;
+  }
+
+  res.writeHead(404);
+  res.end(JSON.stringify({ statusCode: 404, message: 'Not found' }));
+});
+
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Backend services running on port ${PORT}`);
+});
+EOFJS
+
+CMD ["node", "server.js"]

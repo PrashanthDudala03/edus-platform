@@ -1,0 +1,117 @@
+version: '3.8'
+
+services:
+  # API Gateway (YARP Reverse Proxy)
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.Gateway
+    container_name: eduos-gateway
+    ports:
+      - "5000:5000"
+      - "5001:5001"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:5000
+    depends_on:
+      - auth-service
+      - student-service
+      - teacher-service
+      - parent-service
+    networks:
+      - eduos-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Auth Service
+  auth-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.AuthService
+    container_name: eduos-auth-service
+    ports:
+      - "5001:5001"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:5001
+      - Jwt__SecretKey=your-super-secret-key-minimum-32-characters-long-for-production!!
+      - Jwt__Issuer=https://eduos-auth-service
+      - Jwt__Audience=eduos-clients
+      - Jwt__AccessTokenExpirationMinutes=15
+      - Jwt__RefreshTokenExpirationDays=7
+    networks:
+      - eduos-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Student Service
+  student-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.StudentService
+    container_name: eduos-student-service
+    ports:
+      - "5002:5002"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:5002
+    networks:
+      - eduos-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Teacher Service
+  teacher-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.TeacherService
+    container_name: eduos-teacher-service
+    ports:
+      - "5003:5003"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:5003
+    networks:
+      - eduos-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Parent Service
+  parent-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.ParentService
+    container_name: eduos-parent-service
+    ports:
+      - "5004:5004"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:5004
+    networks:
+      - eduos-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  eduos-network:
+    driver: bridge

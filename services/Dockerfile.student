@@ -1,0 +1,24 @@
+FROM mcr.microsoft.com/dotnet/sdk:9.0 as builder
+
+WORKDIR /src
+
+COPY services/student-service/ ./student-service/
+
+WORKDIR /src/student-service
+RUN dotnet restore
+RUN dotnet publish -c Release -o /app
+
+FROM mcr.microsoft.com/dotnet/aspnet:9.0
+
+WORKDIR /app
+
+COPY --from=builder /app .
+
+RUN mkdir -p logs && apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
+HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
+    CMD curl -f http://localhost:6002/api/health || exit 1
+
+EXPOSE 6002
+
+ENTRYPOINT ["dotnet", "student-service.dll"]
