@@ -1,52 +1,42 @@
-import axios, { AxiosInstance } from 'axios'
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1'
-
-const client: AxiosInstance = axios.create({
-  baseURL: API_URL,
-  timeout: 10000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-})
-
-// Request interceptor to add auth token
-client.interceptors.request.use((config) => {
-  const token = localStorage.getItem('accessToken')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
+import axios from 'axios'
+import { useAuthStore } from '../store/auth'
+const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
+const client = axios.create({ baseURL: API_URL, timeout: 15000 })
+client.interceptors.request.use(config => {
+  const token = useAuthStore.getState().accessToken
+  if (token) config.headers.Authorization = 'Bearer ' + token
   return config
 })
-
-// Response interceptor to handle token refresh
-client.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    const originalRequest = error.config
-
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true
-
-      try {
-        const refreshToken = localStorage.getItem('refreshToken')
-        if (refreshToken) {
-          const response = await client.post('/auth/refresh', { refreshToken })
-          const { accessToken } = response.data.data
-          localStorage.setItem('accessToken', accessToken)
-          originalRequest.headers.Authorization = `Bearer ${accessToken}`
-          return client(originalRequest)
-        }
-      } catch (refreshError) {
-        localStorage.removeItem('accessToken')
-        localStorage.removeItem('refreshToken')
-        window.location.href = '/login'
-      }
-    }
-
-    return Promise.reject(error)
+let refreshing: Promise<string> | null = null
+client.interceptors.response.use(response => response, async error => {
+  const request = error.config
+  if (error.response?.status !== 401 || !request || request._retry || request.url?.startsWith('/auth/')) return Promise.reject(error)
+  request._retry = true
+  if (!refreshing) refreshing = (async () => {
+    const state = useAuthStore.getState()
+    if (!state.refreshToken || !state.user) throw new Error('Please sign in again.')
+    const response = await axios.post(API_URL + '/auth/refresh', { refreshToken: state.refreshToken }, { timeout: 15000 })
+    const result = response.data.data
+    state.setAuth(result.user, result.accessToken, result.refreshToken)
+    return result.accessToken as string
+  })().finally(() => { refreshing = null })
+  try {
+    const token = await refreshing
+    request.headers.Authorization = 'Bearer ' + token
+    return client(request)
+  } catch (refreshError) {
+    useAuthStore.getState().clearAuth()
+    return Promise.reject(refreshError)
   }
-)
-
+})
+export function errorMessage(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    const details = error.response?.data?.errors
+    return Array.isArray(details) ? details.map((e: {message: string}) => e.message).join(' ') :
+      error.response?.data?.message || (error.response?.status === 403 ? 'Your account does not have access to this school or action.' :
+      error.response?.status === 409 ? 'A record with these details already exists.' : 'Could not complete the request. Check your connection and try again.')
+  }
+  return error instanceof Error ? error.message : 'Something went wrong. Please try again.'
+}
 export default client
 export { API_URL }

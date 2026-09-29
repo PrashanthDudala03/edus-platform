@@ -1,101 +1,15 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useForm } from 'react-hook-form'
+import { FormEvent, useState } from 'react'
+import { Navigate } from 'react-router-dom'
+import { ArrowRight, GraduationCap, ShieldCheck, Eye, EyeOff, Check } from 'lucide-react'
 import { authAPI } from '../api/auth'
+import { errorMessage } from '../api/client'
 import { useAuthStore } from '../store/auth'
-
-interface LoginForm {
-  schoolId: string
-  username: string
-  password: string
-}
-
-export default function LoginPage() {
-  const navigate = useNavigate()
-  const setAuth = useAuthStore((state) => state.setAuth)
-  const { register, handleSubmit, formState: { errors }, setError } = useForm<LoginForm>({
-    defaultValues: {
-      schoolId: '387b4bda-2184-4721-82ed-8b555a776bf3',
-      username: 'admin',
-      password: '',
-    },
-  })
-  const [isLoading, setIsLoading] = useState(false)
-
-  const onSubmit = async (data: LoginForm) => {
-    setIsLoading(true)
-    try {
-      const result = await authAPI.login({
-        schoolId: data.schoolId,
-        username: data.username,
-        password: data.password,
-      })
-      setAuth(result.user, result.accessToken, result.refreshToken)
-      navigate('/')
-    } catch (error: any) {
-      setError('password', {
-        type: 'manual',
-        message: error.response?.data?.message || 'Login failed',
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-lg p-8 w-full max-w-md">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">EduOS</h1>
-          <p className="text-gray-600 mt-2">School Management System</p>
-        </div>
-
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Username
-            </label>
-            <input
-              {...register('username', { required: 'Username is required' })}
-              type="text"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-              placeholder="admin"
-              disabled={isLoading}
-            />
-            {errors.username && (
-              <p className="text-red-500 text-sm mt-1">{errors.username.message}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Password
-            </label>
-            <input
-              {...register('password', { required: 'Password is required' })}
-              type="password"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-              placeholder="Enter password"
-              disabled={isLoading}
-            />
-            {errors.password && (
-              <p className="text-red-500 text-sm mt-1">{errors.password.message}</p>
-            )}
-          </div>
-
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white font-medium py-2 px-4 rounded-lg transition"
-          >
-            {isLoading ? 'Signing in...' : 'Sign In'}
-          </button>
-        </form>
-
-        <p className="text-center text-sm text-gray-600 mt-6">
-          Demo credentials: admin / admin123
-        </p>
-      </div>
-    </div>
-  )
+import { ErrorBox } from '../components/UI'
+export default function LoginPage(){
+ const {setAuth,isAuthenticated,user}=useAuthStore()
+ const [busy,setBusy]=useState(false),[error,setError]=useState(''),[show,setShow]=useState(false)
+ async function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);setError('');setBusy(true);try{const r=await authAPI.login({username:String(f.get('username')).trim(),password:String(f.get('password')),schoolId:String(f.get('schoolId')||'').trim()});setAuth(r.user,r.accessToken,r.refreshToken)}catch(e){setError(errorMessage(e))}finally{setBusy(false)}}
+ if(isAuthenticated&&user)return <Navigate to="/" replace/>
+ return <div className="login-page"><section className="login-story"><div className="brand"><span className="brand-mark"><GraduationCap size={28}/></span><span>edu<span className="brand-light">os</span></span></div><div className="story-content"><span className="story-tag"><span/>A better school day starts here</span><h1>Less administration.<br/><em>More possibility.</em></h1><p>Bring your people, daily routines, and school community together in one calm, connected workspace.</p><div className="story-points"><span><Check size={17}/>Your school, in focus</span><span><Check size={17}/>Every record, connected</span><span><Check size={17}/>Built for your team</span></div><div className="story-art" aria-hidden="true"><div className="art-ring"/><div className="art-card"><GraduationCap size={30}/><strong>A little more clarity.</strong><span>A lot more time for students.</span><div className="art-bars"><i/><i/><i/><i/><i/><i/><i/></div></div><span className="art-badge"><ShieldCheck size={18}/>A dedicated school workspace</span></div></div><small>Thoughtfully built for the people behind every school.</small></section>
+ <section className="login-form-side"><div className="login-form-wrap"><span className="eyebrow">WELCOME TO EDUOS</span><h2>Good to see you.</h2><p>Sign in to your school workspace.</p>{error&&<ErrorBox message={error}/>}<form onSubmit={submit}><label>Username<input name="username" required maxLength={255} autoComplete="username" placeholder="Your username" autoFocus/></label><label>Password<div className="password-field"><input name="password" type={show?'text':'password'} required autoComplete="current-password" placeholder="Enter your password"/><button type="button" aria-label={show?'Hide password':'Show password'} onClick={()=>setShow(!show)}>{show?<EyeOff size={18}/>:<Eye size={18}/>}</button></div></label><details className="school-options"><summary>Signing in to another school?</summary><label>School ID<input name="schoolId" placeholder="School UUID provided by your administrator"/></label></details><button className="button primary login-submit" disabled={busy}>{busy?'Signing in…':'Sign in to workspace'}<ArrowRight size={18}/></button></form><div className="login-help"><ShieldCheck size={19}/><p>Need an account or a password reset?<br/><strong>Contact your school administrator.</strong></p></div></div><div className="login-footer">EduOS · Your school. Beautifully organized.</div></section></div>
 }

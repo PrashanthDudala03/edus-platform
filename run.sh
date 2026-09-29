@@ -1,37 +1,19 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-# EduOS Phase 1 - Quick Start Script
-
-set -e
-
-echo "🚀 EduOS Phase 1 - Starting Docker Compose"
-echo ""
-
-# Check if Docker is running
-if ! docker ps > /dev/null 2>&1; then
-    echo "❌ Docker is not running. Please start Docker Desktop."
-    exit 1
+if [[ ! -f .env ]]; then
+  echo "Missing .env. Copy .env.example to .env and replace the CHANGE_ME values first."
+  exit 1
 fi
 
-echo "✅ Docker is running"
-echo ""
+if ! command -v docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>&1; then
+  echo "Docker Engine and the Compose v2 plugin are required."
+  exit 1
+fi
 
-# Build and start services
-echo "📦 Building and starting services..."
-docker-compose up --build
+docker compose config --quiet
+docker compose up -d --build --wait --wait-timeout 180
 
-echo ""
-echo "🎉 Services are running!"
-echo ""
-echo "Access points:"
-echo "  Frontend:        http://localhost:3000"
-echo "  API Gateway:     http://localhost/api"
-echo "  Health Check:    http://localhost/health"
-echo "  RabbitMQ:        http://localhost:15672 (guest/guest)"
-echo "  Database:        localhost:5432"
-echo ""
-echo "Demo Login:"
-echo "  Username: admin"
-echo "  Password: admin123"
-echo ""
-echo "Press Ctrl+C to stop services"
+echo "EduOS ${EDUOS_VERSION:-1.0.0-rc.1} is starting."
+echo "Open http://localhost:${EDUOS_HTTP_PORT:-8080} after the containers pass their health checks."
+echo "The first-school admin credentials and school ID are the values in .env."

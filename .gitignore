@@ -1,4 +1,4 @@
-﻿# Environment variables
+# Environment variables
 .env
 .env.local
 .env.*.local
@@ -19,8 +19,7 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-package-lock.json
-yarn.lock
+# Keep dependency lockfiles committed for reproducible release builds.
 
 # Build artifacts
 dist/
@@ -96,3 +95,9 @@ obj/
 # C# specific
 *.csproj.user
 *.sln.DotSettings.user
+
+.tools/
+.local/
+frontend/test-results/
+frontend/playwright-report/
+backups/

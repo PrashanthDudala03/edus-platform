@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -26,21 +26,19 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<SchoolDbContext>();
     try
     {
-        db.Database.Migrate();
-        Log.Information("Database migrated successfully");
+        await db.Database.ExecuteSqlRawAsync("SELECT 1 FROM school_db.schools LIMIT 1");
+        Log.Information("Database schema verified");
     }
     catch (Exception ex)
     {
-        Log.Warning(ex, "Database migration skipped (schema may already exist)");
+        Log.Fatal(ex, "Database schema validation failed");
+        throw;
     }
 }
 
 app.UseRouting();
 // Health endpoint - return Prometheus metrics format
-app.MapGet("/api/health", () =>
-{
-    return Results.Text("# HELP service_health Service health status\n# TYPE service_health gauge\nservice_health 1\n", "text/plain; version=0.0.4");
-});
+app.MapGet("/api/health", async (SchoolDbContext db) => {try { return await db.Database.CanConnectAsync() ? Results.Ok(new {status="ready"}) : Results.StatusCode(503); } catch { return Results.StatusCode(503); }});
 
 app.MapGet("/api/schools/{schoolId}", async (string schoolId, SchoolDbContext db) =>
 {
@@ -56,12 +54,12 @@ app.MapGet("/api/schools/{schoolId}", async (string schoolId, SchoolDbContext db
 
 app.MapPut("/api/schools/{schoolId}", async (string schoolId, SchoolUpdateRequest request, SchoolDbContext db) =>
 {
-    if (!Guid.TryParse(schoolId, out var id)) return Results.BadRequest(new { statusCode = 400, message = "Invalid ID" });
+    if (!Guid.TryParse(schoolId, out var id)) return Results.BadRequest(new {message="Invalid school ID"});
+    if(string.IsNullOrWhiteSpace(request.Name)||request.Name.Length>255||request.PrincipalName?.Length>255) return Results.BadRequest(new {message="School name is required and profile fields must be at most 255 characters."});
     try
     {
-        var school = await db.Schools.FirstOrDefaultAsync(s => s.Id == id);
-        if (school == null) return Results.NotFound(new { statusCode = 404, message = "School not found" });
-
+        var school=await db.Schools.FirstOrDefaultAsync(s=>s.Id==id);
+        if(school==null) return Results.NotFound(new{message="School not found"});
         if (!string.IsNullOrEmpty(request.Name)) school.Name = request.Name;
         if (!string.IsNullOrEmpty(request.PrincipalName)) school.PrincipalName = request.PrincipalName;
         school.UpdatedAt = DateTime.UtcNow;
@@ -74,6 +72,8 @@ app.MapPut("/api/schools/{schoolId}", async (string schoolId, SchoolUpdateReques
     catch (Exception ex) { Log.Error(ex, "Error updating school"); return Results.Json(new { statusCode = 500, message = "Error" }, statusCode: 500); }
 });
 
+await Operations.Initialize(connectionString);
+Operations.Map(app, connectionString);
 app.Run();
 
 #region Models

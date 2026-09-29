@@ -17,11 +17,11 @@ public class CreateTeacherValidator : AbstractValidator<CreateTeacherCommand>
 
         RuleFor(x => x.FirstName)
             .NotEmpty().WithMessage("First name is required")
-            .Length(1, 255).WithMessage("First name must be between 1 and 255 characters");
+            .Length(1, 100).WithMessage("First name must be between 1 and 255 characters");
 
         RuleFor(x => x.LastName)
             .NotEmpty().WithMessage("Last name is required")
-            .Length(1, 255).WithMessage("Last name must be between 1 and 255 characters");
+            .Length(1, 100).WithMessage("Last name must be between 1 and 255 characters");
 
         RuleFor(x => x.Email)
             .NotEmpty().WithMessage("Email is required")
@@ -52,11 +52,11 @@ public class UpdateTeacherValidator : AbstractValidator<UpdateTeacherCommand>
 
         RuleFor(x => x.FirstName)
             .NotEmpty().WithMessage("First name is required")
-            .Length(1, 255).WithMessage("First name must be between 1 and 255 characters");
+            .Length(1, 100).WithMessage("First name must be between 1 and 255 characters");
 
         RuleFor(x => x.LastName)
             .NotEmpty().WithMessage("Last name is required")
-            .Length(1, 255).WithMessage("Last name must be between 1 and 255 characters");
+            .Length(1, 100).WithMessage("Last name must be between 1 and 255 characters");
 
         RuleFor(x => x.Email)
             .NotEmpty().WithMessage("Email is required")

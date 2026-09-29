@@ -17,6 +17,7 @@ public class User
     public DateTime? DeletedAt { get; set; }
     public Guid? CreatedByUserId { get; set; }
     public Guid? RoleId { get; set; }
+    public Role? Role { get; set; }
 
     public UserDto ToDto() => new()
     {
@@ -26,9 +27,24 @@ public class User
         FirstName = FirstName,
         LastName = LastName,
         SchoolId = SchoolId.ToString(),
-        Roles = new[] { "SuperAdmin", "Principal" },
-        Permissions = new[] { "*" }
+        Roles = Role is null ? Array.Empty<string>() : new[] { Role.Name },
+        Permissions = Role?.Permissions.Select(permission => permission.PermissionKey).Distinct().ToArray() ?? Array.Empty<string>()
     };
+}
+
+public class Role
+{
+    public Guid Id { get; set; }
+    public Guid SchoolId { get; set; }
+    public required string Name { get; set; }
+    public List<RolePermission> Permissions { get; set; } = [];
+}
+
+public class RolePermission
+{
+    public Guid Id { get; set; }
+    public Guid RoleId { get; set; }
+    public required string PermissionKey { get; set; }
 }
 
 public class UserDto

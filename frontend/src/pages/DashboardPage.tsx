@@ -1,185 +1,27 @@
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { ArrowUpRight, Plus, GraduationCap, BookOpen, Users, Layers, CalendarCheck, Megaphone, CheckCircle2, ArrowRight } from 'lucide-react'
+import client, { errorMessage } from '../api/client'
 import { useAuthStore } from '../store/auth'
-import { API_URL } from '../api/client'
-
-export default function DashboardPage() {
-  const navigate = useNavigate()
-  const { user, clearAuth, schoolId } = useAuthStore()
-  const [studentCount, setStudentCount] = useState<number | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    const fetchStudentCount = async () => {
-      const authState = useAuthStore.getState()
-      const schoolId = authState.user?.schoolId
-      if (!schoolId) return
-      try {
-        const response = await fetch(
-          `${API_URL}/students/count?schoolId=${schoolId}`,
-          {
-            headers: {
-              'Authorization': `Bearer ${authState.accessToken}`
-            }
-          }
-        )
-        const data = await response.json()
-        setStudentCount(data.data?.count || 0)
-      } catch (error) {
-        console.error('Failed to fetch student count:', error)
-        setStudentCount(0)
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchStudentCount()
-  }, [user?.schoolId])
-
-  const handleLogout = () => {
-    clearAuth()
-    navigate('/login')
-  }
-
-  return (
-    <div className="min-h-screen bg-gray-100">
-      {/* Navbar */}
-      <nav className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex justify-between items-center">
-            <h1 className="text-2xl font-bold text-gray-900">EduOS Dashboard</h1>
-            <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-600">{user?.firstName} {user?.lastName}</span>
-              <button
-                onClick={handleLogout}
-                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-              >
-                Logout
-              </button>
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      <div className="flex">
-        {/* Sidebar */}
-        <aside className="w-64 bg-gray-800 text-white min-h-screen">
-          <div className="p-4">
-            <nav className="space-y-2">
-              <NavLink label="Dashboard" path="/" onClick={() => {}} isActive />
-              <NavLink label="Students" path="/students" onClick={() => navigate('/students')} />
-              <NavLink label="Teachers" path="/teachers" onClick={() => navigate('/teachers')} />
-              <NavLink label="Parents" path="/parents" onClick={() => navigate('/parents')} />
-              <NavLink label="Settings" path="/settings" onClick={() => navigate('/settings')} />
-            </nav>
-          </div>
-        </aside>
-
-        {/* Main Content */}
-        <main className="flex-1 p-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <Card title="Total Students" value={loading ? "..." : String(studentCount || 0)} color="blue" />
-            <Card title="Total Teachers" value="89" color="green" />
-            <Card title="Total Parents" value="2,350" color="purple" />
-            <Card title="Active Classes" value="12" color="orange" />
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-xl font-bold mb-4">Welcome to EduOS</h2>
-            <p className="text-gray-600 mb-4">
-              Your school management system is ready to use. Select a section from the menu to get started.
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <QuickAction
-                title="Manage Students"
-                description="Add, edit, or view students"
-                onClick={() => navigate('/students')}
-              />
-              <QuickAction
-                title="Manage Teachers"
-                description="Add, edit, or view teachers"
-                onClick={() => navigate('/teachers')}
-              />
-              <QuickAction
-                title="Manage Parents"
-                description="Add, edit, or view parents"
-                onClick={() => navigate('/parents')}
-              />
-              <QuickAction
-                title="System Settings"
-                description="Configure school settings"
-                onClick={() => navigate('/settings')}
-              />
-            </div>
-          </div>
-        </main>
-      </div>
-    </div>
-  )
-}
-
-function NavLink({
-  label,
-  path,
-  onClick,
-  isActive = false,
-}: {
-  label: string
-  path: string
-  onClick: () => void
-  isActive?: boolean
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`w-full text-left px-4 py-2 rounded ${
-        isActive ? 'bg-gray-700' : 'hover:bg-gray-700'
-      }`}
-    >
-      {label}
-    </button>
-  )
-}
-
-function Card({
-  title,
-  value,
-  color,
-}: {
-  title: string
-  value: string
-  color: 'blue' | 'green' | 'purple' | 'orange'
-}) {
-  const colorClasses = {
-    blue: 'bg-blue-50 text-blue-700',
-    green: 'bg-green-50 text-green-700',
-    purple: 'bg-purple-50 text-purple-700',
-    orange: 'bg-orange-50 text-orange-700',
-  }
-
-  return (
-    <div className={`${colorClasses[color]} rounded-lg p-6`}>
-      <p className="text-sm font-medium">{title}</p>
-      <p className="text-3xl font-bold mt-2">{value}</p>
-    </div>
-  )
-}
-
-function QuickAction({
-  title,
-  description,
-  onClick,
-}: {
-  title: string
-  description: string
-  onClick: () => void
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="p-4 border border-gray-200 rounded-lg hover:shadow-md hover:border-gray-300 transition text-left"
-    >
-      <h3 className="font-semibold text-gray-900">{title}</h3>
-      <p className="text-sm text-gray-600 mt-1">{description}</p>
-    </button>
-  )
+import { Empty, ErrorBox, Loading, PageHeader, today } from '../components/UI'
+type Overview={stats:{students:number,teachers:number,parents:number,classes:number,present:number,marked:number},classes:{name:string,count:number}[]}
+type Notice={id:string,title:string,body:string,priority:string,createdAt:string}
+export default function DashboardPage(){
+ const user=useAuthStore(s=>s.user)
+ const overview=useQuery<Overview>({queryKey:['overview',today()],queryFn:async()=>(await client.get('/operations/overview',{params:{day:today()}})).data.data})
+ const notices=useQuery<Notice[]>({queryKey:['announcements'],queryFn:async()=>(await client.get('/operations/announcements')).data.data})
+ const school=useQuery({queryKey:['school',user?.schoolId],queryFn:async()=>(await client.get('/schools/'+user?.schoolId)).data.data})
+ const s=overview.data?.stats
+ const hour=new Date().getHours(), greeting=hour<12?'Good morning':hour<17?'Good afternoon':'Good evening'
+ return <><PageHeader eyebrow="A LITTLE CLARITY FOR YOUR DAY" title={greeting+', '+(user?.firstName || 'Administrator')+'.'} description="Here is what is happening across your school today."><Link className="button primary" to="/students"><Plus size={17}/>Add a student</Link></PageHeader>
+ <section className="welcome-banner"><div><span className="banner-label"><span/>YOUR SCHOOL, CONNECTED</span><h2>A great school day<br/>starts with a clear view.</h2><p>People, progress, and everyday moments.<br/>All together at {school.data?.name || 'your school'}.</p><Link to="/attendance">Open today's register <ArrowRight size={17}/></Link></div><div className="banner-art" aria-hidden="true"><div className="banner-circle"/><div className="mini-card"><span className="mini-icon"><CalendarCheck size={25}/></span><span>Today's focus</span><strong>Every student counts.</strong><div className="mini-line"/><div className="mini-check"><CheckCircle2 size={17}/>Take attendance. Stay connected.</div></div><div className="floating-book"><BookOpen size={30}/></div></div></section>
+ {overview.isError?<ErrorBox message={errorMessage(overview.error)}/>:overview.isPending?<Loading/>:<><div className="stats-grid">{[
+ {label:'Total students',value:s?.students,icon:GraduationCap,tone:'teal',note:'Your student community',path:'/students'},
+ {label:'Teaching staff',value:s?.teachers,icon:BookOpen,tone:'blue',note:'People shaping futures',path:'/teachers'},
+ {label:'Parents & guardians',value:s?.parents,icon:Users,tone:'peach',note:'Your family network',path:'/parents'},
+ {label:'Active class groups',value:s?.classes,icon:Layers,tone:'purple',note:'From student enrollments',path:'/students'}
+ ].map(({label,value,icon:Icon,tone,note,path})=><Link className="stat-card" to={path} key={label}><div className="stat-top"><span className={'stat-icon '+tone}><Icon size={20}/></span><ArrowUpRight size={17}/></div><strong>{Number(value||0).toLocaleString()}</strong><h3>{label}</h3><p>{note}</p></Link>)}</div>
+ <div className="dashboard-grid"><section className="panel"><div className="panel-heading"><div><h2>Attendance at a glance</h2><p>Today's register · {new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long'})}</p></div><span className="tag">Today</span></div><div className="attendance-summary"><div className="attendance-ring" style={{'--progress':((Number(s?.marked)?Number(s?.present)/Number(s?.marked):0)*100)+'%'} as React.CSSProperties}><div><strong>{s?.marked?Math.round(Number(s.present)/Number(s.marked)*100)+'%':'—'}</strong><span>present</span></div></div><div className="attendance-numbers"><p><span className="dot teal-dot"/>Present & late<strong>{s?.present||0}</strong></p><p><span className="dot peach-dot"/>Absent & excused<strong>{Number(s?.marked||0)-Number(s?.present||0)}</strong></p><p><span className="dot gray-dot"/>Unmarked students<strong>{Math.max(0,Number(s?.students||0)-Number(s?.marked||0))}</strong></p></div></div><Link className="panel-link" to="/attendance">Continue taking attendance <ArrowRight size={16}/></Link></section>
+ <section className="panel"><div className="panel-heading"><div><h2>Class distribution</h2><p>Enrollment across your school</p></div><Layers size={19}/></div>{overview.data?.classes.length?<div className="class-bars">{overview.data.classes.slice(0,6).map(c=><div key={c.name}><span>{c.name}</span><div><i style={{width:(Number(c.count)/Math.max(...overview.data.classes.map(c=>Number(c.count)))*100)+'%'}}/></div><strong>{c.count}</strong></div>)}</div>:<Empty title="Your classes will appear here" description="Add students with a class group to see enrollment."/>}</section></div></>}
+ <div className="dashboard-grid lower-grid"><section className="panel"><div className="panel-heading"><div><h2>School noticeboard</h2><p>Keep your administration team in the loop</p></div><Link className="text-link" to="/announcements">View all <ArrowUpRight size={15}/></Link></div>{notices.isError?<ErrorBox message={errorMessage(notices.error)}/>:notices.isPending?<Loading/>:notices.data?.length?<div className="notice-list">{notices.data.slice(0,3).map(n=><Link to="/announcements" key={n.id}><span className={'notice-icon '+(n.priority==='Important'?'peach':'teal')}><Megaphone size={19}/></span><div><h3>{n.title}</h3><p>{n.body.slice(0,95)}{n.body.length>95?'…':''}</p><small>{new Date(n.createdAt).toLocaleDateString()}</small></div></Link>)}</div>:<Empty title="A fresh noticeboard" description="Publish your first school update to bring the team together."/>}</section><section className="panel quick-start"><div className="panel-heading"><div><h2>Make yourself at home</h2><p>A few good places to start</p></div></div>{[['01','Set up your school','Name, leadership, and staff access','/settings'],['02','Bring your people together','Add students, teachers, and guardians','/students'],['03','Start the daily rhythm','Take attendance and share updates','/attendance']].map(([n,title,desc,path])=><Link key={n} to={path}><span>{n}</span><div><h3>{title}</h3><p>{desc}</p></div><ArrowUpRight size={17}/></Link>)}</section></div></>
 }

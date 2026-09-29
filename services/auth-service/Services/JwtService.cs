@@ -11,6 +11,7 @@ public class JwtSettings
     public required string PrivateKeyPem { get; set; }
     public required string PublicKeyPem { get; set; }
     public string Issuer { get; set; } = "edus-auth-service";
+    public string Audience { get; set; } = "edus-api";
     public int ExpirationMinutes { get; set; } = 60;
     public int RefreshTokenExpirationDays { get; set; } = 7;
 }
@@ -52,10 +53,13 @@ public class JwtService : IJwtService
             new Claim("last_name", user.LastName ?? string.Empty),
         };
 
-        // Add roles
-        foreach (var role in new[] { "SuperAdmin", "Principal" })
+        if (user.Role is not null)
         {
-            claims.Add(new Claim(ClaimTypes.Role, role));
+            claims.Add(new Claim(ClaimTypes.Role, user.Role.Name));
+            foreach (var permission in user.Role.Permissions)
+            {
+                claims.Add(new Claim("permission", permission.PermissionKey));
+            }
         }
 
         var signingCredentials = new SigningCredentials(
@@ -64,6 +68,7 @@ public class JwtService : IJwtService
 
         var token = new JwtSecurityToken(
             issuer: _settings.Issuer,
+            audience: _settings.Audience,
             claims: claims,
             notBefore: now,
             expires: expires,
@@ -91,8 +96,10 @@ public class JwtService : IJwtService
             {
                 ValidateIssuerSigningKey = true,
                 IssuerSigningKey = new RsaSecurityKey(_publicKey),
-                ValidateIssuer = false,
-                ValidateAudience = false,
+                ValidateIssuer = true,
+                ValidIssuer = _settings.Issuer,
+                ValidateAudience = true,
+                ValidAudience = _settings.Audience,
                 ValidateLifetime = true,
                 ClockSkew = TimeSpan.Zero
             };

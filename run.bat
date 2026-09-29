@@ -1,38 +1,18 @@
 @echo off
-REM EduOS Phase 1 - Quick Start Script for Windows
-
-echo 🚀 EduOS Phase 1 - Starting Docker Compose
-echo.
-
-REM Check if Docker is running
-docker ps > nul 2>&1
-if errorlevel 1 (
-    echo ❌ Docker is not running. Please start Docker Desktop.
-    pause
-    exit /b 1
+setlocal
+if not exist .env (
+  echo Missing .env. Copy .env.example to .env and replace the CHANGE_ME values first.
+  exit /b 1
 )
-
-echo ✅ Docker is running
-echo.
-
-REM Build and start services
-echo 📦 Building and starting services...
-docker-compose up --build
-
-echo.
-echo 🎉 Services are running!
-echo.
-echo Access points:
-echo   Frontend:        http://localhost:3000
-echo   API Gateway:     http://localhost/api
-echo   Health Check:    http://localhost/health
-echo   RabbitMQ:        http://localhost:15672 (guest/guest)
-echo   Database:        localhost:5432
-echo.
-echo Demo Login:
-echo   Username: admin
-echo   Password: admin123
-echo.
-echo Press Ctrl+C to stop services
-echo.
-pause
+docker compose version >nul 2>&1
+if errorlevel 1 (
+  echo Docker Engine and the Compose v2 plugin are required.
+  exit /b 1
+)
+docker compose config --quiet
+if errorlevel 1 exit /b 1
+docker compose up -d --build --wait --wait-timeout 180
+if errorlevel 1 exit /b 1
+echo EduOS is ready. Open http://localhost:8080. Your login is in .local\ACCESS.txt.
+echo Use the initial admin credentials and school ID stored in .env.
+endlocal
