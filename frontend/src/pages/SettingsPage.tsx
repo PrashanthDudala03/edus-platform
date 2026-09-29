@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/auth'
-import { API_URL } from '../api/client'
+import client from '../api/client'
 
 interface User {
   id: string
@@ -23,6 +23,11 @@ interface UsersResponse {
   }
 }
 
+interface Role {
+  id: string
+  name: string
+}
+
 export default function SettingsPage() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
@@ -36,15 +41,19 @@ export default function SettingsPage() {
 
   // Users state
   const [users, setUsers] = useState<User[]>([])
+  const [roles, setRoles] = useState<Role[]>([])
   const [usersLoading, setUsersLoading] = useState(false)
   const [totalUsers, setTotalUsers] = useState(0)
   const [currentPage, setCurrentPage] = useState(1)
   const [showAddUserForm, setShowAddUserForm] = useState(false)
-  const [newUser, setNewUser] = useState({ username: '', email: '', firstName: '', lastName: '', password: '' })
+  const [newUser, setNewUser] = useState({ username: '', email: '', firstName: '', lastName: '', password: '', roleId: '' })
 
   useEffect(() => {
     if (activeTab === 'school') fetchSchool()
-    if (activeTab === 'users') fetchUsers()
+    if (activeTab === 'users') {
+      fetchUsers()
+      fetchRoles()
+    }
   }, [activeTab])
 
   const fetchSchool = async () => {
@@ -54,8 +63,8 @@ export default function SettingsPage() {
 
     setSchoolLoading(true)
     try {
-      const response = await fetch(`${API_URL}/schools/${schoolId}`)
-      const data = await response.json()
+      const response = await client.get(`/schools/${schoolId}`)
+      const data = response.data
       if (data.data) {
         setSchoolName(data.data.name || '')
         setPrincipalName(data.data.principalName || '')
@@ -74,9 +83,10 @@ export default function SettingsPage() {
 
     setUsersLoading(true)
     try {
-      // Call auth-service directly (gateway routing not working for /api/v1/users)
-      const response = await fetch(`http://localhost:6001/api/users?page=${currentPage}&pageSize=20&schoolId=${schoolId}`)
-      const data = (await response.json()) as UsersResponse
+      const response = await client.get<UsersResponse>('/users', {
+        params: { page: currentPage, pageSize: 20, schoolId }
+      })
+      const data = response.data
       if (data.data) {
         setUsers(data.data.data || [])
         setTotalUsers(data.data.totalCount || 0)
@@ -88,6 +98,17 @@ export default function SettingsPage() {
     }
   }
 
+  const fetchRoles = async () => {
+    const schoolId = useAuthStore.getState().user?.schoolId
+    if (!schoolId) return
+    try {
+      const response = await client.get<{ data: Role[] }>('/roles', { params: { schoolId } })
+      setRoles(response.data.data || [])
+    } catch (error) {
+      console.error('Failed to fetch roles:', error)
+    }
+  }
+
   const handleSaveSchool = async () => {
     const authState = useAuthStore.getState()
     const schoolId = authState.user?.schoolId
@@ -95,16 +116,8 @@ export default function SettingsPage() {
 
     setSchoolSaving(true)
     try {
-      const response = await fetch(`${API_URL}/schools/${schoolId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: schoolName, principalName })
-      })
-      if (response.ok) {
-        alert('School settings saved successfully')
-      } else {
-        alert('Failed to save school settings')
-      }
+      await client.put(`/schools/${schoolId}`, { name: schoolName, principalName })
+      alert('School settings saved successfully')
     } catch (error) {
       console.error('Save failed:', error)
       alert('Error saving settings')
@@ -116,31 +129,21 @@ export default function SettingsPage() {
   const handleAddUser = async () => {
     const authState = useAuthStore.getState()
     const schoolId = authState.user?.schoolId
-    if (!schoolId || !newUser.username || !newUser.email || !newUser.password) {
+    if (!schoolId || !newUser.username || !newUser.email || !newUser.password || !newUser.roleId) {
       alert('Please fill all fields')
       return
     }
 
     try {
-      const response = await fetch(`http://localhost:6001/api/users`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      await client.post('/users', {
           ...newUser,
           schoolId,
-          roleId: '4647dc07-237f-4f1e-acde-41f445ea7f4f'
-        })
+          roleId: newUser.roleId
       })
-
-      if (response.ok) {
-        alert('User created successfully')
-        setNewUser({ username: '', email: '', firstName: '', lastName: '', password: '' })
-        setShowAddUserForm(false)
-        fetchUsers()
-      } else {
-        const error = await response.json()
-        alert(`Failed to create user: ${error.message}`)
-      }
+      alert('User created successfully')
+      setNewUser({ username: '', email: '', firstName: '', lastName: '', password: '', roleId: '' })
+      setShowAddUserForm(false)
+      fetchUsers()
     } catch (error) {
       console.error('Failed to create user:', error)
       alert('Error creating user')
@@ -155,17 +158,9 @@ export default function SettingsPage() {
     if (!schoolId) return
 
     try {
-      const response = await fetch(`http://localhost:6001/api/users/${userId}?schoolId=${schoolId}`, {
-        method: 'DELETE'
-      })
-
-      if (response.ok) {
-        alert('User deleted successfully')
-        fetchUsers()
-      } else {
-        const error = await response.json()
-        alert(`Failed to delete user: ${error.message}`)
-      }
+      await client.delete(`/users/${userId}`, { params: { schoolId } })
+      alert('User deleted successfully')
+      fetchUsers()
     } catch (error) {
       console.error('Failed to delete user:', error)
       alert('Error deleting user')
@@ -328,6 +323,17 @@ export default function SettingsPage() {
                         onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
                         className="col-span-2 px-4 py-2 border border-gray-300 rounded-lg"
                       />
+                      <select
+                        value={newUser.roleId}
+                        onChange={(e) => setNewUser({ ...newUser, roleId: e.target.value })}
+                        className="col-span-2 px-4 py-2 border border-gray-300 rounded-lg"
+                        required
+                      >
+                        <option value="">Select a role</option>
+                        {roles.map((role) => (
+                          <option key={role.id} value={role.id}>{role.name}</option>
+                        ))}
+                      </select>
                     </div>
                     <button
                       onClick={handleAddUser}

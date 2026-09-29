@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/dotnet/sdk:9.0 as builder
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS builder
 
 WORKDIR /src
 
@@ -14,7 +14,8 @@ WORKDIR /app
 
 COPY --from=builder /app .
 
-RUN mkdir -p logs && apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+RUN mkdir -p logs && apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/* && chown -R app:app /app
+USER app
 
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
     CMD curl -f http://localhost:6001/api/health || exit 1

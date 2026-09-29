@@ -1,4 +1,4 @@
-﻿using FluentValidation;
+using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
@@ -25,27 +25,33 @@ builder.Services.AddScoped<IParentRepository, ParentRepository>();
 builder.Services.AddHealthChecks();
 
 var app = builder.Build();
+app.Use(async (ctx, next) => {
+    if ((ctx.Request.Query.TryGetValue("page", out var p) && (!int.TryParse(p, out var page) || page < 1 || page > 100000)) ||
+        (ctx.Request.Query.TryGetValue("pageSize", out var z) && (!int.TryParse(z, out var size) || size < 1 || size > 100))) {
+        ctx.Response.StatusCode = 400; await ctx.Response.WriteAsJsonAsync(new { message = "Page must be positive and page size between 1 and 100." }); return;
+    }
+    try { await next(); }
+    catch (Microsoft.EntityFrameworkCore.DbUpdateException) { ctx.Response.StatusCode = 409; await ctx.Response.WriteAsJsonAsync(new { message = "A record with those details already exists." }); }
+});
 
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ParentDbContext>();
     try
     {
-        db.Database.Migrate();
-        Log.Information("Database migrated successfully");
+        await db.Database.ExecuteSqlRawAsync("SELECT 1 FROM parent_db.parents LIMIT 1");
+        Log.Information("Database schema verified");
     }
     catch (Exception ex)
     {
-        Log.Warning(ex, "Database migration skipped (schema may already exist)");
+        Log.Fatal(ex, "Database schema validation failed");
+        throw;
     }
 }
 
 app.UseRouting();
 // Health endpoint - return Prometheus metrics format
-app.MapGet("/api/health", () =>
-{
-    return Results.Text("# HELP service_health Service health status\n# TYPE service_health gauge\nservice_health 1\n", "text/plain; version=0.0.4");
-});
+app.MapGet("/api/health", async (ParentDbContext db) => {try { return await db.Database.CanConnectAsync() ? Results.Ok(new {status="ready"}) : Results.StatusCode(503); } catch { return Results.StatusCode(503); }});
 
 app.MapGet("/api/parents", async (IMediator mediator, int page = 1, int pageSize = 20, string? schoolId = null) =>
 {
@@ -56,6 +62,7 @@ app.MapGet("/api/parents", async (IMediator mediator, int page = 1, int pageSize
         var result = await mediator.Send(new GetParentListQuery { SchoolId = schoolIdGuid, Page = page, PageSize = pageSize });
         return Results.Ok(new { statusCode = 200, data = result });
     }
+    catch (Microsoft.EntityFrameworkCore.DbUpdateException) { return Results.Conflict(new { message = "A record with these details already exists or a field is invalid." }); }
     catch (Exception ex) { Log.Error(ex, "Error fetching parents"); return Results.Json(new { statusCode = 500, message = "Error" }, statusCode: 500); }
 });
 
@@ -68,6 +75,7 @@ app.MapGet("/api/parents/count", async (IMediator mediator, string? schoolId = n
         var count = await mediator.Send(new GetParentCountQuery { SchoolId = schoolIdGuid });
         return Results.Ok(new { statusCode = 200, data = new { count } });
     }
+    catch (Microsoft.EntityFrameworkCore.DbUpdateException) { return Results.Conflict(new { message = "A record with these details already exists or a field is invalid." }); }
     catch (Exception ex) { Log.Error(ex, "Error fetching parent count"); return Results.Json(new { statusCode = 500, message = "Error" }, statusCode: 500); }
 });
 
@@ -81,6 +89,7 @@ app.MapPost("/api/parents", async (CreateParentCommand request, IMediator mediat
         var result = await mediator.Send(request);
         return Results.Created($"/api/parents/{result.Id}", new { statusCode = 201, data = result });
     }
+    catch (Microsoft.EntityFrameworkCore.DbUpdateException) { return Results.Conflict(new { message = "A record with these details already exists or a field is invalid." }); }
     catch (Exception ex) { Log.Error(ex, "Error creating parent"); return Results.Json(new { statusCode = 500, message = "Error" }, statusCode: 500); }
 });
 
@@ -97,6 +106,7 @@ app.MapPut("/api/parents/{id}", async (string id, UpdateParentCommand request, I
         return Results.Ok(new { statusCode = 200, data = result });
     }
     catch (InvalidOperationException ex) { return Results.NotFound(new { statusCode = 404, message = ex.Message }); }
+    catch (Microsoft.EntityFrameworkCore.DbUpdateException) { return Results.Conflict(new { message = "A record with these details already exists or a field is invalid." }); }
     catch (Exception ex) { Log.Error(ex, "Error updating parent"); return Results.Json(new { statusCode = 500, message = "Error" }, statusCode: 500); }
 });
 
@@ -110,6 +120,7 @@ app.MapDelete("/api/parents/{id}", async (string id, IMediator mediator, string?
         await mediator.Send(new DeleteParentCommand { Id = parentId, SchoolId = schoolIdGuid });
         return Results.Ok(new { statusCode = 200, message = "Parent deleted" });
     }
+    catch (Microsoft.EntityFrameworkCore.DbUpdateException) { return Results.Conflict(new { message = "A record with these details already exists or a field is invalid." }); }
     catch (Exception ex) { Log.Error(ex, "Error deleting parent"); return Results.Json(new { statusCode = 500, message = "Error" }, statusCode: 500); }
 });
 
@@ -172,7 +183,7 @@ public interface IParentRepository
     Task<Parent?> GetByIdAsync(Guid id, Guid schoolId);
     Task CreateAsync(Parent parent);
     Task UpdateAsync(Parent parent);
-    Task DeleteAsync(Guid id);
+    Task DeleteAsync(Guid id, Guid schoolId);
 }
 
 public class ParentRepository : IParentRepository
@@ -192,7 +203,15 @@ public class ParentRepository : IParentRepository
     public Task<Parent?> GetByIdAsync(Guid id, Guid schoolId) => _context.Parents.FirstOrDefaultAsync(p => p.Id == id && p.SchoolId == schoolId);
     public async Task CreateAsync(Parent parent) { _context.Parents.Add(parent); await _context.SaveChangesAsync(); }
     public async Task UpdateAsync(Parent parent) { _context.Parents.Update(parent); await _context.SaveChangesAsync(); }
-    public async Task DeleteAsync(Guid id) { var p = await _context.Parents.FindAsync(id); if (p != null) { p.DeletedAt = DateTime.UtcNow; await _context.SaveChangesAsync(); } }
+    public async Task DeleteAsync(Guid id, Guid schoolId)
+    {
+        var parent = await GetByIdAsync(id, schoolId);
+        if (parent != null)
+        {
+            parent.DeletedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+        }
+    }
 }
 
 public class CreateParentCommand : IRequest<ParentDto> { public required Guid SchoolId { get; set; } public required string FirstName { get; set; } public required string LastName { get; set; } public required string Email { get; set; } public string? PhoneNumber { get; set; } }
@@ -231,7 +250,7 @@ public class DeleteParentHandler : IRequestHandler<DeleteParentCommand>
 {
     private readonly IParentRepository _repo;
     public DeleteParentHandler(IParentRepository repo) => _repo = repo;
-    public async Task Handle(DeleteParentCommand request, CancellationToken ct) => await _repo.DeleteAsync(request.Id);
+    public async Task Handle(DeleteParentCommand request, CancellationToken ct) => await _repo.DeleteAsync(request.Id, request.SchoolId);
 }
 
 public class GetParentListQuery : IRequest<ParentListResponse> { public Guid SchoolId { get; set; } public int Page { get; set; } = 1; public int PageSize { get; set; } = 20; }
@@ -259,10 +278,10 @@ public class CreateParentValidator : AbstractValidator<CreateParentCommand>
     public CreateParentValidator()
     {
         RuleFor(x => x.SchoolId).NotEmpty().Must(x => x != Guid.Empty);
-        RuleFor(x => x.FirstName).NotEmpty().Length(1, 255);
-        RuleFor(x => x.LastName).NotEmpty().Length(1, 255);
+        RuleFor(x => x.FirstName).NotEmpty().Length(1, 100);
+        RuleFor(x => x.LastName).NotEmpty().Length(1, 100);
         RuleFor(x => x.Email).NotEmpty().EmailAddress().Length(1, 255);
-        RuleFor(x => x.PhoneNumber).Length(1, 20).When(x => !string.IsNullOrEmpty(x.PhoneNumber));
+        RuleFor(x => x.PhoneNumber).NotEmpty().Length(1, 20);
     }
 }
 
@@ -272,12 +291,11 @@ public class UpdateParentValidator : AbstractValidator<UpdateParentCommand>
     {
         RuleFor(x => x.Id).NotEmpty().Must(x => x != Guid.Empty);
         RuleFor(x => x.SchoolId).NotEmpty().Must(x => x != Guid.Empty);
-        RuleFor(x => x.FirstName).NotEmpty().Length(1, 255);
-        RuleFor(x => x.LastName).NotEmpty().Length(1, 255);
+        RuleFor(x => x.FirstName).NotEmpty().Length(1, 100);
+        RuleFor(x => x.LastName).NotEmpty().Length(1, 100);
         RuleFor(x => x.Email).NotEmpty().EmailAddress().Length(1, 255);
-        RuleFor(x => x.PhoneNumber).Length(1, 20).When(x => !string.IsNullOrEmpty(x.PhoneNumber));
+        RuleFor(x => x.PhoneNumber).NotEmpty().Length(1, 20);
     }
 }
 
 #endregion
-

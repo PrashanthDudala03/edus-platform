@@ -9,6 +9,8 @@ public class AuthDbContext : DbContext
 
     public DbSet<User> Users { get; set; } = null!;
     public DbSet<RefreshToken> RefreshTokens { get; set; } = null!;
+    public DbSet<Role> Roles { get; set; } = null!;
+    public DbSet<RolePermission> RolePermissions { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -35,6 +37,8 @@ public class AuthDbContext : DbContext
             entity.Property(e => e.DeletedAt).HasColumnName("deleted_at");
             entity.Property(e => e.LastLoginAt).HasColumnName("last_login_at");
             entity.Property(e => e.CreatedByUserId).HasColumnName("created_by_user_id");
+            entity.Property(e => e.RoleId).HasColumnName("role_id");
+            entity.HasOne(e => e.Role).WithMany().HasForeignKey(e => e.RoleId);
 
             entity.HasIndex(e => new { e.SchoolId, e.Username }).IsUnique();
             entity.HasIndex(e => new { e.SchoolId, e.Email }).IsUnique();
@@ -42,6 +46,25 @@ public class AuthDbContext : DbContext
 
             // Soft delete
             entity.HasQueryFilter(e => e.DeletedAt == null);
+        });
+
+        modelBuilder.Entity<Role>(entity =>
+        {
+            entity.ToTable("roles");
+            entity.HasKey(role => role.Id);
+            entity.Property(role => role.Id).HasColumnName("id");
+            entity.Property(role => role.SchoolId).HasColumnName("school_id");
+            entity.Property(role => role.Name).HasColumnName("name").HasMaxLength(100);
+            entity.HasMany(role => role.Permissions).WithOne().HasForeignKey(permission => permission.RoleId);
+        });
+
+        modelBuilder.Entity<RolePermission>(entity =>
+        {
+            entity.ToTable("role_permissions");
+            entity.HasKey(permission => permission.Id);
+            entity.Property(permission => permission.Id).HasColumnName("id");
+            entity.Property(permission => permission.RoleId).HasColumnName("role_id");
+            entity.Property(permission => permission.PermissionKey).HasColumnName("permission_key").HasMaxLength(100);
         });
 
         // RefreshTokens table (map to lowercase 'refresh_tokens' created by init-db.sql)

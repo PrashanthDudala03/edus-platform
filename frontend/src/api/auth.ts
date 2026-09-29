@@ -28,8 +28,8 @@ export const authAPI = {
     return response.data.data
   },
 
-  logout: async () => {
-    await client.post('/auth/logout')
+  logout: async (refreshToken: string | null) => {
+    await client.post('/auth/logout', { refreshToken })
   },
 
   refresh: async (refreshToken: string) => {

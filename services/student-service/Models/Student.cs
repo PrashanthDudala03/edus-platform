@@ -26,6 +26,7 @@ public class Student
         Email = Email,
         PhoneNumber = PhoneNumber,
         CurrentClass = CurrentClass,
+        DateOfBirth = DateOfBirth,
         Status = Status,
         SchoolId = SchoolId.ToString(),
     };
@@ -33,6 +34,7 @@ public class Student
 
 public class StudentDto
 {
+    public DateTime DateOfBirth { get; set; }
     public required string Id { get; set; }
     public required string RollNumber { get; set; }
     public required string FirstName { get; set; }

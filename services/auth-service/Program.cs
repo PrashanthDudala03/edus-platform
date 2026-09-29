@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using System.Security.Cryptography;
 using FluentValidation;
 using MediatR;
@@ -51,7 +51,8 @@ builder.Services.AddSingleton(new JwtSettings
 {
     PrivateKeyPem = jwtPrivateKeyPem,
     PublicKeyPem = jwtPublicKeyPem,
-    Issuer = "edus-auth-service",
+    Issuer = builder.Configuration["JWT_ISSUER"] ?? "edus-auth-service",
+    Audience = builder.Configuration["JWT_AUDIENCE"] ?? "edus-api",
     ExpirationMinutes = 60,
     RefreshTokenExpirationDays = 7
 });
@@ -59,54 +60,111 @@ builder.Services.AddSingleton(new JwtSettings
 builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IPasswordService, PasswordService>();
 
-// Generate correct password hash for initialization
-var correctHashForAdmin123 = BCrypt.Net.BCrypt.HashPassword("admin123", workFactor: 12);
-Log.Information("CORRECT BCrypt hash for 'admin123' with cost 12: {Hash}", correctHashForAdmin123);
-
 // Register repositories
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
-
-// CORS - Allow frontend to call this service directly
-builder.Services.AddCors(options =>
-{
-    options.AddDefaultPolicy(builder =>
-    {
-        builder.AllowAnyOrigin()
-               .AllowAnyMethod()
-               .AllowAnyHeader();
-    });
-});
 
 // Health checks
 builder.Services.AddHealthChecks();
 
 var app = builder.Build();
 
-// Use CORS middleware
-app.UseCors();
+var bootstrapSchoolId = Guid.Parse(builder.Configuration["EDUOS_BOOTSTRAP_SCHOOL_ID"]
+    ?? "550e8400-e29b-41d4-a716-446655440000");
+var bootstrapSchoolName = builder.Configuration["EDUOS_BOOTSTRAP_SCHOOL_NAME"];
+var bootstrapAdminUsername = builder.Configuration["EDUOS_BOOTSTRAP_ADMIN_USERNAME"];
+var bootstrapAdminEmail = builder.Configuration["EDUOS_BOOTSTRAP_ADMIN_EMAIL"];
+var bootstrapAdminPassword = builder.Configuration["EDUOS_BOOTSTRAP_ADMIN_PASSWORD"];
 
-// Apply migrations on startup
+if (string.IsNullOrWhiteSpace(bootstrapSchoolName) || bootstrapSchoolName.Contains("CHANGE_ME", StringComparison.OrdinalIgnoreCase) ||
+    string.IsNullOrWhiteSpace(bootstrapAdminUsername) || bootstrapAdminUsername.Contains("CHANGE_ME", StringComparison.OrdinalIgnoreCase) ||
+    string.IsNullOrWhiteSpace(bootstrapAdminEmail) || bootstrapAdminEmail.Contains("CHANGE_ME", StringComparison.OrdinalIgnoreCase) ||
+    string.IsNullOrWhiteSpace(bootstrapAdminPassword) || bootstrapAdminPassword.Contains("CHANGE_ME", StringComparison.OrdinalIgnoreCase) ||
+    bootstrapAdminPassword.Length < 16 ||
+    bootstrapAdminPassword.Contains("replace", StringComparison.OrdinalIgnoreCase))
+{
+    throw new InvalidOperationException("Set a school name and a unique bootstrap admin username, email, and password (at least 16 characters) before starting EduOS.");
+}
+
+// Apply migrations on startup and provision the first tenant/admin using only
+// deployment-time secrets. No shared demo password is committed to the repo.
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
     try
     {
-        db.Database.Migrate();
-        Log.Information("Database migrated successfully");
+        await db.Database.ExecuteSqlRawAsync("SELECT 1 FROM auth_db.users LIMIT 1");
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO school_db.schools (id, name, is_active, subscription_tier, created_at, updated_at)
+            VALUES ({bootstrapSchoolId}, {bootstrapSchoolName}, TRUE, 'trial', NOW(), NOW())
+            ON CONFLICT (id) DO NOTHING
+            """);
+
+        var bootstrapRoles = new[]
+        {
+            (Name: "SuperAdmin", Description: "School system administrator", IsSystem: true),
+            (Name: "Principal", Description: "School principal", IsSystem: true),
+        };
+        foreach (var role in bootstrapRoles)
+        {
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO auth_db.roles (id, school_id, name, description, is_system_role, created_at, updated_at)
+                VALUES ({Guid.NewGuid()}, {bootstrapSchoolId}, {role.Name}, {role.Description}, {role.IsSystem}, NOW(), NOW())
+                ON CONFLICT (school_id, name) DO NOTHING
+                """);
+        }
+
+        var bootstrapRoleId = await db.Database.SqlQuery<Guid>($"""
+            SELECT id AS "Value" FROM auth_db.roles
+            WHERE school_id = {bootstrapSchoolId} AND name = 'SuperAdmin'
+            """).SingleAsync();
+
+        if (!await db.Users.AnyAsync(user => user.SchoolId == bootstrapSchoolId && user.Username == bootstrapAdminUsername))
+        {
+            db.Users.Add(new User
+            {
+                Id = Guid.NewGuid(),
+                SchoolId = bootstrapSchoolId,
+                Username = bootstrapAdminUsername,
+                Email = bootstrapAdminEmail,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(bootstrapAdminPassword, workFactor: 12),
+                FirstName = "School",
+                LastName = "Administrator",
+                RoleId = bootstrapRoleId,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            });
+            await db.SaveChangesAsync();
+        }
+        Log.Information("Database schema verified");
     }
     catch (Exception ex)
     {
-        Log.Error(ex, "Database migration failed");
+        Log.Fatal(ex, "Database initialization failed");
+        throw;
     }
 }
 
+app.Use(async (context,next)=>{try{await next();}catch(DbUpdateException){context.Response.StatusCode=409;await context.Response.WriteAsJsonAsync(new{message="A record with these details already exists or the update conflicts with another change."});}});
 app.UseRouting();
 
 // Health endpoint - return Prometheus metrics format
-app.MapGet("/api/health", () =>
+app.MapGet("/api/health", async (AuthDbContext db) => {try { return await db.Database.CanConnectAsync() ? Results.Ok(new {status="ready"}) : Results.StatusCode(503); } catch { return Results.StatusCode(503); }});
+
+app.MapGet("/api/roles", async (string? schoolId, AuthDbContext db) =>
 {
-    return Results.Text("# HELP service_health Service health status\n# TYPE service_health gauge\nservice_health 1\n", "text/plain; version=0.0.4");
+    if (string.IsNullOrWhiteSpace(schoolId) || !Guid.TryParse(schoolId, out var schoolIdGuid))
+    {
+        return Results.BadRequest(new { statusCode = 400, message = "schoolId required" });
+    }
+
+    var roles = await db.Roles
+        .Where(role => role.SchoolId == schoolIdGuid)
+        .OrderBy(role => role.Name)
+        .Select(role => new { id = role.Id, name = role.Name })
+        .ToListAsync();
+    return Results.Ok(new { statusCode = 200, data = roles });
 });
 
 // Auth endpoints
@@ -117,7 +175,7 @@ app.MapPost("/api/auth/login", async (LoginRequest request, IMediator mediator) 
         var command = new LoginCommand(
             request.Username,
             request.Password,
-            request.SchoolId ?? "550e8400-e29b-41d4-a716-446655440000");
+            string.IsNullOrWhiteSpace(request.SchoolId) ? bootstrapSchoolId.ToString() : request.SchoolId);
         var result = await mediator.Send(command);
         return Results.Ok(new { statusCode = 200, data = result });
     }
@@ -139,12 +197,14 @@ app.MapPost("/api/auth/login", async (LoginRequest request, IMediator mediator) 
     }
 });
 
-app.MapPost("/api/auth/refresh", async (RefreshRequest request, IMediator mediator) =>
+app.MapPost("/api/auth/refresh", async (RefreshRequest request, IMediator mediator, AuthDbContext db) =>
 {
     try
     {
+        await using var tx=await db.Database.BeginTransactionAsync();
         var command = new RefreshTokenCommand(request.RefreshToken);
         var result = await mediator.Send(command);
+        await tx.CommitAsync();
         return Results.Ok(new { statusCode = 200, data = result });
     }
     catch (Exception ex)
@@ -156,19 +216,41 @@ app.MapPost("/api/auth/refresh", async (RefreshRequest request, IMediator mediat
     }
 });
 
+app.MapPost("/api/auth/logout", async (RefreshRequest request, IRefreshTokenRepository repository) =>
+{
+    if (string.IsNullOrWhiteSpace(request.RefreshToken))
+    {
+        return Results.Ok(new { statusCode = 200, message = "Signed out" });
+    }
+
+    var storedToken = await repository.GetByTokenAsync(request.RefreshToken);
+    if (storedToken is not null)
+    {
+        await repository.RevokeAsync(storedToken.Id);
+    }
+
+    return Results.Ok(new { statusCode = 200, message = "Signed out" });
+});
+
+app.MapGet("/api/internal/session/{id:guid}", async (Guid id, Guid schoolId, AuthDbContext db) => {
+    var user=await db.Users.Include(u=>u.Role).FirstOrDefaultAsync(u=>u.Id==id && u.SchoolId==schoolId && u.IsActive);
+    return user?.Role is null ? Results.Unauthorized() : Results.Ok(new{role=user.Role.Name});
+});
+
 // User endpoints
-app.MapGet("/api/users", async (int page = 1, int pageSize = 20, string? schoolId = null, AuthDbContext db = null) =>
+app.MapGet("/api/users", async (AuthDbContext db, int page = 1, int pageSize = 20, string? schoolId = null) =>
 {
     if (string.IsNullOrEmpty(schoolId)) return Results.BadRequest(new { statusCode = 400, message = "schoolId required" });
     if (!Guid.TryParse(schoolId, out var schoolIdGuid)) return Results.BadRequest(new { statusCode = 400, message = "Invalid schoolId" });
 
+    if(page<1 || pageSize<1 || pageSize>100) return Results.BadRequest(new {message="Invalid pagination."});
     var skip = (page - 1) * pageSize;
     var users = await db.Users
         .Where(u => u.SchoolId == schoolIdGuid && u.DeletedAt == null)
         .OrderBy(u => u.CreatedAt)
         .Skip(skip)
         .Take(pageSize)
-        .Select(u => new { u.Id, u.Username, u.Email, u.FirstName, u.LastName, u.IsActive, u.CreatedAt })
+        .Select(u => new { u.Id, u.Username, u.Email, u.FirstName, u.LastName, u.IsActive, u.CreatedAt, Role = u.Role != null ? u.Role.Name : "" })
         .ToListAsync();
 
     var totalCount = await db.Users.CountAsync(u => u.SchoolId == schoolIdGuid && u.DeletedAt == null);
@@ -179,7 +261,10 @@ app.MapPost("/api/users", async (CreateUserRequest request, AuthDbContext db) =>
 {
     if (!Guid.TryParse(request.SchoolId, out var schoolId)) return Results.BadRequest(new { statusCode = 400, message = "Invalid schoolId" });
     if (!Guid.TryParse(request.RoleId, out var roleId)) return Results.BadRequest(new { statusCode = 400, message = "Invalid roleId" });
+    var role = await db.Roles.FirstOrDefaultAsync(item => item.Id == roleId && item.SchoolId == schoolId);
+    if (role == null) return Results.BadRequest(new { statusCode = 400, message = "Role does not belong to this school" });
 
+    if(string.IsNullOrWhiteSpace(request.Username) || request.Username.Length>100 || string.IsNullOrWhiteSpace(request.FirstName) || request.FirstName.Length>100 || string.IsNullOrWhiteSpace(request.LastName) || request.LastName.Length>100 || request.Password.Length<16 || request.Password.Length>72 || !System.Net.Mail.MailAddress.TryCreate(request.Email,out _)) return Results.BadRequest(new {message="Enter valid account details and a password between 16 and 72 characters."});
     // Check username unique per school
     var existing = await db.Users.FirstOrDefaultAsync(u => u.SchoolId == schoolId && u.Username == request.Username && u.DeletedAt == null);
     if (existing != null) return Results.Json(new { statusCode = 409, message = "Username already exists for this school" }, statusCode: 409);
@@ -197,6 +282,7 @@ app.MapPost("/api/users", async (CreateUserRequest request, AuthDbContext db) =>
         FirstName = request.FirstName,
         LastName = request.LastName,
         PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password, workFactor: 12),
+        RoleId = roleId,
         IsActive = true,
         CreatedAt = DateTime.UtcNow,
         UpdatedAt = DateTime.UtcNow
@@ -208,11 +294,12 @@ app.MapPost("/api/users", async (CreateUserRequest request, AuthDbContext db) =>
     return Results.Json(new { statusCode = 201, data = new { user.Id, user.Username, user.Email, user.FirstName, user.LastName, user.IsActive } }, statusCode: 201);
 });
 
-app.MapPut("/api/users/{id}", async (string id, UpdateUserRequest request, AuthDbContext db) =>
+app.MapPut("/api/users/{id}", async (string id, UpdateUserRequest request, string? schoolId, AuthDbContext db) =>
 {
     if (!Guid.TryParse(id, out var userId)) return Results.BadRequest(new { statusCode = 400, message = "Invalid user ID" });
+    if (string.IsNullOrWhiteSpace(schoolId) || !Guid.TryParse(schoolId, out var schoolIdGuid)) return Results.BadRequest(new { statusCode = 400, message = "schoolId required" });
 
-    var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId && u.DeletedAt == null);
+    var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId && u.SchoolId == schoolIdGuid && u.DeletedAt == null);
     if (user == null) return Results.NotFound(new { statusCode = 404, message = "User not found" });
 
     if (!string.IsNullOrEmpty(request.Email) && request.Email != user.Email)
@@ -224,6 +311,7 @@ app.MapPut("/api/users/{id}", async (string id, UpdateUserRequest request, AuthD
 
     if (!string.IsNullOrEmpty(request.FirstName)) user.FirstName = request.FirstName;
     if (!string.IsNullOrEmpty(request.LastName)) user.LastName = request.LastName;
+    if(request.IsActive==false && user.IsActive && await db.Roles.AnyAsync(r=>r.Id==user.RoleId && r.Name=="SuperAdmin") && await db.Users.CountAsync(u=>u.SchoolId==schoolIdGuid && u.IsActive && u.DeletedAt==null && u.Role!=null && u.Role.Name=="SuperAdmin")<=1) return Results.Conflict(new {message="The last active school administrator cannot be disabled."});
     if (request.IsActive.HasValue) user.IsActive = request.IsActive.Value;
 
     user.UpdatedAt = DateTime.UtcNow;
@@ -247,8 +335,8 @@ app.MapDelete("/api/users/{id}", async (string id, string? schoolId, AuthDbConte
         u.SchoolId == schoolIdGuid &&
         u.DeletedAt == null &&
         u.IsActive &&
-        u.RoleId != null);
-    if (superAdminCount == 1 && user.IsActive) return Results.Json(new { statusCode = 409, message = "Cannot delete the last Super Admin for this school" }, statusCode: 409);
+        u.Role != null && u.Role.Name == "SuperAdmin");
+    if (superAdminCount == 1 && user.IsActive && await db.Roles.AnyAsync(r=>r.Id==user.RoleId && r.Name=="SuperAdmin")) return Results.Json(new { statusCode = 409, message = "Cannot delete the last Super Admin for this school" }, statusCode: 409);
 
     user.DeletedAt = DateTime.UtcNow;
     user.IsActive = false;
@@ -291,4 +379,3 @@ public class UpdateUserRequest
     public string? LastName { get; set; }
     public bool? IsActive { get; set; }
 }
-

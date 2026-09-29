@@ -207,22 +207,5 @@ CREATE TABLE IF NOT EXISTS parent_db.parents (
 
 CREATE INDEX idx_parents_school_id ON parent_db.parents(school_id);
 
--- Insert test data
-INSERT INTO school_db.schools (name, abbreviation, city, principal_name)
-VALUES ('Green Valley High School', 'GVHS', 'Springfield', 'Dr. John Smith');
-
-INSERT INTO school_db.roles (school_id, name, description, is_built_in)
-SELECT id, 'SuperAdmin', 'System administrator with full access', true FROM school_db.schools
-UNION ALL
-SELECT id, 'Principal', 'School principal with full school access', true FROM school_db.schools
-UNION ALL
-SELECT id, 'Teacher', 'Teacher with class access', true FROM school_db.schools
-UNION ALL
-SELECT id, 'Student', 'Student with limited access', true FROM school_db.schools
-UNION ALL
-SELECT id, 'Parent', 'Parent with child access', true FROM school_db.schools;
-
--- Insert test user (password: admin123 hashed with BCrypt.Net.BCrypt cost 12)
-INSERT INTO auth_db.users (school_id, username, email, password_hash, first_name, last_name, is_active)
-SELECT id, 'admin', 'admin@gvhs.edu', '$2b$12$4pwJo71C1YsNbUxME3LVluBMNsTR3OHFpGk9PrSbwmKc8eA4389h2', 'Admin', 'User', true
-FROM school_db.schools;
+-- Tenant, initial admin, and role records are created by the auth service from
+-- EDUOS_BOOTSTRAP_* deployment variables after the schema is initialized.

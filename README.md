@@ -1,327 +1,100 @@
-﻿# 🎓 EduOS - Modern School Management Platform
+# EduOS School Workspace
 
-EduOS is a comprehensive, scalable school management system built with modern technologies. It provides complete management of schools, students, teachers, parents, and academic operations.
+EduOS is a school administration application with a React/TypeScript interface, six ASP.NET Core services, PostgreSQL, and an Nginx gateway. The local deployment runs in Docker Desktop at **http://localhost:8080**.
 
-## ✨ Features
+## Local access
 
-### Phase 1 (Complete)
-- ✅ **Settings Module** - School info, user management, role configuration
-- ✅ **Multi-Tenant Architecture** - Support for multiple schools
-- ✅ **Authentication** - JWT RS256 with secure token management
-- ✅ **Role-Based Access Control** - Customizable roles and permissions
-- ✅ **Database** - PostgreSQL with 5 dedicated schemas
-- ✅ **Monitoring** - Prometheus, Grafana, pgAdmin stack
-- ✅ **API Gateway** - YARP-based routing and orchestration
-- ✅ **Microservices** - Independent services for auth, students, teachers, etc.
+Open the private, Git-ignored **.local/ACCESS.txt** file for your generated administrator username and password. The school starts as **My School**; update its name and principal in **School settings**. No students or fictional dashboard totals are seeded into your school.
 
-### Phase 2 (In Progress)
-- 🚀 Student Management Module
-- 🚀 Teacher Management Module
-- 🚀 Parent Portal & Communication
-- 🚀 Academic Management (Classes, Subjects, Timetables)
-- 🚀 Attendance Management
-- 🚀 Reporting & Analytics
+## Included workflows
 
-## 🏗️ Architecture
+- Live enrollment, staff, guardian, class, and attendance summaries.
+- Searchable and paginated student, teacher, and guardian directories.
+- Validated create/edit forms, archive confirmation, and CSV export of the current page.
+- Daily attendance with class filters, present/absent/late/excused statuses, corrections, and atomic saving.
+- Administration noticeboard with priority and removal confirmation.
+- School profile and administrator/principal account creation and access control.
+- Database-triggered activity history and CSV export.
+- RSA-signed authentication, single-use refresh-token rotation, live disabled-account checks, school isolation at the gateway, and login rate limiting.
+- Persistent PostgreSQL storage, service readiness checks, restart policies, bounded container logs, and backup tooling.
 
-### Tech Stack
-- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS
-- **Backend**: ASP.NET Core 9, Entity Framework Core
-- **Database**: PostgreSQL 16
-- **Message Queue**: RabbitMQ
-- **Cache**: Redis
-- **API Gateway**: YARP (Yet Another Reverse Proxy)
-- **Monitoring**: Prometheus, Grafana, pgAdmin
-- **Containerization**: Docker & Docker Compose
-- **Authentication**: JWT RS256
+## Start and stop
 
-### Microservices
-- **Auth Service** (Port 6001) - User authentication & management
-- **School Service** (Port 6005) - School configuration
-- **Student Service** (Port 6002) - Student management
-- **Teacher Service** (Port 6003) - Teacher management
-- **Parent Service** (Port 6004) - Parent management
-- **API Gateway** (Port 5000) - Request routing
+Docker Desktop must be running with Linux containers.
 
-### Database Schemas
-- `auth_db` - Users, roles, permissions
-- `school_db` - Schools, academic config, audit logs
-- `student_db` - Students, enrollments
-- `teacher_db` - Teachers, assignments
-- `parent_db` - Parents, contact info
+~~~powershell
+docker compose up -d --build --wait
+docker compose ps
+~~~
 
-## 🚀 Quick Start
+The included run.bat and run.sh also start the stack. Stop containers while retaining records:
 
-### Prerequisites
-- Docker & Docker Compose
-- Node.js 18+ (for local frontend development)
-- .NET 9 SDK (for local backend development)
-- PostgreSQL 16 (optional, if not using Docker)
+~~~powershell
+docker compose stop
+~~~
 
-### Setup
+Do not remove the PostgreSQL volume to fix an application error. It holds your school data.
 
-1. **Clone the repository**
-```bash
-git clone https://github.com/cadfem/edus-platform.git
-cd edus-platform
-```
+## Fresh checkout
 
-2. **Configure environment**
-```bash
-cp .env.example .env
-# Edit .env and update JWT keys if needed
-```
+Install Node.js 24 and Docker Desktop, then:
 
-3. **Generate JWT Keys (First Time Only)**
-```bash
-# Generate RSA keys for JWT
-# Save as base64 in .env file
-```
+~~~powershell
+node scripts/setup-local.mjs
+docker compose up -d --build --wait
+~~~
 
-4. **Start services**
-```bash
-docker-compose up -d
-```
+Setup generates a fresh signing key and random passwords, preserves an existing .env, and writes the initial login to .local/ACCESS.txt. Bootstrap variables initialize an empty database; changing them later does not change an existing user's password.
 
-5. **Access the application**
-- Frontend: http://localhost:8000
-- API Gateway: http://localhost:8080
-- pgAdmin: http://localhost:5050
-- Grafana: http://localhost:3001
-- Prometheus: http://localhost:9090
+Only Nginx is published, on 127.0.0.1:8080. Database and service ports stay inside Docker. pgAdmin is an optional observability profile.
 
-## 📊 Default Credentials
+## Development tools installed on this machine
 
-### Grafana
-```
-Username: admin
-Password: admin123
-```
+Node.js 24 and .NET SDK 9 are installed privately in .tools. Use this PowerShell session setup:
 
-### pgAdmin
-```
-Email: admin@edus.com
-Password: admin123
-```
+~~~powershell
+Set-ExecutionPolicy -Scope Process Bypass
+. .\scripts\dev-shell.ps1
+npm --prefix frontend ci
+npm --prefix frontend run build
+dotnet test services/auth-service.tests/auth-service.tests.csproj -c Release
+~~~
 
-### PostgreSQL (via pgAdmin)
-```
-Host: postgres
-Port: 5432
-Username: edus_dev
-Password: dev_password_123
-Database: edus_dev
-```
+Run the frontend development server with npm --prefix frontend run dev. It proxies API requests to Docker on port 8080.
 
-### Application
-```
-Username: admin
-Password: admin123
-```
+## Tests
 
-## 📁 Project Structure
+With Docker running, from a configured developer shell:
 
-```
-edus-platform/
-├── frontend/                 # React frontend
-│   ├── src/
-│   │   ├── pages/           # Page components
-│   │   ├── components/      # Reusable components
-│   │   ├── store/           # Zustand state management
-│   │   └── api/             # API client
-│   ├── Dockerfile
-│   └── package.json
-├── services/                 # Microservices
-│   ├── auth-service/        # Authentication service
-│   ├── school-service/      # School management
-│   ├── student-service/     # Student management
-│   ├── teacher-service/     # Teacher management
-│   ├── parent-service/      # Parent management
-│   └── api-gateway/         # YARP Gateway
-├── init-db.sql              # Database schema
-├── docker-compose.yml       # Docker Compose config
-├── prometheus.yml           # Prometheus config
-└── README.md
-```
-
-## 🛠️ Development
-
-### Local Frontend Development
-```bash
+~~~powershell
 cd frontend
-npm install
-npm run dev
-# Frontend will run on http://localhost:5173
-```
+npx playwright install chromium
+npx playwright test
+~~~
 
-### Local Backend Development
-```bash
-cd services/auth-service
-dotnet restore
-dotnet run
-# Service will run on http://localhost:6001
-```
+The integration/browser suite creates its own random QA school, exercises real services and desktop/mobile browsers, and deletes only that QA school's records afterward. It tests authentication, tenant isolation, malformed input, CRUD, attendance transactions, refresh replay/concurrency, disabled users, and last-administrator protection. Test reports are in frontend/playwright-report and screenshots in .local/screenshots.
 
-### Run Tests
-```bash
-docker-compose -f docker-compose.test.yml up
-```
+## Backup and recovery
 
-## 📚 API Documentation
+~~~powershell
+node scripts/backup.mjs
+~~~
 
-### Authentication
-```http
-POST /api/auth/login
-Content-Type: application/json
+This creates a PostgreSQL custom-format dump in the ignored backups directory and verifies that pg_restore can read its catalog. Store encrypted copies off this computer. Keep .env and signing keys separately in a secure location.
 
-{
-  "username": "admin",
-  "password": "admin123",
-  "schoolId": "school-uuid"
-}
+Restore into a **new empty database or separate PostgreSQL instance**, verify record counts and application access, then deliberately switch the deployment to it. Never restore over an existing school database without a verified backup and a planned recovery window. A valid dump catalog is not a substitute for a tested full restore.
 
-Response:
-{
-  "statusCode": 200,
-  "data": {
-    "accessToken": "eyJ...",
-    "refreshToken": "eyJ...",
-    "user": { ... }
-  }
-}
-```
+## Deployment boundaries
 
-### Users Endpoints
-```http
-GET /api/users?page=1&pageSize=20&schoolId={schoolId}
-POST /api/users
-PUT /api/users/{id}
-DELETE /api/users/{id}?schoolId={schoolId}
-```
+This is a working local administration edition, not a claim of audited enterprise certification or universal absence of defects. Before using real school data on a network:
 
-## 🔒 Security
+- Configure a domain and trusted HTTPS at the ingress; the current bind is intentionally localhost.
+- Establish a data-retention policy, offsite backups, restore drills, monitoring, and access review.
+- Both built-in roles can administer the school. Fine-grained permissions, SSO/MFA, parent/student self-service, fee payments, timetable scheduling, and messaging integrations are not implemented.
+- The database activity log records the affected record, operation, and time. It is not a staff-attributed, tamper-proof compliance audit.
+- Review local student privacy requirements and hosting controls with your school.
+- Archived data remains in the database; restoration and permanent erasure require an administrator-operated database procedure.
+- CSV exports are explicitly limited to the displayed page.
+- Dependency and runtime updates remain ongoing maintenance.
 
-- ✅ JWT RS256 authentication
-- ✅ Password hashing with BCrypt (cost factor 12)
-- ✅ CORS enabled for cross-origin requests
-- ✅ Multi-tenant isolation via school_id
-- ✅ Soft delete for data retention
-- ✅ Role-based access control
-- ✅ Environment variable protection
-
-**Security Notes:**
-- Store JWT keys in secure vault (not in .env for production)
-- Use HTTPS in production
-- Implement rate limiting
-- Enable database backups
-- Audit all admin actions
-
-## 📊 Monitoring
-
-### Prometheus Targets
-All 10 services monitored:
-- 6 Microservices (auth, school, student, teacher, parent, gateway)
-- 3 Infrastructure (PostgreSQL, Redis, RabbitMQ via exporters)
-- 1 Prometheus (self-monitoring)
-
-### Grafana Dashboards
-- **EduOS Microservices Health** - Real-time service status
-- Custom dashboards can be created for metrics
-
-### pgAdmin
-- Full database management
-- Query execution
-- Schema exploration
-
-## 🔄 Deployment
-
-### Docker Compose (Development)
-```bash
-docker-compose up -d
-```
-
-### Production Checklist
-- [ ] Update .env with production values
-- [ ] Use strong, unique passwords
-- [ ] Enable HTTPS
-- [ ] Set up SSL certificates
-- [ ] Configure backup strategy
-- [ ] Set up log aggregation
-- [ ] Enable monitoring alerts
-- [ ] Use environment-specific configs
-- [ ] Implement rate limiting
-- [ ] Set up CI/CD pipeline
-
-## 🐛 Troubleshooting
-
-### Services won't start
-```bash
-# Check Docker logs
-docker-compose logs auth-service
-
-# Restart services
-docker-compose restart
-
-# Full reset
-docker-compose down -v
-docker-compose up -d
-```
-
-### Database connection issues
-```bash
-# Check PostgreSQL health
-docker ps | grep postgres
-
-# Connect to database
-docker exec -it edus-postgres psql -U edus_dev -d edus_dev
-```
-
-### Prometheus targets showing DOWN
-- Check service health endpoints are returning metrics
-- Verify network connectivity between containers
-- Restart Prometheus: `docker-compose restart prometheus`
-
-## 📝 Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Commit changes: `git commit -m 'Add amazing feature'`
-4. Push to branch: `git push origin feature/amazing-feature`
-5. Open a Pull Request
-
-## 📄 License
-
-This project is licensed under the MIT License - see LICENSE file for details.
-
-## 👥 Team
-
-- **Project Lead**: CADFEM
-- **Architecture**: Multi-tenant SaaS platform
-- **Maintenance**: Active development
-
-## 📞 Support
-
-For issues and questions:
-- GitHub Issues: https://github.com/cadfem/edus-platform/issues
-- Email: support@edus.io
-
-## 🗺️ Roadmap
-
-### Q3 2026
-- Student Management Module
-- Teacher Management Module
-- Parent Portal
-
-### Q4 2026
-- Academic Management
-- Reporting & Analytics
-- Mobile App (React Native)
-
-### Q1 2027
-- AI-powered recommendations
-- Advanced analytics
-- Integration marketplace
-
----
-
-**Made with ❤️ by the EduOS Team**
+See VALIDATION.md for checks actually run on this deployment.

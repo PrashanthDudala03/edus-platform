@@ -120,11 +120,37 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, J
         _jwtService = jwtService;
     }
 
-    public Task<JwtTokenResponse> Handle(RefreshTokenCommand request, CancellationToken cancellationToken)
+    public async Task<JwtTokenResponse> Handle(RefreshTokenCommand request, CancellationToken cancellationToken)
     {
-        // This is a simplified implementation
-        // In production, parse the JWT to get school_id and user_id
-        // For now, we'll just reject since we need the school_id
-        throw new InvalidOperationException("Refresh token endpoint requires school context");
+        if (string.IsNullOrWhiteSpace(request.RefreshToken))
+        {
+            throw new InvalidOperationException("Invalid or expired refresh token");
+        }
+
+        var storedToken = await _refreshTokenRepository.GetByTokenAsync(request.RefreshToken);
+        if (storedToken is null)
+        {
+            throw new InvalidOperationException("Invalid or expired refresh token");
+        }
+
+        var user = await _userRepository.GetByIdAsync(storedToken.UserId);
+        if (user is null || user.SchoolId != storedToken.SchoolId)
+        {
+            await _refreshTokenRepository.RevokeAsync(storedToken.Id);
+            throw new InvalidOperationException("Invalid or expired refresh token");
+        }
+
+        await _refreshTokenRepository.RevokeAsync(storedToken.Id);
+        var rotatedTokens = _jwtService.IssueTokens(user);
+        await _refreshTokenRepository.CreateAsync(new RefreshToken
+        {
+            Id = Guid.NewGuid(),
+            SchoolId = user.SchoolId,
+            UserId = user.Id,
+            Token = rotatedTokens.RefreshToken,
+            ExpiresAt = DateTime.UtcNow.AddDays(7),
+            CreatedAt = DateTime.UtcNow
+        });
+        return rotatedTokens;
     }
 }

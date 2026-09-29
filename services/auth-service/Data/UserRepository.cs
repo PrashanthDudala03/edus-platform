@@ -25,17 +25,24 @@ public class UserRepository : IUserRepository
     public async Task<User?> GetByUsernameAsync(Guid schoolId, string username)
     {
         return await _context.Users
+            .Include(u => u.Role)
+                .ThenInclude(role => role!.Permissions)
             .FirstOrDefaultAsync(u => u.SchoolId == schoolId && u.Username == username && u.IsActive);
     }
 
     public async Task<User?> GetByIdAsync(Guid userId)
     {
-        return await _context.Users.FirstOrDefaultAsync(u => u.Id == userId && u.IsActive);
+        return await _context.Users
+            .Include(u => u.Role)
+                .ThenInclude(role => role!.Permissions)
+            .FirstOrDefaultAsync(u => u.Id == userId && u.IsActive);
     }
 
     public async Task<User?> GetByEmailAsync(Guid schoolId, string email)
     {
         return await _context.Users
+            .Include(u => u.Role)
+                .ThenInclude(role => role!.Permissions)
             .FirstOrDefaultAsync(u => u.SchoolId == schoolId && u.Email == email && u.IsActive);
     }
 
@@ -59,7 +66,7 @@ public class UserRepository : IUserRepository
 
 public interface IRefreshTokenRepository
 {
-    Task<RefreshToken?> GetByTokenAsync(Guid schoolId, string token);
+    Task<RefreshToken?> GetByTokenAsync(string token);
     Task CreateAsync(RefreshToken refreshToken);
     Task RevokeAsync(Guid tokenId);
     Task SaveChangesAsync();
@@ -74,31 +81,31 @@ public class RefreshTokenRepository : IRefreshTokenRepository
         _context = context;
     }
 
-    public async Task<RefreshToken?> GetByTokenAsync(Guid schoolId, string token)
+    public async Task<RefreshToken?> GetByTokenAsync(string token)
     {
+        var tokenHash = HashToken(token);
         return await _context.RefreshTokens
-            .FirstOrDefaultAsync(rt => rt.SchoolId == schoolId && rt.Token == token && rt.RevokedAt == null && rt.ExpiresAt > DateTime.UtcNow);
+            .FirstOrDefaultAsync(rt => rt.Token == tokenHash && rt.RevokedAt == null && rt.ExpiresAt > DateTime.UtcNow);
     }
 
     public async Task CreateAsync(RefreshToken refreshToken)
     {
+        refreshToken.Token = HashToken(refreshToken.Token);
         await _context.RefreshTokens.AddAsync(refreshToken);
         await _context.SaveChangesAsync();
     }
 
     public async Task RevokeAsync(Guid tokenId)
     {
-        var token = await _context.RefreshTokens.FindAsync(tokenId);
-        if (token != null)
-        {
-            token.RevokedAt = DateTime.UtcNow;
-            _context.RefreshTokens.Update(token);
-            await _context.SaveChangesAsync();
-        }
+        var changed=await _context.RefreshTokens.Where(t=>t.Id==tokenId && t.RevokedAt==null).ExecuteUpdateAsync(u=>u.SetProperty(t=>t.RevokedAt,DateTime.UtcNow));
+        if(changed!=1) throw new InvalidOperationException("Refresh token was already used.");
     }
 
     public async Task SaveChangesAsync()
     {
         await _context.SaveChangesAsync();
     }
+
+    private static string HashToken(string token) =>
+        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(token)));
 }
