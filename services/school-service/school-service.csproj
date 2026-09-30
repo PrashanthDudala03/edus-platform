@@ -12,4 +12,8 @@
     <PackageReference Include="Serilog.Sinks.Console" Version="6.1.0" />
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
   </ItemGroup>
+  <ItemGroup>
+    <Content Update="SuiteSchemas.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Update="SuiteSchema.sql" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

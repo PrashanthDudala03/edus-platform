@@ -126,6 +126,8 @@ services:
     build:
       context: .
       dockerfile: services/Dockerfile.school
+    volumes:
+      - school_documents:/app/documents
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
       ASPNETCORE_URLS: http://+:6005
@@ -221,6 +223,7 @@ services:
     networks: [edus-network]
 
 volumes:
+  school_documents:
   postgres_data:
 
 networks:

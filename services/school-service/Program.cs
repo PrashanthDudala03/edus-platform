@@ -74,6 +74,8 @@ app.MapPut("/api/schools/{schoolId}", async (string schoolId, SchoolUpdateReques
 
 await Operations.Initialize(connectionString);
 Operations.Map(app, connectionString);
+await Suite.Initialize(connectionString);
+Suite.Map(app);
 app.Run();
 
 #region Models
