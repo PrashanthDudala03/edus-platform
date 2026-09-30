@@ -113,6 +113,7 @@ jobs:
         working-directory: frontend
       - run: node scripts/setup-local.mjs
       - run: docker compose up -d --build --wait --wait-timeout 180
+      - run: node scripts/seed-demo.mjs --confirm-demo
       - run: npx playwright test
         working-directory: frontend
       - if: always()
