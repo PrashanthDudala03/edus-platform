@@ -72,7 +72,6 @@ for(const role of ['Principal','Teacher','Parent','Student']){
  const a=accounts[role],found=existing.find(u=>u.username===a.username)
  userIds[role]=found?.id??(await must('POST','/users',admin,{schoolId,roleId:roles[role],username:a.username,email:a.username,firstName:a.firstName,lastName:a.lastName,password:PASSWORD},[201])).id
 }
-const teacherToken=await login(accounts.Teacher.username),studentToken=await login(accounts.Student.username)
 
 // Pending access requests for the signup review demo. They go through the public signup endpoint
 // with the school's signup code, exactly as a real applicant would. 409 means one already exists.
@@ -113,6 +112,8 @@ await ensure('account-links',r=>r.userId===userIds.Teacher,{userId:userIds.Teach
 await ensure('account-links',r=>r.userId===userIds.Parent&&r.studentId===aarav,{userId:userIds.Parent,studentId:aarav})
 await ensure('account-links',r=>r.userId===userIds.Parent&&r.studentId===diya,{userId:userIds.Parent,studentId:diya})
 await ensure('account-links',r=>r.userId===userIds.Student,{userId:userIds.Student,studentId:aarav})
+// Linking a profile revokes that account's sessions, so the teacher and student sign in only after their links exist.
+const teacherToken=await login(accounts.Teacher.username),studentToken=await login(accounts.Student.username)
 
 // Weekly timetable: Grade 6-A Monday to Saturday, Grade 3-B Monday to Friday.
 const days=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
