@@ -75,8 +75,10 @@ app.UseEduOSAuthorization("/api", "/api/health");
 // Health endpoint - return Prometheus metrics format
 app.MapGet("/api/health", async (StudentDbContext db) => {try { return await db.Database.CanConnectAsync() ? Results.Ok(new {status="ready"}) : Results.StatusCode(503); } catch { return Results.StatusCode(503); }}).AllowAnonymous();
 
-// Student endpoints: school administration only. schoolId is rewritten from the verified token before handlers run.
-var students = app.MapGroup("/api/students").RequireAuthorization(EduOSPolicies.Administrators);
+// Directory endpoints: leadership reads, administrators change. schoolId is rewritten from the verified token before handlers run.
+var students = app.MapGroup("/api/students").RequireAuthorization(EduOSPolicies.Leadership);
+// Changes need the Administrator role on top of the group's leadership policy; Principal is read-only.
+var studentsWrites = students.MapGroup("").RequireAuthorization(EduOSPolicies.Administrators);
 students.MapGet("", async (IMediator mediator, int page = 1, int pageSize = 20, string? schoolId = null) =>
 {
     if (string.IsNullOrEmpty(schoolId) || !Guid.TryParse(schoolId, out var schoolIdGuid))
@@ -126,7 +128,7 @@ students.MapGet("/count", async (IMediator mediator, string? schoolId = null) =>
     }
 });
 
-students.MapPost("", async (CreateStudentCommand request, IMediator mediator, IValidator<CreateStudentCommand> validator) =>
+studentsWrites.MapPost("", async (CreateStudentCommand request, IMediator mediator, IValidator<CreateStudentCommand> validator) =>
 {
     try
     {
@@ -155,7 +157,7 @@ students.MapPost("", async (CreateStudentCommand request, IMediator mediator, IV
     }
 });
 
-students.MapPut("/{id}", async (string id, UpdateStudentCommand request, IMediator mediator, IValidator<UpdateStudentCommand> validator) =>
+studentsWrites.MapPut("/{id}", async (string id, UpdateStudentCommand request, IMediator mediator, IValidator<UpdateStudentCommand> validator) =>
 {
     if (!Guid.TryParse(id, out var studentId))
     {
@@ -194,7 +196,7 @@ students.MapPut("/{id}", async (string id, UpdateStudentCommand request, IMediat
     }
 });
 
-students.MapDelete("/{id}", async (string id, IMediator mediator, string? schoolId = null) =>
+studentsWrites.MapDelete("/{id}", async (string id, IMediator mediator, string? schoolId = null) =>
 {
     if (!Guid.TryParse(id, out var studentId))
     {

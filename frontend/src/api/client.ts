@@ -25,7 +25,7 @@ client.interceptors.response.use(response => response, async error => {
     request.headers.Authorization = 'Bearer ' + token
     return client(request)
   } catch (refreshError) {
-    useAuthStore.getState().clearAuth()
+    useAuthStore.getState().clearAuth('Your session has ended. Please sign in again.')
     return Promise.reject(refreshError)
   }
 })

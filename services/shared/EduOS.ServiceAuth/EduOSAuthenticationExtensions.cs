@@ -70,9 +70,15 @@ public static class EduOSAuthenticationExtensions
         services.AddAuthorization(options =>
         {
             options.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();
-            options.AddPolicy(EduOSPolicies.Administrators, policy => policy.RequireRole(EduOSRoles.SuperAdmin, EduOSRoles.Principal));
-            options.AddPolicy(EduOSPolicies.Staff, policy => policy.RequireRole(EduOSRoles.SuperAdmin, EduOSRoles.Principal, EduOSRoles.Teacher));
-            options.AddPolicy(EduOSPolicies.Suite, policy => policy.RequireRole(EduOSRoles.All));
+            // Platform access needs both the role and the reserved platform tenant, so a school role that
+            // happened to be named SuperAdmin could never reach cross-school operations.
+            options.AddPolicy(EduOSPolicies.Platform, policy => policy.RequireRole(EduOSRoles.SuperAdmin)
+                .RequireClaim(EduOSClaims.SchoolId, EduOSTenants.Platform.ToString()));
+            options.AddPolicy(EduOSPolicies.Administrators, policy => policy.RequireRole(EduOSRoles.Administrator));
+            options.AddPolicy(EduOSPolicies.Leadership, policy => policy.RequireRole(EduOSRoles.Administrator, EduOSRoles.Principal));
+            options.AddPolicy(EduOSPolicies.Staff, policy => policy.RequireRole(EduOSRoles.Administrator, EduOSRoles.Principal, EduOSRoles.Teacher));
+            options.AddPolicy(EduOSPolicies.Suite, policy => policy.RequireRole(EduOSRoles.School));
+            options.AddPolicy(EduOSPolicies.AnyRole, policy => policy.RequireRole(EduOSRoles.All));
         });
 
         services.AddHttpContextAccessor();

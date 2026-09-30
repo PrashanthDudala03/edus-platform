@@ -14,11 +14,11 @@ public static partial class Suite
                 FROM student_db.students s LEFT JOIN school_db.attendance t ON t.student_id=s.id AND t.school_id=s.school_id AND t.day>=@start AND t.day<@end
                 WHERE s.school_id=@s AND s.deleted_at IS NULL GROUP BY s.id ORDER BY s.current_class,s.first_name
                 """,("start",start),("end",start.AddMonths(1)),("s",a.School));
-            return Results.Ok(new{data=rows.Where(r=>a.Admin||a.Students.Contains(Text(r,"studentId")))});
+            return Results.Ok(new{data=rows.Where(r=>a.SchoolWide||a.Students.Contains(Text(r,"studentId")))});
         });
         group.MapGet("/reports/staff-attendance",async(string month,HttpContext http)=>{
             Require(DateOnly.TryParseExact(month+"-01","yyyy-MM-dd",out var start),"Choose a valid report month.");
-            await using var c=await Open();var a=await Access(http,c);Require(a.Admin||a.Role=="Teacher","Staff attendance access denied.",403);
+            await using var c=await Open();var a=await Access(http,c);Require(a.SchoolWide||a.Role=="Teacher","Staff attendance access denied.",403);
             var rows=await Q(c,"""
                 SELECT t.id AS "teacherId",t.employee_code AS code,t.first_name || ' ' || t.last_name AS name,
                 count(*) FILTER(WHERE r.data->>'status'='Present') AS present,count(*) FILTER(WHERE r.data->>'status'='Absent') AS absent,
@@ -27,10 +27,10 @@ public static partial class Suite
                 AND r.archived_at IS NULL AND r.data->>'teacherId'=t.id::text AND (r.data->>'day')::date>=@start AND (r.data->>'day')::date<@end
                 WHERE t.school_id=@s AND t.deleted_at IS NULL GROUP BY t.id ORDER BY t.first_name
                 """,("s",a.School),("start",start),("end",start.AddMonths(1)));
-            return Results.Ok(new{data=rows.Where(r=>a.Admin||a.Teachers.Contains(Text(r,"teacherId")))});
+            return Results.Ok(new{data=rows.Where(r=>a.SchoolWide||a.Teachers.Contains(Text(r,"teacherId")))});
         });
         group.MapGet("/reports/admissions",async(HttpContext http)=>{
-            await using var c=await Open();var a=await Access(http,c);Require(a.Admin,"Admission report access denied.",403);
+            await using var c=await Open();var a=await Access(http,c);Require(a.SchoolWide,"Admission report access denied.",403);
             return Results.Ok(new{data=await Records(c,a.School,"admissions")});
         });
         group.MapGet("/reports/marks",async(HttpContext http)=>{
@@ -41,12 +41,12 @@ public static partial class Suite
             return Results.Ok(new{data=marks});
         });
         group.MapGet("/reports/audit",async(HttpContext http,int page=1)=>{
-            Require(page>0,"Invalid page.");await using var c=await Open();var a=await Access(http,c);Require(a.Admin,"Audit access denied.",403);
+            Require(page>0,"Invalid page.");await using var c=await Open();var a=await Access(http,c);Require(a.SchoolWide,"Audit access denied.",403);
             var rows=await Q(c,"SELECT a.id,a.action,a.entity_type AS module,a.entity_id AS record,a.created_at AS time,COALESCE(u.username,'System') AS actor FROM suite.audit a LEFT JOIN auth_db.users u ON u.id=a.user_id WHERE a.school_id=@s ORDER BY a.created_at DESC LIMIT 100 OFFSET @skip",("s",a.School),("skip",(page-1)*100));
             return Results.Ok(new{data=rows});
         });
         group.MapGet("/report-cards/{student:guid}",async(Guid student,HttpContext http,string? examName=null)=>{
-            await using var c=await Open();var a=await Access(http,c);Require(a.Admin||a.Students.Contains(student.ToString()),"Student record not available.",403);
+            await using var c=await Open();var a=await Access(http,c);Require(a.SchoolWide||a.Students.Contains(student.ToString()),"Student record not available.",403);
             var pupil=(await Q(c,"SELECT id,first_name || ' ' || last_name AS name,roll_number AS \"admissionNumber\",current_class AS class FROM student_db.students WHERE id=@id AND school_id=@s",("id",student),("s",a.School))).FirstOrDefault();Require(pupil is not null,"Student not found.",404);
             var exams=(await Records(c,a.School,"exams")).Where(e=>Text(e,"status")=="Published"&&(string.IsNullOrWhiteSpace(examName)||Text(e,"name")==examName)).ToList();
             var subjects=await Records(c,a.School,"subjects");var marks=(await Records(c,a.School,"marks")).Where(m=>Text(m,"studentId")==student.ToString()).ToList();

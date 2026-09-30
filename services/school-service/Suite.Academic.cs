@@ -26,13 +26,13 @@ public static partial class Suite
         }
         if(kind=="circulars"&&Text(d,"dueDate")!="")Require(Day(d,"dueDate")>=DateOnly.FromDateTime(DateTime.UtcNow),"Acknowledgement deadline cannot be in the past.");
         if(kind=="calendar")Require(Day(d,"startsOn")<=Day(d,"endsOn"),"Event end date must follow its start.");
-        if(kind=="messages"&&!a.Admin){
+        if(kind=="messages"&&!a.SchoolWide){
             var links=await Records(c,a.School,"account-links");Require(links.Any(l=>Text(l,"userId")==Text(d,"recipientUserId")&&a.Students.Contains(Text(l,"studentId"))),"Teachers may message linked accounts in their assigned classes only.",403);
         }
         if(kind=="homework"&&old is null)Require(Day(d,"dueDate")>=DateOnly.FromDateTime(DateTime.UtcNow),"A new assignment cannot be due in the past.");
         if(kind=="submissions"){
             Unique("homeworkId","studentId");var homework=await Get(c,a.School,"homework",Id(d,"homeworkId"));await InClass(c,a.School,Id(d,"studentId"),Id(homework,"classId"));
-            if(!a.Admin&&a.Role!="Teacher")Require(Day(homework,"dueDate")>=DateOnly.FromDateTime(DateTime.UtcNow),"This assignment is past its submission deadline.",409);
+            if(!a.SchoolWide&&a.Role!="Teacher")Require(Day(homework,"dueDate")>=DateOnly.FromDateTime(DateTime.UtcNow),"This assignment is past its submission deadline.",409);
         }
         if(kind=="timetable"){
             Require(TimeOnly.Parse(Text(d,"startsAt"))<TimeOnly.Parse(Text(d,"endsAt")),"Period must end after it starts.");
@@ -66,16 +66,16 @@ public static partial class Suite
     }
     static void MapAcademic(RouteGroupBuilder group){
         group.MapGet("/student-attendance",async(DateOnly day,HttpContext http)=>{
-            await using var c=await Open();var a=await Access(http,c);Require(a.Admin||a.Role=="Teacher","Register access denied.",403);
+            await using var c=await Open();var a=await Access(http,c);Require(a.SchoolWide||a.Role=="Teacher","Register access denied.",403);
             var rows=await Q(c,"SELECT s.id,s.roll_number AS code,s.first_name || ' ' || s.last_name AS name,s.current_class AS class,t.status FROM student_db.students s LEFT JOIN school_db.attendance t ON t.student_id=s.id AND t.school_id=s.school_id AND t.day=@day WHERE s.school_id=@s AND s.deleted_at IS NULL AND s.status='Active' ORDER BY s.current_class,s.first_name",("s",a.School),("day",day));
-            return Results.Ok(new{data=rows.Where(r=>a.Admin||a.Students.Contains(Text(r,"id")))});
+            return Results.Ok(new{data=rows.Where(r=>a.SchoolWide||a.Students.Contains(Text(r,"id")))});
         });
         group.MapPost("/student-attendance",async(JsonObject d,HttpContext http)=>{
-            await using var c=await Open();var a=await Access(http,c);Require(a.Admin||a.Role=="Teacher","Register access denied.",403);var day=Day(d,"day");
+            await using var c=await Open();var a=await Access(http,c);Require(a.SchoolWide||a.Role=="Teacher","Register access denied.",403);var day=Day(d,"day");
             Require(day<=DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)),"Attendance cannot be in the future.");
             Require(d["entries"] is JsonArray,"Entries must be an array.");var entries=d["entries"]?.AsArray();Require(entries is not null&&entries.Count is >0 and <=500,"Save 1–500 attendance entries.");
             await using var tx=await c.BeginTransactionAsync();var unique=new HashSet<Guid>();
-            foreach(var item in entries!){Require(item is JsonObject,"Each attendance entry must be an object.");var entry=item!.AsObject();var student=Id(entry,"studentId");Require(unique.Add(student),"Duplicate student.");Require(a.Admin||a.Students.Contains(student.ToString()),"A student is outside your assigned classes.",403);
+            foreach(var item in entries!){Require(item is JsonObject,"Each attendance entry must be an object.");var entry=item!.AsObject();var student=Id(entry,"studentId");Require(unique.Add(student),"Duplicate student.");Require(a.SchoolWide||a.Students.Contains(student.ToString()),"A student is outside your assigned classes.",403);
                 var status=Text(entry,"status");Require(new[]{"Present","Absent","Late","Excused"}.Contains(status),"Invalid attendance status.");
                 var changed=await E(c,"INSERT INTO school_db.attendance(school_id,student_id,day,status) SELECT @s,id,@day,@status FROM student_db.students WHERE id=@id AND school_id=@s AND status='Active' AND deleted_at IS NULL ON CONFLICT(school_id,student_id,day) DO UPDATE SET status=excluded.status,updated_at=now()",("s",a.School),("id",student),("day",day),("status",status));Require(changed==1,"Student is not active.");
             }await tx.CommitAsync();return Results.Ok(new{message="Attendance saved."});
@@ -106,19 +106,19 @@ public static partial class Suite
         group.MapGet("/allocations",async(HttpContext http)=>{
             await using var c=await Open();var a=await Access(http,c);
             var rows=await Q(c,"SELECT sc.student_id AS \"studentId\",sc.class_id AS \"classId\",s.first_name || ' ' || s.last_name AS name,s.current_class AS class FROM suite.student_classes sc JOIN student_db.students s ON s.id=sc.student_id WHERE sc.school_id=@s AND s.deleted_at IS NULL ORDER BY s.first_name",("s",a.School));
-            return Results.Ok(new{data=rows.Where(r=>a.Admin||a.Students.Contains(Text(r,"studentId")))});
+            return Results.Ok(new{data=rows.Where(r=>a.SchoolWide||a.Students.Contains(Text(r,"studentId")))});
         });
         group.MapPost("/circulars/{id:guid}/acknowledge",async(Guid id,HttpContext http)=>{
             await using var c=await Open();var a=await Access(http,c);var record=await Get(c,a.School,"circulars",id);Require(Readable("circulars",record,a),"Circular is not addressed to your account.",403);
             await E(c,"INSERT INTO suite.acknowledgements(school_id,record_id,user_id) VALUES(@s,@r,@u) ON CONFLICT DO NOTHING",("s",a.School),("r",id),("u",a.User));return Results.Ok(new{message="Acknowledgement recorded."});
         });
         group.MapGet("/circulars/{id:guid}/acknowledgements",async(Guid id,HttpContext http)=>{
-            await using var c=await Open();var a=await Access(http,c);Require(a.Admin,"Only administrators can view acknowledgement tracking.",403);
+            await using var c=await Open();var a=await Access(http,c);Require(a.SchoolWide,"Only administrators can view acknowledgement tracking.",403);
             await Get(c,a.School,"circulars",id);
             return Results.Ok(new{data=await Q(c,"SELECT u.first_name || ' ' || u.last_name AS name,a.created_at AS \"acknowledgedAt\" FROM suite.acknowledgements a JOIN auth_db.users u ON u.id=a.user_id WHERE a.school_id=@s AND a.record_id=@r ORDER BY a.created_at",("s",a.School),("r",id))});
         });
         group.MapPost("/absence-notifications",async(JsonObject d,HttpContext http)=>{
-            await using var c=await Open();var a=await Access(http,c);Require(a.Admin,"Only administrators can send absence notices.",403);var day=Day(d,"day");
+            await using var c=await Open();var a=await Access(http,c);Require(a.SchoolWide,"Only administrators can send absence notices.",403);var day=Day(d,"day");
             var absent=await Q(c,"SELECT student_id FROM school_db.attendance WHERE school_id=@s AND day=@d AND status='Absent'",("s",a.School),("d",day));
             var sent=0;foreach(var student in absent)sent+=await NotifyStudent(c,a,Guid.Parse(Text(student,"student_id")),"Absence notification","Attendance was marked absent on "+day.ToString("yyyy-MM-dd")+". Please contact the school if this needs correction.","absence:"+Text(student,"student_id")+":"+day.ToString("yyyy-MM-dd"));
             return Results.Ok(new{data=new{sent},message=sent>0?sent+" in-app notifications made available.":"No new notifications: recipients are unlinked or notices already exist."});

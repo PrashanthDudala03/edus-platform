@@ -7,6 +7,12 @@ using Services.Auth.Services;
 
 namespace Services.Auth.Handlers;
 
+/// <summary>A sign-in refused for a reason the user may be told, with the HTTP status to answer.</summary>
+public class LoginRejectedException(int status, string message) : InvalidOperationException(message)
+{
+    public int Status { get; } = status;
+}
+
 public class LoginCommand : IRequest<JwtTokenResponse>
 {
     public string Username { get; init; } = string.Empty;
@@ -52,22 +58,26 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, JwtTokenRespons
             throw new ValidationException(validationResult.Errors);
         }
 
-        var schoolId = Guid.Parse(request.SchoolId);
+        Guid? requestedSchool = string.IsNullOrWhiteSpace(request.SchoolId) ? null : Guid.Parse(request.SchoolId);
 
-        // Find user
-        var user = await _userRepository.GetByUsernameAsync(schoolId, request.Username);
-        if (user == null)
+        // The role and school always come from the matched account, never from the request.
+        var candidates = await _userRepository.FindLoginCandidatesAsync(requestedSchool, request.Username.Trim());
+        var matches = candidates.Where(candidate => _passwordService.VerifyPassword(request.Password, candidate.PasswordHash)).ToList();
+        if (matches.Count == 0)
         {
-            Log.Warning("Login failed: user {Username} not found in school {SchoolId}", request.Username, schoolId);
+            Log.Warning("Login failed for {Username}", request.Username);
             throw new InvalidOperationException("Invalid credentials");
         }
+        if (matches.Count > 1)
+            throw new LoginRejectedException(409, "This sign-in name is used in more than one school. Enter your School ID to continue.");
 
-        // Verify password
-        if (!_passwordService.VerifyPassword(request.Password, user.PasswordHash))
-        {
-            Log.Warning("Login failed: invalid password for user {Username}", request.Username);
-            throw new InvalidOperationException("Invalid credentials");
-        }
+        // Account state is revealed only to someone who already proved the password.
+        var user = matches[0];
+        if (!user.IsActive)
+            throw new LoginRejectedException(403, "This account is disabled. Contact your school administrator.");
+        if (!await _userRepository.IsSchoolActiveAsync(user.SchoolId))
+            throw new LoginRejectedException(403, "This school's EduOS workspace is deactivated. Contact EduOS support.");
+        var schoolId = user.SchoolId;
 
         // Issue JWT and refresh token
         var tokenResponse = _jwtService.IssueTokens(user);
@@ -134,7 +144,7 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, J
         }
 
         var user = await _userRepository.GetByIdAsync(storedToken.UserId);
-        if (user is null || user.SchoolId != storedToken.SchoolId)
+        if (user is null || user.SchoolId != storedToken.SchoolId || !await _userRepository.IsSchoolActiveAsync(user.SchoolId))
         {
             await _refreshTokenRepository.RevokeAsync(storedToken.Id);
             throw new InvalidOperationException("Invalid or expired refresh token");

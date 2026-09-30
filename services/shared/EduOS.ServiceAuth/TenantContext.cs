@@ -10,7 +10,10 @@ namespace EduOS.ServiceAuth;
 /// </summary>
 public sealed record TenantContext(Guid SchoolId, Guid UserId, string Role)
 {
-    public bool IsAdministrator => Role is EduOSRoles.SuperAdmin or EduOSRoles.Principal;
+    public bool IsAdministrator => Role == EduOSRoles.Administrator;
+    public bool IsLeadership => Role is EduOSRoles.Administrator or EduOSRoles.Principal;
+    /// <summary>True only for a SuperAdmin token issued in the platform tenant.</summary>
+    public bool IsPlatform => Role == EduOSRoles.SuperAdmin && SchoolId == EduOSTenants.Platform;
 
     public static bool TryFrom(ClaimsPrincipal user, out TenantContext tenant)
     {

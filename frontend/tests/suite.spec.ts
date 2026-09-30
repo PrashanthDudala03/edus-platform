@@ -10,24 +10,24 @@ const schoolId=randomUUID(),adminId=randomUUID(),password=env.EDUOS_BOOTSTRAP_AD
 const sql=(query:string)=>execFileSync('docker',['compose','exec','-T','postgres','psql','-U',env.POSTGRES_USER,'-d',env.POSTGRES_DB,'-v','ON_ERROR_STOP=1','-c',query],{cwd:root,encoding:'utf8',stdio:['pipe','pipe','pipe']})
 let api:APIRequestContext,year='',cl='',subject='',teacher='',student='',admission='',charge='',exam='',homework='',submission='',certificate='',circular=''
 const sessions:Record<string,any>={},users:Record<string,string>={},docs:string[]=[]
-const headers=(role='SuperAdmin')=>({Authorization:'Bearer '+sessions[role].accessToken})
-const req=async(method:string,url:string,body?:any,role='SuperAdmin')=>api.fetch('/api/v1'+url,{method,headers:headers(role),...(body===undefined?{}:{data:body})})
-async function good(method:string,url:string,body?:any,role='SuperAdmin',status=200){const r=await req(method,url,body,role);expect(r.status(),await r.text()).toBe(status);return(await r.json()).data}
-const create=async(kind:string,body:any,role='SuperAdmin')=>(await good('POST','/suite/records/'+kind,body,role,201)).id
-const list=async(kind:string,role='SuperAdmin')=>(await good('GET','/suite/records/'+kind,undefined,role)).data
+const headers=(role='Administrator')=>({Authorization:'Bearer '+sessions[role].accessToken})
+const req=async(method:string,url:string,body?:any,role='Administrator')=>api.fetch('/api/v1'+url,{method,headers:headers(role),...(body===undefined?{}:{data:body})})
+async function good(method:string,url:string,body?:any,role='Administrator',status=200){const r=await req(method,url,body,role);expect(r.status(),await r.text()).toBe(status);return(await r.json()).data}
+const create=async(kind:string,body:any,role='Administrator')=>(await good('POST','/suite/records/'+kind,body,role,201)).id
+const list=async(kind:string,role='Administrator')=>(await good('GET','/suite/records/'+kind,undefined,role)).data
 // nginx limits login and reset-password to 10/min per client (burst 10); wait out a 429 when earlier specs used the budget.
 async function throttled(send:()=>Promise<APIResponse>){for(let i=0;;i++){const r=await send();if(r.status()!==429||i>=15)return r;await new Promise(f=>setTimeout(f,6500))}}
 async function login(role:string,pw=password){const r=await throttled(()=>api.post('/api/v1/auth/login',{data:{schoolId,username:'suite.'+role.toLowerCase(),password:pw}}));expect(r.status(),await r.text()).toBe(200);sessions[role]=(await r.json()).data}
-async function browserSession(page:Page,role='SuperAdmin'){await page.addInitScript(s=>{localStorage.setItem('accessToken',s.accessToken);localStorage.setItem('refreshToken',s.refreshToken);localStorage.setItem('user',JSON.stringify(s.user))},sessions[role])}
+async function browserSession(page:Page,role='Administrator'){await page.addInitScript(s=>{localStorage.setItem('accessToken',s.accessToken);localStorage.setItem('refreshToken',s.refreshToken);localStorage.setItem('user',JSON.stringify(s.user))},sessions[role])}
 test.describe.serial('Complete school suite',()=>{
  test.beforeAll(async({playwright})=>{
   test.setTimeout(180000)
   const role=randomUUID()
-  sql("BEGIN; INSERT INTO school_db.schools(id,name) VALUES('"+schoolId+"','Suite QA School'); INSERT INTO auth_db.roles(id,school_id,name) VALUES('"+role+"','"+schoolId+"','SuperAdmin'); INSERT INTO auth_db.users(id,school_id,username,email,password_hash,first_name,last_name,role_id) SELECT '"+adminId+"','"+schoolId+"','suite.superadmin','suite-"+schoolId+"@example.test',password_hash,'Suite','Admin','"+role+"' FROM auth_db.users WHERE school_id='"+env.EDUOS_BOOTSTRAP_SCHOOL_ID+"' AND username='"+env.EDUOS_BOOTSTRAP_ADMIN_USERNAME.replaceAll("'","''")+"'; "+['Principal','Teacher','Parent','Student'].map(r=>"INSERT INTO auth_db.roles(id,school_id,name) VALUES(gen_random_uuid(),'"+schoolId+"','"+r+"');").join(' ')+" COMMIT;")
-  api=await playwright.request.newContext({baseURL:process.env.EDUOS_TEST_URL||'http://localhost:8080'});await login('SuperAdmin')
+  sql("BEGIN; INSERT INTO school_db.schools(id,name) VALUES('"+schoolId+"','Suite QA School'); INSERT INTO auth_db.roles(id,school_id,name) VALUES('"+role+"','"+schoolId+"','Administrator'); INSERT INTO auth_db.users(id,school_id,username,email,password_hash,first_name,last_name,role_id) SELECT '"+adminId+"','"+schoolId+"','suite.administrator','suite-"+schoolId+"@example.test',password_hash,'Suite','Admin','"+role+"' FROM auth_db.users WHERE school_id='"+env.EDUOS_BOOTSTRAP_SCHOOL_ID+"' AND username='"+env.EDUOS_BOOTSTRAP_ADMIN_USERNAME.replaceAll("'","''")+"'; "+['Principal','Teacher','Parent','Student'].map(r=>"INSERT INTO auth_db.roles(id,school_id,name) VALUES(gen_random_uuid(),'"+schoolId+"','"+r+"');").join(' ')+" COMMIT;")
+  api=await playwright.request.newContext({baseURL:process.env.EDUOS_TEST_URL||'http://localhost:8080'});await login('Administrator')
   const roles=await good('GET','/roles')
   for(const role of ['Principal','Teacher','Parent','Student']){
-   users[role]=(await good('POST','/users',{schoolId,roleId:roles.find((r:any)=>r.name===role).id,username:'suite.'+role.toLowerCase(),email:role.toLowerCase()+schoolId+'@example.test',firstName:role,lastName:'QA',password},'SuperAdmin',201)).id
+   users[role]=(await good('POST','/users',{schoolId,roleId:roles.find((r:any)=>r.name===role).id,username:'suite.'+role.toLowerCase(),email:role.toLowerCase()+schoolId+'@example.test',firstName:role,lastName:'QA',password},'Administrator',201)).id
    await login(role)
   }
  })
@@ -41,7 +41,7 @@ test.describe.serial('Complete school suite',()=>{
   expect((await good('GET','/suite/catalog')).length).toBe(19)
   year=await create('academic-years',{name:'2026-27',startsOn:'2026-04-01',endsOn:'2027-03-31',status:'Current'})
   expect((await req('POST','/suite/records/academic-years',{name:'Conflict',startsOn:'2026-04-01',endsOn:'2027-03-31',status:'Current'})).status()).toBe(409)
-  teacher=(await good('POST','/teachers',{schoolId,employeeCode:'ST-1',firstName:'Maya',lastName:'Teacher',email:'maya'+schoolId+'@example.test',phoneNumber:'9000000002',department:'Science'},'SuperAdmin',201)).id
+  teacher=(await good('POST','/teachers',{schoolId,employeeCode:'ST-1',firstName:'Maya',lastName:'Teacher',email:'maya'+schoolId+'@example.test',phoneNumber:'9000000002',department:'Science'},'Administrator',201)).id
   cl=await create('classes',{name:'Grade 6',section:'A',yearId:year,teacherId:teacher,capacity:30})
   subject=await create('subjects',{name:'Science',code:'SCI'})
   await create('teaching-assignments',{classId:cl,subjectId:subject,teacherId:teacher})
@@ -85,7 +85,7 @@ test.describe.serial('Complete school suite',()=>{
  })
  test('keeps fees exact, payments idempotent, receipts private and balances non-negative',async()=>{
   const structure=await create('fee-structures',{name:'Tuition',classId:cl,amount:1000.10,installment:'Term 1',dueDate:day})
-  charge=(await good('POST','/suite/fees/charges',{studentId:student,structureId:structure,concession:100.05},'SuperAdmin',201)).id
+  charge=(await good('POST','/suite/fees/charges',{studentId:student,structureId:structure,concession:100.05},'Administrator',201)).id
   expect((await req('POST','/suite/fees/charges',{studentId:student,structureId:structure,concession:100.05})).status()).toBe(409)
   const payment={chargeId:charge,amount:900.05,method:'UPI',reference:'QA-REFERENCE',paidOn:day,idempotencyKey:randomUUID()}
   const responses=await Promise.all([req('POST','/suite/fees/payments',payment),req('POST','/suite/fees/payments',payment)])
@@ -186,7 +186,7 @@ test.describe.serial('Complete school suite',()=>{
  test('parent portal exposes only family modules and records',async({page})=>{
   await browserSession(page,'Parent');await page.goto('/suite');await expect(page.getByRole('heading',{name:/Your family/})).toBeVisible()
   await page.goto('/suite/fees');await expect(page.getByText('Aarav Learner',{exact:true}).first()).toBeVisible();await expect(page.getByRole('button',{name:'Issue charge'})).toHaveCount(0)
-  await page.goto('/students');await expect(page).toHaveURL(/\/suite$/)
+  await page.goto('/students');await expect(page.getByRole('heading',{name:'This area isn’t available for your role'})).toBeVisible()
  })
 
  test('rehearses a paired database and document restore without replacing live data',async()=>{
@@ -211,10 +211,15 @@ test.describe.serial('Complete school suite',()=>{
   await login('Parent',newPassword);expect((await req('GET','/suite/catalog',undefined,'Parent')).status()).toBe(200)
  })
  test('prevents concurrent requests from disabling the last two administrators',async()=>{
-  const roles=await good('GET','/roles',undefined,'Principal')
-  const second=(await good('POST','/users',{schoolId,roleId:roles.find((r:any)=>r.name==='SuperAdmin').id,username:'suite.secondadmin',email:'second'+schoolId+'@example.test',firstName:'Second',lastName:'Admin',password},'Principal',201)).id
-  const responses=await Promise.all([adminId,second].map(id=>req('PUT','/users/'+id,{isActive:false},'Principal')))
-  expect(responses.map(r=>r.status()).sort()).toEqual([200,409])
+  // Only an Administrator may manage accounts, so the acting administrator disables itself and the only other
+  // administrator at once. Exactly one request may win; the loser is refused (409) or, if it arrives after its
+  // own account was disabled, signed out (401). Either way the school keeps one active administrator.
+  const roles=await good('GET','/roles')
+  const second=(await good('POST','/users',{schoolId,roleId:roles.find((r:any)=>r.name==='Administrator').id,username:'suite.secondadmin',email:'second'+schoolId+'@example.test',firstName:'Second',lastName:'Admin',password},'Administrator',201)).id
+  const statuses=(await Promise.all([adminId,second].map(id=>req('PUT','/users/'+id,{isActive:false})))).map(r=>r.status())
+  expect(statuses.filter(s=>s===200)).toHaveLength(1)
+  expect(statuses.filter(s=>s!==200).every(s=>s===409||s===401)).toBe(true)
+  expect(sql("SELECT 'active='||count(*) FROM auth_db.users u JOIN auth_db.roles r ON r.id=u.role_id WHERE u.school_id='"+schoolId+"' AND u.is_active AND u.deleted_at IS NULL AND r.name='Administrator'")).toContain('active=1')
  })
 
 })

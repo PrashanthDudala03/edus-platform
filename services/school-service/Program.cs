@@ -45,8 +45,8 @@ app.UseEduOSAuthorization("/api", "/api/health");
 // Health endpoint - return Prometheus metrics format
 app.MapGet("/api/health", async (SchoolDbContext db) => {try { return await db.Database.CanConnectAsync() ? Results.Ok(new {status="ready"}) : Results.StatusCode(503); } catch { return Results.StatusCode(503); }}).AllowAnonymous();
 
-// School profile: administrators only. The path schoolId must match the verified token.
-var schools = app.MapGroup("/api/schools").RequireAuthorization(EduOSPolicies.Administrators);
+// School profile: leadership reads, administrators change. The path schoolId must match the verified token.
+var schools = app.MapGroup("/api/schools").RequireAuthorization(EduOSPolicies.Leadership);
 schools.MapGet("/{schoolId}", async (string schoolId, SchoolDbContext db) =>
 {
     if (!Guid.TryParse(schoolId, out var id)) return Results.BadRequest(new { statusCode = 400, message = "Invalid ID" });
@@ -77,7 +77,7 @@ schools.MapPut("/{schoolId}", async (string schoolId, SchoolUpdateRequest reques
         return Results.Ok(new { statusCode = 200, data = new { id = school.Id.ToString(), name = school.Name, principalName = school.PrincipalName } });
     }
     catch (Exception ex) { Log.Error(ex, "Error updating school"); return Results.Json(new { statusCode = 500, message = "Error" }, statusCode: 500); }
-});
+}).RequireAuthorization(EduOSPolicies.Administrators);
 
 await Operations.Initialize(connectionString);
 Operations.Map(app, connectionString);

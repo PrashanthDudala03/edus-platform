@@ -18,7 +18,7 @@ const date=new Date().toISOString().slice(0,10)
 test.describe.serial('School workspace against real Docker services',()=>{
  test.beforeAll(async({playwright})=>{
   test.setTimeout(180000)
-  sql("BEGIN; INSERT INTO school_db.schools(id,name) VALUES('"+schoolId+"','QA School'); INSERT INTO auth_db.roles(id,school_id,name) VALUES('"+roleId+"','"+schoolId+"','SuperAdmin'); INSERT INTO auth_db.roles(id,school_id,name) VALUES(gen_random_uuid(),'"+schoolId+"','Principal'); INSERT INTO auth_db.users(id,school_id,username,email,password_hash,first_name,last_name,role_id) SELECT '"+userId+"','"+schoolId+"','qa.admin','qa-"+schoolId+"@example.test',password_hash,'QA','Administrator','"+roleId+"' FROM auth_db.users WHERE school_id='"+otherSchool+"' AND username='"+env.EDUOS_BOOTSTRAP_ADMIN_USERNAME.replaceAll("'","''")+"'; COMMIT;")
+  sql("BEGIN; INSERT INTO school_db.schools(id,name) VALUES('"+schoolId+"','QA School'); INSERT INTO auth_db.roles(id,school_id,name) VALUES('"+roleId+"','"+schoolId+"','Administrator'); INSERT INTO auth_db.roles(id,school_id,name) VALUES(gen_random_uuid(),'"+schoolId+"','Principal'); INSERT INTO auth_db.users(id,school_id,username,email,password_hash,first_name,last_name,role_id) SELECT '"+userId+"','"+schoolId+"','qa.admin','qa-"+schoolId+"@example.test',password_hash,'QA','Administrator','"+roleId+"' FROM auth_db.users WHERE school_id='"+otherSchool+"' AND username='"+env.EDUOS_BOOTSTRAP_ADMIN_USERNAME.replaceAll("'","''")+"'; COMMIT;")
   api=await playwright.request.newContext({baseURL:process.env.EDUOS_TEST_URL||'http://localhost:8080'})
   const response=await throttled(()=>api.post('/api/v1/auth/login',{data:{username:'qa.admin',password,schoolId}}))
   expect(response.status()).toBe(200)
@@ -99,7 +99,7 @@ test.describe.serial('School workspace against real Docker services',()=>{
  test('desktop browser supports sign in, editing, attendance, noticeboard, and reload',async({page})=>{
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message))
   await page.setViewportSize({width:1440,height:1050})
-  await page.goto('/login');await page.getByLabel('Username',{exact:true}).fill('qa.admin')
+  await page.goto('/login');await page.getByLabel('Email or username',{exact:true}).fill('qa.admin')
   await page.getByLabel('Password',{exact:true}).fill(password)
   await page.getByText('Signing in to another school?').click();await page.getByLabel('School ID',{exact:true}).fill(schoolId)
   await page.getByRole('button',{name:'Sign in to workspace'}).click()
@@ -123,7 +123,7 @@ test.describe.serial('School workspace against real Docker services',()=>{
  })
  test('mobile layout is usable without page overflow',async({page})=>{
   await page.setViewportSize({width:390,height:844})
-  await page.goto('/login');await page.getByLabel('Username',{exact:true}).fill('qa.admin');await page.getByLabel('Password',{exact:true}).fill(password)
+  await page.goto('/login');await page.getByLabel('Email or username',{exact:true}).fill('qa.admin');await page.getByLabel('Password',{exact:true}).fill(password)
   await page.getByText('Signing in to another school?').click();await page.getByLabel('School ID',{exact:true}).fill(schoolId)
   await page.getByRole('button',{name:'Sign in to workspace'}).click();await expect(page.getByRole('heading',{name:/Good .*QA/})).toBeVisible()
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy()
