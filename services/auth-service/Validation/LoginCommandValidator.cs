@@ -16,12 +16,9 @@ public class LoginCommandValidator : AbstractValidator<LoginCommand>
             .NotEmpty().WithMessage("Password is required")
             .MinimumLength(6).WithMessage("Password must be at least 6 characters");
 
+        // School ID is optional: without it, sign-in resolves the account from the username or email.
         RuleFor(x => x.SchoolId)
-            .NotEmpty().WithMessage("SchoolId is required")
-            .Must(x =>
-            {
-                if (string.IsNullOrWhiteSpace(x)) return false;
-                return Guid.TryParse(x, out _);
-            }).WithMessage("SchoolId must be a valid GUID");
+            .Must(x => string.IsNullOrWhiteSpace(x) || Guid.TryParse(x, out _))
+            .WithMessage("SchoolId must be a valid GUID");
     }
 }

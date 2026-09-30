@@ -5,7 +5,7 @@ public static partial class Suite
     static long Cents(JsonObject d,string key){var n=Number(d,key);Require(n>=0&&n<=100000000&&decimal.Round(n,2)==n,"Money must be non-negative with at most two decimal places.");return checked((long)(n*100));}
     static void MapFinance(RouteGroupBuilder group){
         group.MapGet("/fees",async(HttpContext http)=>{
-            await using var c=await Open();var a=await Access(http,c);Require(a.Admin||a.Role is "Parent" or "Student","Fee access is limited to administrators and linked families.",403);
+            await using var c=await Open();var a=await Access(http,c);Require(a.SchoolWide||a.Role is "Parent" or "Student","Fee access is limited to administrators and linked families.",403);
             var rows=await Q(c,"""
                 SELECT ch.id,ch.student_id AS "studentId",s.first_name || ' ' || s.last_name AS student,ch.description,ch.due_date AS "dueDate",
                 ch.gross/100.0 AS gross,ch.concession/100.0 AS concession,COALESCE(sum(p.amount),0)/100.0 AS paid,
@@ -14,7 +14,7 @@ public static partial class Suite
                 LEFT JOIN suite.payments p ON p.charge_id=ch.id AND p.school_id=ch.school_id
                 WHERE ch.school_id=@s GROUP BY ch.id,s.first_name,s.last_name ORDER BY ch.due_date,ch.created_at
                 """,("s",a.School));
-            return Results.Ok(new{data=rows.Where(r=>a.Admin||a.Students.Contains(Text(r,"studentId")))});
+            return Results.Ok(new{data=rows.Where(r=>a.SchoolWide||a.Students.Contains(Text(r,"studentId")))});
         });
         group.MapPost("/fees/charges",async(JsonObject d,HttpContext http)=>{
             await using var c=await Open();var a=await Access(http,c);Require(a.Admin,"Only administrators may issue charges.",403);
@@ -45,14 +45,14 @@ public static partial class Suite
             await tx.CommitAsync();return Results.Json(new{data=new{id,receipt}},statusCode:201);
         });
         group.MapGet("/fees/payments",async(HttpContext http)=>{
-            await using var c=await Open();var a=await Access(http,c);Require(a.Admin||a.Role is "Parent" or "Student","Fee access denied.",403);
+            await using var c=await Open();var a=await Access(http,c);Require(a.SchoolWide||a.Role is "Parent" or "Student","Fee access denied.",403);
             var rows=await Q(c,"SELECT p.id,p.receipt,p.amount/100.0 AS amount,p.method,p.reference,p.paid_on AS \"paidOn\",ch.student_id AS \"studentId\",s.first_name || ' ' || s.last_name AS student,ch.currency FROM suite.payments p JOIN suite.charges ch ON ch.id=p.charge_id JOIN student_db.students s ON s.id=ch.student_id WHERE p.school_id=@s ORDER BY p.created_at DESC",("s",a.School));
-            return Results.Ok(new{data=rows.Where(r=>a.Admin||a.Students.Contains(Text(r,"studentId")))});
+            return Results.Ok(new{data=rows.Where(r=>a.SchoolWide||a.Students.Contains(Text(r,"studentId")))});
         });
         group.MapGet("/fees/receipts/{id:guid}",async(Guid id,HttpContext http)=>{
-            await using var c=await Open();var a=await Access(http,c);Require(a.Admin||a.Role is "Parent" or "Student","Fee access denied.",403);
+            await using var c=await Open();var a=await Access(http,c);Require(a.SchoolWide||a.Role is "Parent" or "Student","Fee access denied.",403);
             var rows=await Q(c,"SELECT p.receipt,p.amount/100.0 AS amount,p.method,p.reference,p.paid_on AS \"paidOn\",ch.student_id AS \"studentId\",s.first_name || ' ' || s.last_name AS student,s.roll_number AS \"admissionNumber\",ch.description,ch.currency FROM suite.payments p JOIN suite.charges ch ON ch.id=p.charge_id JOIN student_db.students s ON s.id=ch.student_id WHERE p.id=@id AND p.school_id=@s",("id",id),("s",a.School));
-            Require(rows.Count==1&&(a.Admin||a.Students.Contains(Text(rows[0],"studentId"))),"Receipt not found.",404);
+            Require(rows.Count==1&&(a.SchoolWide||a.Students.Contains(Text(rows[0],"studentId"))),"Receipt not found.",404);
             return Results.Ok(new{data=new{receipt=rows[0],school=await SchoolPrint(c,a.School)}});
         });
         group.MapPost("/fees/{id:guid}/remind",async(Guid id,HttpContext http)=>{

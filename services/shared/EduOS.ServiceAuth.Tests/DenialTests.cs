@@ -47,6 +47,9 @@ public sealed class ServiceHost : IAsyncLifetime
         app.UseEduOSAuthorization("/api", "/api/health");
         app.MapGet("/api/health", () => Results.Ok(new { status = "ready" })).AllowAnonymous();
         app.MapGet("/api/admin", (TenantContext tenant) => Results.Ok(tenant)).RequireAuthorization(EduOSPolicies.Administrators);
+        app.MapGet("/api/leadership", (TenantContext tenant) => Results.Ok(tenant)).RequireAuthorization(EduOSPolicies.Leadership);
+        app.MapGet("/api/platform", (TenantContext tenant) => Results.Ok(tenant)).RequireAuthorization(EduOSPolicies.Platform);
+        app.MapGet("/api/own-session", (TenantContext tenant) => Results.Ok(tenant)).RequireAuthorization(EduOSPolicies.AnyRole);
         app.MapGet("/api/staff", (TenantContext tenant) => Results.Ok(tenant)).RequireAuthorization(EduOSPolicies.Staff);
         app.MapGet("/api/suite", (TenantContext tenant) => Results.Ok(tenant)).RequireAuthorization(EduOSPolicies.Suite);
         app.MapGet("/api/schools/{id}", (string id) => Results.Ok(new { id })).RequireAuthorization(EduOSPolicies.Administrators);
@@ -173,14 +176,50 @@ public class DenialTests(ServiceHost host) : IClassFixture<ServiceHost>
     [InlineData(EduOSRoles.Student, "/api/staff", HttpStatusCode.Forbidden)]
     [InlineData(EduOSRoles.Parent, "/api/staff", HttpStatusCode.Forbidden)]
     [InlineData(EduOSRoles.Teacher, "/api/staff", HttpStatusCode.OK)]
-    [InlineData(EduOSRoles.Principal, "/api/admin", HttpStatusCode.OK)]
-    [InlineData(EduOSRoles.SuperAdmin, "/api/admin", HttpStatusCode.OK)]
+    [InlineData(EduOSRoles.Administrator, "/api/admin", HttpStatusCode.OK)]
+    [InlineData(EduOSRoles.Principal, "/api/admin", HttpStatusCode.Forbidden)]
+    [InlineData(EduOSRoles.Principal, "/api/leadership", HttpStatusCode.OK)]
+    [InlineData(EduOSRoles.Administrator, "/api/leadership", HttpStatusCode.OK)]
+    [InlineData(EduOSRoles.Teacher, "/api/leadership", HttpStatusCode.Forbidden)]
     [InlineData(EduOSRoles.Student, "/api/suite", HttpStatusCode.OK)]
     [InlineData(EduOSRoles.Parent, "/api/suite", HttpStatusCode.OK)]
+    [InlineData(EduOSRoles.Administrator, "/api/platform", HttpStatusCode.Forbidden)]
+    [InlineData(EduOSRoles.Principal, "/api/platform", HttpStatusCode.Forbidden)]
     public async Task EndpointPoliciesDecideByRole(string role, string path, HttpStatusCode expected)
     {
         var response = await Get(path, host.Token(role));
         Assert.Equal(expected, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("/api/platform", HttpStatusCode.OK)]
+    [InlineData("/api/admin", HttpStatusCode.Forbidden)]
+    [InlineData("/api/leadership", HttpStatusCode.Forbidden)]
+    [InlineData("/api/staff", HttpStatusCode.Forbidden)]
+    [InlineData("/api/suite", HttpStatusCode.Forbidden)]
+    public async Task PlatformSuperAdminIsNotASchoolUser(string path, HttpStatusCode expected)
+    {
+        var response = await Get(path, host.Token(EduOSRoles.SuperAdmin, school: EduOSTenants.Platform));
+        Assert.Equal(expected, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task EveryRoleIncludingPlatformCanReachItsOwnSessionEndpoints()
+    {
+        // The gateway's per-request session check runs for platform tokens too; refusing them logs SuperAdmin out.
+        Assert.Equal(HttpStatusCode.OK, (await Get("/api/own-session", host.Token(EduOSRoles.SuperAdmin, school: EduOSTenants.Platform))).StatusCode);
+        foreach (var role in EduOSRoles.School)
+            Assert.Equal(HttpStatusCode.OK, (await Get("/api/own-session", host.Token(role))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Get("/api/own-session", host.Token("Auditor"))).StatusCode);
+    }
+
+    [Fact]
+    public async Task SuperAdminRoleInsideASchoolTenantCannotReachThePlatform()
+    {
+        // Legacy data or a hand-edited role named SuperAdmin inside a school must not grant cross-school access.
+        var response = await Get("/api/platform", host.Token(EduOSRoles.SuperAdmin));
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Get("/api/admin", host.Token(EduOSRoles.SuperAdmin))).StatusCode);
     }
 
     [Fact]
@@ -206,7 +245,7 @@ public class DenialTests(ServiceHost host) : IClassFixture<ServiceHost>
     [Fact]
     public async Task PathForAnotherSchoolIsForbiddenAndOwnSchoolIsAllowed()
     {
-        var token = host.Token(EduOSRoles.Principal);
+        var token = host.Token(EduOSRoles.Administrator);
         var other = await Get("/api/schools/" + Guid.NewGuid(), token);
         var own = await Get("/api/schools/" + host.School, token);
         Assert.Equal(HttpStatusCode.Forbidden, other.StatusCode);

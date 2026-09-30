@@ -27,4 +27,8 @@
     <ProjectReference Include="../shared/EduOS.ServiceAuth/EduOS.ServiceAuth.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="Migrations/*.sql" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

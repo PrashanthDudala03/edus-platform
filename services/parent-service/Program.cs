@@ -58,8 +58,10 @@ app.UseEduOSAuthorization("/api", "/api/health");
 // Health endpoint - return Prometheus metrics format
 app.MapGet("/api/health", async (ParentDbContext db) => {try { return await db.Database.CanConnectAsync() ? Results.Ok(new {status="ready"}) : Results.StatusCode(503); } catch { return Results.StatusCode(503); }}).AllowAnonymous();
 
-// Parent endpoints: school administration only. schoolId is rewritten from the verified token before handlers run.
-var parents = app.MapGroup("/api/parents").RequireAuthorization(EduOSPolicies.Administrators);
+// Directory endpoints: leadership reads, administrators change. schoolId is rewritten from the verified token before handlers run.
+var parents = app.MapGroup("/api/parents").RequireAuthorization(EduOSPolicies.Leadership);
+// Changes need the Administrator role on top of the group's leadership policy; Principal is read-only.
+var parentsWrites = parents.MapGroup("").RequireAuthorization(EduOSPolicies.Administrators);
 parents.MapGet("", async (IMediator mediator, int page = 1, int pageSize = 20, string? schoolId = null) =>
 {
     if (string.IsNullOrEmpty(schoolId) || !Guid.TryParse(schoolId, out var schoolIdGuid))
@@ -86,7 +88,7 @@ parents.MapGet("/count", async (IMediator mediator, string? schoolId = null) =>
     catch (Exception ex) { Log.Error(ex, "Error fetching parent count"); return Results.Json(new { statusCode = 500, message = "Error" }, statusCode: 500); }
 });
 
-parents.MapPost("", async (CreateParentCommand request, IMediator mediator, IValidator<CreateParentCommand> validator) =>
+parentsWrites.MapPost("", async (CreateParentCommand request, IMediator mediator, IValidator<CreateParentCommand> validator) =>
 {
     try
     {
@@ -100,7 +102,7 @@ parents.MapPost("", async (CreateParentCommand request, IMediator mediator, IVal
     catch (Exception ex) { Log.Error(ex, "Error creating parent"); return Results.Json(new { statusCode = 500, message = "Error" }, statusCode: 500); }
 });
 
-parents.MapPut("/{id}", async (string id, UpdateParentCommand request, IMediator mediator, IValidator<UpdateParentCommand> validator) =>
+parentsWrites.MapPut("/{id}", async (string id, UpdateParentCommand request, IMediator mediator, IValidator<UpdateParentCommand> validator) =>
 {
     if (!Guid.TryParse(id, out var parentId)) return Results.BadRequest(new { statusCode = 400, message = "Invalid ID" });
     request.Id = parentId;
@@ -117,7 +119,7 @@ parents.MapPut("/{id}", async (string id, UpdateParentCommand request, IMediator
     catch (Exception ex) { Log.Error(ex, "Error updating parent"); return Results.Json(new { statusCode = 500, message = "Error" }, statusCode: 500); }
 });
 
-parents.MapDelete("/{id}", async (string id, IMediator mediator, string? schoolId = null) =>
+parentsWrites.MapDelete("/{id}", async (string id, IMediator mediator, string? schoolId = null) =>
 {
     if (!Guid.TryParse(id, out var parentId)) return Results.BadRequest(new { statusCode = 400, message = "Invalid ID" });
     if (string.IsNullOrEmpty(schoolId) || !Guid.TryParse(schoolId, out var schoolIdGuid))

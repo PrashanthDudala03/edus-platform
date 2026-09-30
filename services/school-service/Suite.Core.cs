@@ -10,7 +10,10 @@ public sealed class SuiteError(int status,string message):Exception(message) { p
 public sealed class SchoolAccess
 {
     public Guid School {get;init;} public Guid User {get;init;} public string Role {get;init;}="";
-    public bool Admin => Role is "SuperAdmin" or "Principal";
+    /// <summary>School administrator: operational configuration, finance, users and archiving.</summary>
+    public bool Admin => Role == "Administrator";
+    /// <summary>Administrator or Principal: sees the whole school without profile-link scoping. Writes are still limited by each module's Write roles.</summary>
+    public bool SchoolWide => Role is "Administrator" or "Principal";
     public HashSet<string> Students {get;}=[]; public HashSet<string> Teachers {get;}=[]; public HashSet<string> Classes {get;}=[];
     public HashSet<string> Exams {get;}=[]; public HashSet<string> Homework {get;}=[];
 }
@@ -20,7 +23,7 @@ public static partial class Suite
     private static readonly JsonSerializerOptions JsonOptions=new(JsonSerializerDefaults.Web);
     private static readonly Dictionary<string,SuiteSchema> Schemas=JsonSerializer.Deserialize<SuiteSchema[]>(
         File.ReadAllText(Path.Combine(AppContext.BaseDirectory,"SuiteSchemas.json")),JsonOptions)!.ToDictionary(s=>s.Kind);
-    private static readonly string[] KnownRoles=["SuperAdmin","Principal","Teacher","Parent","Student"];
+    private static readonly string[] KnownRoles=["Administrator","Principal","Teacher","Parent","Student"];
     static string Text(JsonObject o,string key)=>o[key]?.ToString().Trim()??"";
     static decimal Number(JsonObject o,string key)=>decimal.TryParse(Text(o,key),System.Globalization.NumberStyles.Number,System.Globalization.CultureInfo.InvariantCulture,out var n)?n:throw new SuiteError(400,key+" must be a number.");
     static Guid Id(JsonObject o,string key)=>Guid.TryParse(Text(o,key),out var id)?id:throw new SuiteError(400,key+" must be a valid record.");
@@ -54,7 +57,7 @@ public static partial class Suite
         var tenant=http.TryGetTenant();Require(tenant is not null,"School scope is missing.",403);
         var school=tenant!.SchoolId;var user=tenant.UserId;var role=tenant.Role;Require(KnownRoles.Contains(role),"Role is not allowed.",403);
         var a=new SchoolAccess{School=school,User=user,Role=role};
-        if(a.Admin)return a;
+        if(a.SchoolWide)return a;
         var links=await Q(c,"SELECT data::text FROM suite.records WHERE school_id=@s AND kind='account-links' AND archived_at IS NULL AND data->>'userId'=@u",("s",school),("u",user.ToString()));
         foreach(var l in links){var d=JsonNode.Parse(Text(l,"data"))!.AsObject();if(Text(d,"studentId")!="")a.Students.Add(Text(d,"studentId"));if(Text(d,"teacherId")!="")a.Teachers.Add(Text(d,"teacherId"));}
         var classes=await Records(c,school,"classes");
@@ -68,7 +71,7 @@ public static partial class Suite
         return a;
     }
     static bool Readable(string kind,JsonObject d,SchoolAccess a){
-        if(a.Admin)return true;
+        if(a.SchoolWide)return true;
         if(!Schemas[kind].Read.Contains(a.Role))return false;
         return kind switch{
             "academic-years" or "subjects" or "calendar" or "school-config"=>true,
@@ -87,7 +90,7 @@ public static partial class Suite
     }
     static void Writable(string kind,JsonObject d,SchoolAccess a,JsonObject? old){
         Require(Schemas[kind].Write.Contains(a.Role),"Your role cannot change this module.",403);
-        if(a.Admin)return;
+        if(a.SchoolWide)return;
         if(a.Role=="Teacher"){
             if(kind=="leave-requests"){Require(a.Teachers.Contains(Text(d,"teacherId")),"Leave must belong to your staff profile.",403);Require(Text(d,"status")=="Pending"&&Text(d,"approvalRemark")=="","Only school leadership can approve leave.",403);Require(old is null||Text(old,"status")=="Pending","Reviewed leave cannot be changed.",409);}
             else if(kind=="homework")Require(a.Classes.Contains(Text(d,"classId")),"This class is not assigned to you.",403);
@@ -137,10 +140,10 @@ public static partial class Suite
             foreach(var schema in Schemas.Values){var records=await Records(c,a.School,schema.Kind);result[schema.Kind]=records.Where(d=>Readable(schema.Kind,d,a)).Select(d=>new{id=Text(d,"id"),label=OptionLabel(schema.Kind,d)}).ToList();}
             foreach(var(kind,table)in new[]{("students","student_db.students"),("teachers","teacher_db.teachers"),("parents","parent_db.parents")}){
                 var rows=await Q(c,$"SELECT id::text AS id,first_name || ' ' || last_name AS label FROM {table} WHERE school_id=@s AND deleted_at IS NULL ORDER BY first_name",("s",a.School));
-                result[kind]=rows.Where(d=>a.Admin||(kind=="students"&&a.Students.Contains(Text(d,"id")))||(kind=="teachers"&&a.Teachers.Contains(Text(d,"id")))).ToList();
+                result[kind]=rows.Where(d=>a.SchoolWide||(kind=="students"&&a.Students.Contains(Text(d,"id")))||(kind=="teachers"&&a.Teachers.Contains(Text(d,"id")))).ToList();
             }
             var users=await Q(c,"SELECT id::text AS id,first_name || ' ' || last_name || ' (' || username || ')' AS label FROM auth_db.users WHERE school_id=@s AND deleted_at IS NULL AND is_active",("s",a.School));
-            if(a.Admin)result["users"]=users;
+            if(a.SchoolWide)result["users"]=users;
             else if(a.Role=="Teacher"){
                 var links=await Records(c,a.School,"account-links");var ids=links.Where(l=>a.Students.Contains(Text(l,"studentId"))).Select(l=>Text(l,"userId")).ToHashSet();
                 result["users"]=users.Where(u=>ids.Contains(Text(u,"id"))).ToList();
@@ -157,6 +160,8 @@ public static partial class Suite
     };
     static async Task<IResult> Save(string kind,Guid? id,JsonObject input,HttpContext http){
         Require(Schemas.ContainsKey(kind),"Module not found.",404);await using var c=await Open();var a=await Access(http,c);
+        // Authorize before validating: a role that cannot write this module learns nothing from field or reference checks.
+        Require(Schemas[kind].Write.Contains(a.Role),"Your role cannot change this module.",403);
         await using var tx=await c.BeginTransactionAsync();
         await E(c,"SELECT pg_advisory_xact_lock(hashtextextended(@s,0))",("s",a.School.ToString()));
         var old=id.HasValue?await Get(c,a.School,kind,id.Value):null;

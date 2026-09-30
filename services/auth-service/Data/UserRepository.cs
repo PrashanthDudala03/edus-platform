@@ -6,6 +6,9 @@ namespace Services.Auth.Data;
 public interface IUserRepository
 {
     Task<User?> GetByUsernameAsync(Guid schoolId, string username);
+    /// <summary>Non-deleted accounts, active or not, whose username or email equals the sign-in name; limited to one school when given.</summary>
+    Task<List<User>> FindLoginCandidatesAsync(Guid? schoolId, string login);
+    Task<bool> IsSchoolActiveAsync(Guid schoolId);
     Task<User?> GetByIdAsync(Guid userId);
     Task<User?> GetByEmailAsync(Guid schoolId, string email);
     Task CreateAsync(User user);
@@ -29,6 +32,17 @@ public class UserRepository : IUserRepository
                 .ThenInclude(role => role!.Permissions)
             .FirstOrDefaultAsync(u => u.SchoolId == schoolId && u.Username == username && u.IsActive);
     }
+
+    public Task<List<User>> FindLoginCandidatesAsync(Guid? schoolId, string login) =>
+        _context.Users
+            .Include(u => u.Role)
+                .ThenInclude(role => role!.Permissions)
+            .Where(u => (schoolId == null || u.SchoolId == schoolId) && (u.Username == login || u.Email == login))
+            .OrderBy(u => u.CreatedAt)
+            .Take(10)
+            .ToListAsync();
+
+    public Task<bool> IsSchoolActiveAsync(Guid schoolId) => RoleModel.SchoolIsActive(_context, schoolId);
 
     public async Task<User?> GetByIdAsync(Guid userId)
     {

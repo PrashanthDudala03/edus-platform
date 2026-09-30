@@ -7,7 +7,7 @@ public static partial class Suite
         var rows=await Q(c,"SELECT kind FROM suite.records WHERE id=@id AND school_id=@s AND archived_at IS NULL",("id",recordId),("s",a.School));
         Require(rows.Count==1,"Document record not found.",404);var kind=Text(rows[0],"kind");var d=await Get(c,a.School,kind,recordId);
         Require(Readable(kind,d,a),"Document access denied.",403);
-        if(write){Require(new[]{"admissions","homework","submissions","circulars","school-config"}.Contains(kind),"Attachments are not supported for this record.");Writable(kind,d,a,d);if(kind=="submissions"&&!a.Admin&&a.Role!="Teacher"){var homework=await Get(c,a.School,"homework",Id(d,"homeworkId"));Require(Day(homework,"dueDate")>=DateOnly.FromDateTime(DateTime.UtcNow),"This assignment is past its submission deadline.",409);}}
+        if(write){Require(new[]{"admissions","homework","submissions","circulars","school-config"}.Contains(kind),"Attachments are not supported for this record.");Writable(kind,d,a,d);if(kind=="submissions"&&!a.SchoolWide&&a.Role!="Teacher"){var homework=await Get(c,a.School,"homework",Id(d,"homeworkId"));Require(Day(homework,"dueDate")>=DateOnly.FromDateTime(DateTime.UtcNow),"This assignment is past its submission deadline.",409);}}
         return(kind,d);
     }
     static void MapDocuments(RouteGroupBuilder group){

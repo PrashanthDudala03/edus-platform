@@ -42,15 +42,14 @@
       }
     ],
     "read": [
-      "SuperAdmin",
+      "Administrator",
       "Principal",
       "Teacher",
       "Parent",
       "Student"
     ],
     "write": [
-      "SuperAdmin",
-      "Principal"
+      "Administrator"
     ]
   },
   {
@@ -100,15 +99,14 @@
       }
     ],
     "read": [
-      "SuperAdmin",
+      "Administrator",
       "Principal",
       "Teacher",
       "Parent",
       "Student"
     ],
     "write": [
-      "SuperAdmin",
-      "Principal"
+      "Administrator"
     ]
   },
   {
@@ -134,15 +132,14 @@
       }
     ],
     "read": [
-      "SuperAdmin",
+      "Administrator",
       "Principal",
       "Teacher",
       "Parent",
       "Student"
     ],
     "write": [
-      "SuperAdmin",
-      "Principal"
+      "Administrator"
     ]
   },
   {
@@ -176,12 +173,12 @@
       }
     ],
     "read": [
-      "SuperAdmin",
+      "Administrator",
       "Principal",
       "Teacher"
     ],
     "write": [
-      "SuperAdmin",
+      "Administrator",
       "Principal"
     ]
   },
@@ -305,12 +302,11 @@
       }
     ],
     "read": [
-      "SuperAdmin",
+      "Administrator",
       "Principal"
     ],
     "write": [
-      "SuperAdmin",
-      "Principal"
+      "Administrator"
     ]
   },
   {
@@ -357,12 +353,12 @@
       }
     ],
     "read": [
-      "SuperAdmin",
+      "Administrator",
       "Principal",
       "Teacher"
     ],
     "write": [
-      "SuperAdmin",
+      "Administrator",
       "Principal"
     ]
   },
@@ -425,12 +421,12 @@
       }
     ],
     "read": [
-      "SuperAdmin",
+      "Administrator",
       "Principal",
       "Teacher"
     ],
     "write": [
-      "SuperAdmin",
+      "Administrator",
       "Principal",
       "Teacher"
     ]
@@ -482,12 +478,11 @@
       }
     ],
     "read": [
-      "SuperAdmin",
+      "Administrator",
       "Principal"
     ],
     "write": [
-      "SuperAdmin",
-      "Principal"
+      "Administrator"
     ]
   },
   {
@@ -556,14 +551,14 @@
       }
     ],
     "read": [
-      "SuperAdmin",
+      "Administrator",
       "Principal",
       "Teacher",
       "Parent",
       "Student"
     ],
     "write": [
-      "SuperAdmin",
+      "Administrator",
       "Principal"
     ]
   },
@@ -606,14 +601,14 @@
       }
     ],
     "read": [
-      "SuperAdmin",
+      "Administrator",
       "Principal",
       "Teacher",
       "Parent",
       "Student"
     ],
     "write": [
-      "SuperAdmin",
+      "Administrator",
       "Principal",
       "Teacher"
     ]
@@ -670,14 +665,14 @@
       }
     ],
     "read": [
-      "SuperAdmin",
+      "Administrator",
       "Principal",
       "Teacher",
       "Parent",
       "Student"
     ],
     "write": [
-      "SuperAdmin",
+      "Administrator",
       "Principal"
     ]
   },
@@ -720,14 +715,14 @@
       }
     ],
     "read": [
-      "SuperAdmin",
+      "Administrator",
       "Principal",
       "Teacher",
       "Parent",
       "Student"
     ],
     "write": [
-      "SuperAdmin",
+      "Administrator",
       "Principal"
     ]
   },
@@ -762,14 +757,14 @@
       }
     ],
     "read": [
-      "SuperAdmin",
+      "Administrator",
       "Principal",
       "Teacher",
       "Parent",
       "Student"
     ],
     "write": [
-      "SuperAdmin",
+      "Administrator",
       "Principal",
       "Teacher"
     ]
@@ -821,14 +816,14 @@
       }
     ],
     "read": [
-      "SuperAdmin",
+      "Administrator",
       "Principal",
       "Teacher",
       "Parent",
       "Student"
     ],
     "write": [
-      "SuperAdmin",
+      "Administrator",
       "Principal",
       "Teacher"
     ]
@@ -880,14 +875,14 @@
       }
     ],
     "read": [
-      "SuperAdmin",
+      "Administrator",
       "Principal",
       "Teacher",
       "Parent",
       "Student"
     ],
     "write": [
-      "SuperAdmin",
+      "Administrator",
       "Principal",
       "Teacher",
       "Parent",
@@ -965,14 +960,14 @@
       }
     ],
     "read": [
-      "SuperAdmin",
+      "Administrator",
       "Principal",
       "Teacher",
       "Parent",
       "Student"
     ],
     "write": [
-      "SuperAdmin",
+      "Administrator",
       "Principal"
     ]
   },
@@ -1019,14 +1014,14 @@
       }
     ],
     "read": [
-      "SuperAdmin",
+      "Administrator",
       "Principal",
       "Teacher",
       "Parent",
       "Student"
     ],
     "write": [
-      "SuperAdmin",
+      "Administrator",
       "Principal"
     ]
   },
@@ -1061,12 +1056,11 @@
       }
     ],
     "read": [
-      "SuperAdmin",
+      "Administrator",
       "Principal"
     ],
     "write": [
-      "SuperAdmin",
-      "Principal"
+      "Administrator"
     ]
   },
   {
@@ -1162,12 +1156,11 @@
       }
     ],
     "read": [
-      "SuperAdmin",
+      "Administrator",
       "Principal"
     ],
     "write": [
-      "SuperAdmin",
-      "Principal"
+      "Administrator"
     ]
   }
 ]

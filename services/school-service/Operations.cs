@@ -67,7 +67,8 @@ public static class Operations
 
     public static void Map(WebApplication app, string connectionString)
     {
-        var group=app.MapGroup("/api/operations").RequireAuthorization(EduOSPolicies.Administrators);
+        // Leadership runs the daily school operations: overview, registers, noticeboard and audit.
+        var group=app.MapGroup("/api/operations").RequireAuthorization(EduOSPolicies.Leadership);
         group.MapGet("/overview", async (Guid schoolId, DateOnly day) => {
             var stats=await Query(connectionString,"""
                 SELECT

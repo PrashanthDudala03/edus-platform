@@ -98,6 +98,8 @@ using (var scope = app.Services.CreateScope())
     try
     {
         await AuthRecovery.Initialize(db);
+        // Role model: school top role is Administrator; SuperAdmin exists only in the platform tenant.
+        await RoleModel.Apply(db);
         await db.Database.ExecuteSqlRawAsync("SELECT 1 FROM auth_db.users LIMIT 1");
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO school_db.schools (id, name, is_active, subscription_tier, created_at, updated_at)
@@ -107,7 +109,7 @@ using (var scope = app.Services.CreateScope())
 
         var bootstrapRoles = new[]
         {
-            (Name: "SuperAdmin", Description: "School system administrator", IsSystem: true),
+            (Name: "Administrator", Description: "School administrator", IsSystem: true),
             (Name: "Principal", Description: "School principal", IsSystem: true),
             (Name: "Teacher", Description: "Assigned classes and teaching", IsSystem: true),
             (Name: "Parent", Description: "Linked student family portal", IsSystem: true),
@@ -124,7 +126,7 @@ using (var scope = app.Services.CreateScope())
 
         var bootstrapRoleId = await db.Database.SqlQuery<Guid>($"""
             SELECT id AS "Value" FROM auth_db.roles
-            WHERE school_id = {bootstrapSchoolId} AND name = 'SuperAdmin'
+            WHERE school_id = {bootstrapSchoolId} AND name = 'Administrator'
             """).SingleAsync();
 
         if (!await db.Users.AnyAsync(user => user.SchoolId == bootstrapSchoolId && user.Username == bootstrapAdminUsername))
@@ -145,6 +147,7 @@ using (var scope = app.Services.CreateScope())
             });
             await db.SaveChangesAsync();
         }
+        await RoleModel.ProvisionPlatformAdmin(db, builder.Configuration);
         Log.Information("Database schema verified");
     }
     catch (Exception ex)
@@ -169,7 +172,7 @@ app.MapGet("/api/roles", async (string? schoolId, AuthDbContext db) =>
     }
 
     var roles = await db.Roles
-        .Where(role => role.SchoolId == schoolIdGuid)
+        .Where(role => role.SchoolId == schoolIdGuid && role.Name != EduOSRoles.SuperAdmin)
         .OrderBy(role => role.Name)
         .Select(role => new { id = role.Id, name = role.Name })
         .ToListAsync();
@@ -185,7 +188,7 @@ publicAuth.MapPost("/login", async (LoginRequest request, IMediator mediator) =>
         var command = new LoginCommand(
             request.Username,
             request.Password,
-            string.IsNullOrWhiteSpace(request.SchoolId) ? bootstrapSchoolId.ToString() : request.SchoolId);
+            request.SchoolId ?? string.Empty);
         var result = await mediator.Send(command);
         return Results.Ok(new { statusCode = 200, data = result });
     }
@@ -197,6 +200,10 @@ publicAuth.MapPost("/login", async (LoginRequest request, IMediator mediator) =>
             message = "Validation failed",
             errors = ex.Errors.Select(e => new { field = e.PropertyName, message = e.ErrorMessage })
         });
+    }
+    catch (LoginRejectedException ex)
+    {
+        return Results.Json(new { statusCode = ex.Status, message = ex.Message }, statusCode: ex.Status);
     }
     catch (Exception ex)
     {
@@ -240,14 +247,15 @@ app.MapPost("/api/auth/logout", async (RefreshRequest request, IRefreshTokenRepo
     }
 
     return Results.Ok(new { statusCode = 200, message = "Signed out" });
-}).RequireAuthorization(EduOSPolicies.Suite);
+}).RequireAuthorization(EduOSPolicies.AnyRole);
 
 // Called by the gateway with the caller's own bearer token; a token may only inspect its own session.
 app.MapGet("/api/internal/session/{id:guid}", async (Guid id, TenantContext tenant, AuthDbContext db) => {
     if (id != tenant.UserId) return Results.Forbid();
+    if (!await RoleModel.SchoolIsActive(db, tenant.SchoolId)) return Results.Unauthorized();
     var user=await db.Users.Include(u=>u.Role).FirstOrDefaultAsync(u=>u.Id==id && u.SchoolId==tenant.SchoolId && u.IsActive);
     return user?.Role is null ? Results.Unauthorized() : Results.Ok(new{role=user.Role.Name,version=user.TokenVersion});
-}).RequireAuthorization(EduOSPolicies.Suite);
+}).RequireAuthorization(EduOSPolicies.AnyRole);
 
 // User endpoints: school administration only.
 var userAccounts = app.MapGroup("/api/users").RequireAuthorization(EduOSPolicies.Administrators);
@@ -275,7 +283,7 @@ userAccounts.MapPost("", async (CreateUserRequest request, AuthDbContext db) =>
     if (!Guid.TryParse(request.SchoolId, out var schoolId)) return Results.BadRequest(new { statusCode = 400, message = "Invalid schoolId" });
     if (!Guid.TryParse(request.RoleId, out var roleId)) return Results.BadRequest(new { statusCode = 400, message = "Invalid roleId" });
     var role = await db.Roles.FirstOrDefaultAsync(item => item.Id == roleId && item.SchoolId == schoolId);
-    if (role == null) return Results.BadRequest(new { statusCode = 400, message = "Role does not belong to this school" });
+    if (role == null || role.Name == EduOSRoles.SuperAdmin) return Results.BadRequest(new { statusCode = 400, message = "Role does not belong to this school" });
 
     if(string.IsNullOrWhiteSpace(request.Username) || request.Username.Length>100 || string.IsNullOrWhiteSpace(request.FirstName) || request.FirstName.Length>100 || string.IsNullOrWhiteSpace(request.LastName) || request.LastName.Length>100 || request.Password.Length<16 || request.Password.Length>72 || !System.Net.Mail.MailAddress.TryCreate(request.Email,out _)) return Results.BadRequest(new {message="Enter valid account details and a password between 16 and 72 characters."});
     // Check username unique per school
@@ -307,7 +315,7 @@ userAccounts.MapPost("", async (CreateUserRequest request, AuthDbContext db) =>
     return Results.Json(new { statusCode = 201, data = new { user.Id, user.Username, user.Email, user.FirstName, user.LastName, user.IsActive } }, statusCode: 201);
 });
 
-userAccounts.MapPut("/{id}", async (string id, UpdateUserRequest request, string? schoolId, AuthDbContext db) =>
+userAccounts.MapPut("/{id}", async (string id, UpdateUserRequest request, string? schoolId, TenantContext tenant, AuthDbContext db) =>
 {
     if (!Guid.TryParse(id, out var userId)) return Results.BadRequest(new { statusCode = 400, message = "Invalid user ID" });
     if (string.IsNullOrWhiteSpace(schoolId) || !Guid.TryParse(schoolId, out var schoolIdGuid)) return Results.BadRequest(new { statusCode = 400, message = "schoolId required" });
@@ -326,14 +334,30 @@ userAccounts.MapPut("/{id}", async (string id, UpdateUserRequest request, string
 
     if (!string.IsNullOrEmpty(request.FirstName)) user.FirstName = request.FirstName;
     if (!string.IsNullOrEmpty(request.LastName)) user.LastName = request.LastName;
-    if(request.IsActive==false && user.IsActive && await db.Roles.AnyAsync(r=>r.Id==user.RoleId && r.Name=="SuperAdmin") && await db.Users.CountAsync(u=>u.SchoolId==schoolIdGuid && u.IsActive && u.DeletedAt==null && u.Role!=null && u.Role.Name=="SuperAdmin")<=1) return Results.Conflict(new {message="The last active school administrator cannot be disabled."});
+    var isAdministrator = await db.Roles.AnyAsync(r=>r.Id==user.RoleId && r.Name==EduOSRoles.Administrator);
+    var lastAdministrator = isAdministrator && user.IsActive && await db.Users.CountAsync(u=>u.SchoolId==schoolIdGuid && u.IsActive && u.DeletedAt==null && u.Role!=null && u.Role.Name==EduOSRoles.Administrator)<=1;
+    if(request.IsActive==false && lastAdministrator) return Results.Conflict(new {message="The last active school administrator cannot be disabled."});
+    var endSessions = request.IsActive == false && user.IsActive;
+    if (!string.IsNullOrWhiteSpace(request.RoleId))
+    {
+        // Role assignment stays inside this school and can never grant the platform role.
+        if (!Guid.TryParse(request.RoleId, out var newRoleId)) return Results.BadRequest(new { message = "Invalid roleId" });
+        var newRole = await db.Roles.FirstOrDefaultAsync(r => r.Id == newRoleId && r.SchoolId == schoolIdGuid && r.Name != EduOSRoles.SuperAdmin);
+        if (newRole == null) return Results.BadRequest(new { message = "Role does not belong to this school" });
+        if (newRole.Id != user.RoleId)
+        {
+            if (user.Id == tenant.UserId) return Results.Conflict(new { message = "You cannot change your own role." });
+            if (lastAdministrator) return Results.Conflict(new { message = "The last active school administrator must keep the Administrator role." });
+            user.RoleId = newRole.Id; user.TokenVersion++; endSessions = true;
+        }
+    }
     if (request.IsActive.HasValue && user.IsActive!=request.IsActive.Value) {user.TokenVersion++; user.IsActive = request.IsActive.Value;}
 
     user.UpdatedAt = DateTime.UtcNow;
     db.Users.Update(user);
     await db.SaveChangesAsync();
-    // Disabling ends every session: a refresh token issued earlier must not resume it if the account is re-enabled later.
-    if (request.IsActive == false) await db.RefreshTokens.IgnoreQueryFilters().Where(t => t.UserId == user.Id && t.RevokedAt == null).ExecuteUpdateAsync(s => s.SetProperty(t => t.RevokedAt, DateTime.UtcNow));
+    // Disabling or a role change ends every session: a refresh token issued earlier must not resume it later.
+    if (endSessions) await db.RefreshTokens.IgnoreQueryFilters().Where(t => t.UserId == user.Id && t.RevokedAt == null).ExecuteUpdateAsync(s => s.SetProperty(t => t.RevokedAt, DateTime.UtcNow));
     await changeTransaction.CommitAsync();
 
     return Results.Ok(new { statusCode = 200, data = new { user.Id, user.Username, user.Email, user.FirstName, user.LastName, user.IsActive } });
@@ -355,8 +379,8 @@ userAccounts.MapDelete("/{id}", async (string id, string? schoolId, AuthDbContex
         u.SchoolId == schoolIdGuid &&
         u.DeletedAt == null &&
         u.IsActive &&
-        u.Role != null && u.Role.Name == "SuperAdmin");
-    if (superAdminCount == 1 && user.IsActive && await db.Roles.AnyAsync(r=>r.Id==user.RoleId && r.Name=="SuperAdmin")) return Results.Json(new { statusCode = 409, message = "Cannot delete the last Super Admin for this school" }, statusCode: 409);
+        u.Role != null && u.Role.Name == EduOSRoles.Administrator);
+    if (superAdminCount == 1 && user.IsActive && await db.Roles.AnyAsync(r=>r.Id==user.RoleId && r.Name==EduOSRoles.Administrator)) return Results.Json(new { statusCode = 409, message = "Cannot delete the last administrator for this school" }, statusCode: 409);
 
     user.DeletedAt = DateTime.UtcNow;
     user.IsActive = false;
@@ -368,6 +392,7 @@ userAccounts.MapDelete("/{id}", async (string id, string? schoolId, AuthDbContex
 });
 
 AuthRecovery.Map(app);
+PlatformAdmin.Map(app);
 app.Run();
 
 // Request/Response models
@@ -400,4 +425,5 @@ public class UpdateUserRequest
     public string? FirstName { get; set; }
     public string? LastName { get; set; }
     public bool? IsActive { get; set; }
+    public string? RoleId { get; set; }
 }
