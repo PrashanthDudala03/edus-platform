@@ -332,6 +332,8 @@ userAccounts.MapPut("/{id}", async (string id, UpdateUserRequest request, string
     user.UpdatedAt = DateTime.UtcNow;
     db.Users.Update(user);
     await db.SaveChangesAsync();
+    // Disabling ends every session: a refresh token issued earlier must not resume it if the account is re-enabled later.
+    if (request.IsActive == false) await db.RefreshTokens.IgnoreQueryFilters().Where(t => t.UserId == user.Id && t.RevokedAt == null).ExecuteUpdateAsync(s => s.SetProperty(t => t.RevokedAt, DateTime.UtcNow));
     await changeTransaction.CommitAsync();
 
     return Results.Ok(new { statusCode = 200, data = new { user.Id, user.Username, user.Email, user.FirstName, user.LastName, user.IsActive } });

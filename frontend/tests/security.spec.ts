@@ -1,0 +1,199 @@
+import {test,expect,APIRequestContext,APIResponse} from '@playwright/test'
+import {readFileSync} from 'node:fs'
+import {execFileSync} from 'node:child_process'
+import {randomUUID} from 'node:crypto'
+import path from 'node:path'
+// Security regression: two isolated QA schools prove role limits, tenant isolation by object id,
+// header/scope spoofing, session revocation and network isolation against the real Docker stack.
+const root=path.resolve(import.meta.dirname,'../..')
+const env=Object.fromEntries(readFileSync(path.join(root,'.env'),'utf8').split(/\r?\n/).filter(x=>x&&!x.startsWith('#')).map(x=>{const i=x.indexOf('=');return[x.slice(0,i),x.slice(i+1)]}))
+const password=env.EDUOS_BOOTSTRAP_ADMIN_PASSWORD,day=new Date().toISOString().slice(0,10)
+const sql=(query:string)=>execFileSync('docker',['compose','exec','-T','postgres','psql','-U',env.POSTGRES_USER,'-d',env.POSTGRES_DB,'-v','ON_ERROR_STOP=1','-c',query],{cwd:root,encoding:'utf8',stdio:['pipe','pipe','pipe']})
+type School={id:string,tag:string,adminId:string,tokens:Record<string,any>,users:Record<string,string>,year:string,cl:string,subject:string,teacher:string,admission:string,student:string,circular:string,homework:string,document:string,certificate:string}
+const school=(tag:string):School=>({id:randomUUID(),tag,adminId:randomUUID(),tokens:{},users:{},year:'',cl:'',subject:'',teacher:'',admission:'',student:'',circular:'',homework:'',document:'',certificate:''})
+const A=school('a'),B=school('b'),lower=['Teacher','Parent','Student']
+let api:APIRequestContext
+const bearer=(s:School,role:string)=>({Authorization:'Bearer '+s.tokens[role].accessToken})
+const call=(s:School,role:string,method:string,url:string,body?:any,extra:Record<string,string>={})=>api.fetch('/api/v1'+url,{method,headers:{...bearer(s,role),...extra},...(body===undefined?{}:{data:body})})
+async function ok(s:School,role:string,method:string,url:string,body?:any,status=200){const r=await call(s,role,method,url,body);expect(r.status(),role+' '+method+' '+url+' '+await r.text()).toBe(status);return(await r.json()).data}
+async function denied(s:School,role:string,method:string,url:string,body?:any,status=403,extra?:Record<string,string>){const r=await call(s,role,method,url,body,extra);expect(r.status(),role+' '+method+' '+url+' expected '+status+' got '+await r.text()).toBe(status)}
+const username=(s:School,role:string)=>'sec.'+s.tag+'.'+role.toLowerCase()
+// nginx limits login and reset-password to 10/min per client (burst 10); wait out a 429 instead of starving later specs.
+async function throttled(send:()=>Promise<APIResponse>){for(let i=0;;i++){const r=await send();if(r.status()!==429||i>=15)return r;await new Promise(f=>setTimeout(f,6500))}}
+const loginRequest=(data:any)=>throttled(()=>api.post('/api/v1/auth/login',{data}))
+async function login(s:School,role:string,pw=password){const r=await loginRequest({schoolId:s.id,username:username(s,role),password:pw});expect(r.status(),await r.text()).toBe(200);s.tokens[role]=(await r.json()).data}
+// School B only needs an administrator session: its other accounts exist as cross-school targets, not callers.
+async function bootstrap(s:School,signInRoles:string[]){
+ const roleId=randomUUID()
+ sql("BEGIN; INSERT INTO school_db.schools(id,name) VALUES('"+s.id+"','Security QA "+s.tag+"'); INSERT INTO auth_db.roles(id,school_id,name) VALUES('"+roleId+"','"+s.id+"','SuperAdmin'); "+['Principal','Teacher','Parent','Student'].map(r=>"INSERT INTO auth_db.roles(id,school_id,name) VALUES(gen_random_uuid(),'"+s.id+"','"+r+"');").join(' ')+" INSERT INTO auth_db.users(id,school_id,username,email,password_hash,first_name,last_name,role_id) SELECT '"+s.adminId+"','"+s.id+"','"+username(s,'SuperAdmin')+"','sec-"+s.id+"@example.test',password_hash,'Security','Admin','"+roleId+"' FROM auth_db.users WHERE school_id='"+env.EDUOS_BOOTSTRAP_SCHOOL_ID+"' AND username='"+env.EDUOS_BOOTSTRAP_ADMIN_USERNAME.replaceAll("'","''")+"'; COMMIT;")
+ await login(s,'SuperAdmin')
+ const roles=await ok(s,'SuperAdmin','GET','/roles')
+ for(const role of lower){
+  s.users[role]=(await ok(s,'SuperAdmin','POST','/users',{schoolId:s.id,roleId:roles.find((r:any)=>r.name===role).id,username:username(s,role),email:role.toLowerCase()+'-'+s.id+'@example.test',firstName:role,lastName:'QA',password},201)).id
+  if(signInRoles.includes(role))await login(s,role)
+ }
+ const create=async(kind:string,body:any,role='SuperAdmin')=>(await ok(s,role,'POST','/suite/records/'+kind,body,201)).id
+ s.year=await create('academic-years',{name:'2026-27',startsOn:'2026-04-01',endsOn:'2027-03-31',status:'Current'})
+ s.teacher=(await ok(s,'SuperAdmin','POST','/teachers',{schoolId:s.id,employeeCode:'SEC-'+s.tag,firstName:'Sec',lastName:'Teacher',email:'teacher-'+s.id+'@example.test',phoneNumber:'9000000002',department:'Science'},201)).id
+ s.cl=await create('classes',{name:'Grade 7',section:s.tag.toUpperCase(),yearId:s.year,teacherId:s.teacher,capacity:30})
+ s.subject=await create('subjects',{name:'Maths',code:'MAT'})
+ await create('teaching-assignments',{classId:s.cl,subjectId:s.subject,teacherId:s.teacher})
+ s.admission=await create('admissions',{admissionNumber:'SEC-'+s.tag+'-001',firstName:'Riya',lastName:'Learner',dateOfBirth:'2014-05-01',gender:'Female',email:'riya-'+s.id+'@example.test',phoneNumber:'9000000003',guardianName:'Kiran Guardian',guardianEmail:'kiran-'+s.id+'@example.test',guardianPhone:'9'+Date.now().toString().slice(-9),address:'1 School Lane',classId:s.cl,status:'Submitted'})
+ s.student=(await ok(s,'SuperAdmin','POST','/suite/admissions/'+s.admission+'/accept')).studentId
+ await create('account-links',{userId:s.users.Teacher,teacherId:s.teacher})
+ await create('account-links',{userId:s.users.Parent,studentId:s.student})
+ await create('account-links',{userId:s.users.Student,studentId:s.student})
+ s.circular=await create('circulars',{title:'Notice '+s.tag,message:'Read and acknowledge.',audience:'All',dueDate:day})
+ s.homework=await create('homework',{title:'Fractions',classId:s.cl,subjectId:s.subject,dueDate:day,instructions:'Solve the worksheet.'},signInRoles.includes('Teacher')?'Teacher':'SuperAdmin')
+ s.certificate=await create('certificates',{studentId:s.student,type:'Bonafide certificate',issuedOn:day,remarks:'Verification.'})
+ const upload=await api.post('/api/v1/suite/documents?recordId='+s.admission,{headers:bearer(s,'SuperAdmin'),multipart:{file:{name:'form.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4\nSecurity QA '+s.tag+'\n%%EOF')}}})
+ expect(upload.status(),await upload.text()).toBe(201);s.document=(await upload.json()).data.id
+}
+// Builds a body that passes field validation for a catalog module, so a refusal is a real 403 and not a 400.
+function sample(fields:any[],refs:Record<string,string>){
+ const body:Record<string,any>={}
+ for(const f of fields){
+  if(!f.required&&f.type!=='reference')continue
+  body[f.key]=f.type==='select'?f.options[0]:f.type==='date'?day:f.type==='time'?'09:00':f.type==='number'||f.type==='money'?'10':f.type==='email'?'sample@example.test':f.type==='reference'?(refs[f.source]??randomUUID()):'Sample'
+ }
+ return body
+}
+test.describe.serial('Security boundaries against real Docker services',()=>{
+ test.describe.configure({timeout:120000})
+ test.beforeAll(async({playwright})=>{
+  test.setTimeout(240000)
+  api=await playwright.request.newContext({baseURL:process.env.EDUOS_TEST_URL||'http://localhost:8080'})
+  await bootstrap(A,lower);await bootstrap(B,[])
+ })
+ test.afterAll(async()=>{
+  await api?.dispose()
+  const tables=['suite.documents','suite.acknowledgements','suite.payments','suite.charges','suite.student_classes','suite.records','suite.counters','school_db.attendance','student_db.students','teacher_db.teachers','parent_db.parents','school_db.announcements','auth_db.password_resets','auth_db.refresh_tokens','auth_db.users']
+  for(const s of [A,B]){
+   sql("BEGIN; "+tables.map(t=>"DELETE FROM "+t+" WHERE school_id='"+s.id+"';").join(' ')+" DELETE FROM auth_db.role_permissions WHERE role_id IN(SELECT id FROM auth_db.roles WHERE school_id='"+s.id+"'); DELETE FROM auth_db.roles WHERE school_id='"+s.id+"'; DELETE FROM school_db.schools WHERE id='"+s.id+"'; DELETE FROM school_db.audit_logs WHERE school_id='"+s.id+"'; DELETE FROM suite.audit WHERE school_id='"+s.id+"'; COMMIT;")
+   if(s.document)execFileSync('docker',['compose','exec','-T','school-service','rm','-f','--','/app/documents/'+s.document.replaceAll('-','')+'.bin'],{cwd:root,stdio:'pipe'})
+  }
+ })
+
+ test('students and parents keep their own actions: homework submission and circular acknowledgement',async()=>{
+  const submission=(await ok(A,'Student','POST','/suite/records/submissions',{homeworkId:A.homework,studentId:A.student,response:'Half plus a quarter.'},201)).id
+  expect((await ok(A,'Student','GET','/suite/records/submissions')).data.map((r:any)=>r.id)).toEqual([submission])
+  await ok(A,'Student','POST','/suite/circulars/'+A.circular+'/acknowledge')
+  await ok(A,'Parent','POST','/suite/circulars/'+A.circular+'/acknowledge')
+  expect((await ok(A,'SuperAdmin','GET','/suite/circulars/'+A.circular+'/acknowledgements')).length).toBe(2)
+  expect((await ok(A,'Parent','GET','/suite/report-cards/'+A.student)).student.id).toBe(A.student)
+  await ok(A,'Parent','GET','/suite/fees');await ok(A,'Student','GET','/suite/fees')
+ })
+
+ test('teacher, parent and student are refused every administrative operation',async()=>{
+  const catalog=await ok(A,'SuperAdmin','GET','/suite/catalog')
+  const refs={'academic-years':A.year,classes:A.cl,subjects:A.subject,teachers:A.teacher,students:A.student,users:A.users.Student}
+  // Modules whose references can all be satisfied with school A records; anything else would fail field validation first.
+  const modules=catalog.filter((m:any)=>!m.fields.some((f:any)=>f.type==='reference'&&!(f.source in refs)))
+  expect(modules.map((m:any)=>m.kind)).toEqual(expect.arrayContaining(['school-config','fee-structures','academic-years','classes','subjects','teaching-assignments','exams','timetable','circulars','calendar','certificates','account-links','admissions']))
+  const teacherWritable=['leave-requests','marks','messages','homework','submissions']
+  for(const role of lower){
+   for(const m of modules){
+    if(m.kind==='submissions'||(role==='Teacher'&&teacherWritable.includes(m.kind)))continue
+    await denied(A,role,'POST','/suite/records/'+m.kind,sample(m.fields,refs))
+   }
+   for(const kind of ['admissions','account-links','fee-structures','school-config'])await denied(A,role,'GET','/suite/records/'+kind)
+   await denied(A,role,'PUT','/suite/records/circulars/'+A.circular,{title:'Changed',message:'x',audience:'All',dueDate:day,version:1})
+   await denied(A,role,'DELETE','/suite/records/circulars/'+A.circular)
+   await denied(A,role,'POST','/suite/admissions/'+A.admission+'/accept')
+   await denied(A,role,'POST','/suite/allocate',{studentIds:[A.student],classId:A.cl})
+   await denied(A,role,'POST','/suite/fees/charges',{studentId:A.student,structureId:randomUUID(),concession:'0'})
+   await denied(A,role,'POST','/suite/fees/payments',{idempotencyKey:randomUUID(),chargeId:randomUUID(),amount:'10',method:'Cash',reference:'',paidOn:day})
+   await denied(A,role,'POST','/suite/fees/'+randomUUID()+'/remind')
+   await denied(A,role,'POST','/suite/absence-notifications',{day})
+   await denied(A,role,'POST','/suite/imports/students',{rows:[{}],commit:false})
+   await denied(A,role,'GET','/suite/reports/admissions');await denied(A,role,'GET','/suite/reports/audit')
+   await denied(A,role,'GET','/suite/circulars/'+A.circular+'/acknowledgements')
+   await denied(A,role,'GET','/suite/documents/'+A.document);await denied(A,role,'GET','/suite/documents?recordId='+A.admission)
+   await denied(A,role,'GET','/users');await denied(A,role,'POST','/users',{roleId:randomUUID(),username:'x',email:'x@example.test',firstName:'x',lastName:'x',password})
+   await denied(A,role,'PUT','/users/'+A.users.Student,{isActive:false});await denied(A,role,'DELETE','/users/'+A.users.Student)
+   await denied(A,role,'POST','/users/'+A.users.Student+'/recovery-code');await denied(A,role,'GET','/roles')
+   await denied(A,role,'GET','/students');await denied(A,role,'POST','/students',{});await denied(A,role,'DELETE','/students/'+A.student)
+   await denied(A,role,'GET','/teachers');await denied(A,role,'DELETE','/teachers/'+A.teacher);await denied(A,role,'GET','/parents')
+   await denied(A,role,'GET','/schools/'+A.id);await denied(A,role,'PUT','/schools/'+A.id,{name:'Renamed'})
+   await denied(A,role,'GET','/operations/overview?day='+day);await denied(A,role,'POST','/operations/announcements',{title:'x',body:'x',priority:'Normal'});await denied(A,role,'GET','/operations/audit')
+  }
+  await denied(A,'Teacher','GET','/suite/fees')
+  await denied(A,'Student','GET','/suite/student-attendance?day='+day);await denied(A,'Parent','GET','/suite/student-attendance?day='+day)
+  await ok(A,'Teacher','GET','/suite/student-attendance?day='+day)
+ })
+
+ test('spoofed X-EduOS headers and school scope cannot raise access',async()=>{
+  const spoof={'X-EduOS-Role':'SuperAdmin','X-EduOS-User':A.adminId,'X-EduOS-School':B.id}
+  await denied(A,'Student','GET','/suite/records/admissions',undefined,403,spoof)
+  await denied(A,'Student','GET','/users',undefined,403,spoof)
+  await denied(A,'Student','GET','/suite/catalog?schoolId='+B.id,undefined,403,spoof)
+  await denied(A,'Student','POST','/suite/records/submissions',{homeworkId:B.homework,studentId:B.student,response:'x',schoolId:B.id},403,spoof)
+  await denied(A,'SuperAdmin','GET','/schools/'+B.id,undefined,403,spoof)
+  await denied(A,'SuperAdmin','POST','/students',{schoolId:B.id,rollNumber:'X',firstName:'X',lastName:'X',email:'x@example.test',currentClass:'X',dateOfBirth:'2014-01-01'},403,spoof)
+ })
+
+ test('school A cannot read, change or link school B objects by id',async()=>{
+  const teacherBody={id:B.teacher,firstName:'Moved',lastName:'Teacher',email:'moved-'+A.id+'@example.test',phoneNumber:'9000000009',department:'Science',status:'Active'}
+  const studentBody={id:B.student,firstName:'Moved',lastName:'Student',email:'moved-s-'+A.id+'@example.test',currentClass:'Grade 7 - A',dateOfBirth:'2014-05-01T00:00:00Z',status:'Active'}
+  await denied(A,'SuperAdmin','PUT','/students/'+B.student,studentBody,404);await denied(A,'SuperAdmin','DELETE','/students/'+B.student,undefined,404)
+  await denied(A,'SuperAdmin','PUT','/teachers/'+B.teacher,teacherBody,404);await denied(A,'SuperAdmin','DELETE','/teachers/'+B.teacher,undefined,404)
+  await denied(A,'SuperAdmin','PUT','/suite/records/circulars/'+B.circular,{title:'Hijacked',message:'x',audience:'All',dueDate:day,version:1},404)
+  await denied(A,'SuperAdmin','DELETE','/suite/records/circulars/'+B.circular,undefined,404)
+  await denied(A,'SuperAdmin','POST','/suite/admissions/'+B.admission+'/accept',undefined,404)
+  await denied(A,'SuperAdmin','GET','/suite/documents/'+B.document,undefined,404);await denied(A,'SuperAdmin','GET','/suite/documents?recordId='+B.admission,undefined,404)
+  await denied(A,'SuperAdmin','GET','/suite/report-cards/'+B.student,undefined,404);await denied(A,'Parent','GET','/suite/report-cards/'+B.student,undefined,403)
+  await denied(A,'SuperAdmin','GET','/suite/certificates/'+B.certificate+'/print',undefined,404)
+  await denied(A,'SuperAdmin','POST','/suite/circulars/'+B.circular+'/acknowledge',undefined,404);await denied(A,'Student','POST','/suite/circulars/'+B.circular+'/acknowledge',undefined,404)
+  await denied(A,'SuperAdmin','GET','/suite/circulars/'+B.circular+'/acknowledgements',undefined,404)
+  await denied(A,'SuperAdmin','POST','/suite/allocate',{studentIds:[B.student],classId:A.cl},400)
+  await denied(A,'SuperAdmin','POST','/suite/allocate',{studentIds:[A.student],classId:B.cl},404)
+  await denied(A,'SuperAdmin','POST','/suite/student-attendance',{day,entries:[{studentId:B.student,status:'Present'}]},400)
+  await denied(A,'SuperAdmin','POST','/operations/attendance',{day,entries:[{studentId:B.student,status:'Present'}]},400)
+  await denied(A,'SuperAdmin','POST','/suite/records/account-links',{userId:B.users.Student,studentId:A.student},400)
+  // References into another school's Suite records resolve as "not found in this school"; external tables answer 400.
+  await denied(A,'SuperAdmin','POST','/suite/records/homework',{title:'Cross',classId:B.cl,subjectId:A.subject,dueDate:day,instructions:'x'},404)
+  await denied(A,'Student','POST','/suite/records/submissions',{homeworkId:B.homework,studentId:B.student,response:'x'},404)
+  await denied(A,'SuperAdmin','PUT','/users/'+B.users.Teacher,{isActive:false},404);await denied(A,'SuperAdmin','DELETE','/users/'+B.users.Teacher,undefined,404)
+  await denied(A,'SuperAdmin','POST','/users/'+B.users.Teacher+'/recovery-code',undefined,404)
+  // School B is untouched by all of the above.
+  expect((await ok(B,'SuperAdmin','GET','/suite/records/circulars')).data[0].title).toBe('Notice b')
+  expect((await ok(B,'SuperAdmin','GET','/students/count')).count).toBe(1)
+  expect((await ok(B,'SuperAdmin','GET','/suite/allocations'))[0].classId).toBe(B.cl)
+  expect((await ok(B,'SuperAdmin','GET','/users')).data.map((u:any)=>u.isActive)).toEqual([true,true,true,true])
+ })
+
+ test('disable and delete end sessions and refresh cannot resurrect them after re-enable',async()=>{
+  const before=A.tokens.Teacher
+  await ok(A,'Teacher','GET','/suite/catalog')
+  await ok(A,'SuperAdmin','PUT','/users/'+A.users.Teacher,{isActive:false})
+  await denied(A,'Teacher','GET','/suite/catalog',undefined,401)
+  // No refresh attempt while disabled: that path revokes the token on its own. The regression is a refresh token
+  // issued before the disable resuming the session once the account is re-enabled.
+  await ok(A,'SuperAdmin','PUT','/users/'+A.users.Teacher,{isActive:true})
+  await denied(A,'Teacher','GET','/suite/catalog',undefined,401)
+  expect((await api.post('/api/v1/auth/refresh',{data:{refreshToken:before.refreshToken}})).status()).toBe(401)
+  await login(A,'Teacher');await ok(A,'Teacher','GET','/suite/catalog')
+  const roles=await ok(A,'SuperAdmin','GET','/roles')
+  const temp=(await ok(A,'SuperAdmin','POST','/users',{schoolId:A.id,roleId:roles.find((r:any)=>r.name==='Principal').id,username:username(A,'Temp'),email:'temp-'+A.id+'@example.test',firstName:'Temp',lastName:'Principal',password},201)).id
+  await login(A,'Temp');await ok(A,'Temp','GET','/users')
+  await ok(A,'SuperAdmin','DELETE','/users/'+temp)
+  await denied(A,'Temp','GET','/users',undefined,401)
+  expect((await api.post('/api/v1/auth/refresh',{data:{refreshToken:A.tokens.Temp.refreshToken}})).status()).toBe(401)
+  expect((await loginRequest({schoolId:A.id,username:username(A,'Temp'),password})).status()).toBe(401)
+ })
+
+ test('only health, login, refresh and reset-password are reachable without a bearer',async()=>{
+  expect((await api.get('/api/v1/health')).status()).toBe(200)
+  expect((await loginRequest({schoolId:A.id,username:'nobody',password:'wrong-password-long-enough'})).status()).toBe(401)
+  expect((await api.post('/api/v1/auth/refresh',{data:{refreshToken:'stale'}})).status()).toBe(401)
+  expect((await throttled(()=>api.post('/api/v1/auth/reset-password',{data:{code:'short',password:'not-long-enough'}}))).status()).toBe(400)
+  for(const url of ['/auth/logout','/roles','/users','/students','/teachers','/parents','/schools/'+A.id,'/operations/overview?day='+day,'/suite/catalog','/suite/records/circulars','/suite/documents/'+A.document])
+   expect((await api.fetch('/api/v1'+url,{method:url==='/auth/logout'?'POST':'GET'})).status(),url).toBe(401)
+  expect((await api.get('/api/v1/suite/catalog',{headers:{Authorization:'Bearer not.a.token'}})).status()).toBe(401)
+ })
+
+ test('internal services and the database are not reachable from the host',async()=>{
+  for(const port of [5000,6001,6002,6003,6004,6005,5432])
+   await expect(api.get('http://127.0.0.1:'+port+'/api/health',{timeout:3000}),'port '+port).rejects.toThrow()
+ })
+})

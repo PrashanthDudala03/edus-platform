@@ -1,4 +1,4 @@
-import {test,expect,APIRequestContext,Page} from '@playwright/test'
+import {test,expect,APIRequestContext,APIResponse,Page} from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import {readFileSync,mkdirSync} from 'node:fs'
 import {execFileSync} from 'node:child_process'
@@ -15,10 +15,13 @@ const req=async(method:string,url:string,body?:any,role='SuperAdmin')=>api.fetch
 async function good(method:string,url:string,body?:any,role='SuperAdmin',status=200){const r=await req(method,url,body,role);expect(r.status(),await r.text()).toBe(status);return(await r.json()).data}
 const create=async(kind:string,body:any,role='SuperAdmin')=>(await good('POST','/suite/records/'+kind,body,role,201)).id
 const list=async(kind:string,role='SuperAdmin')=>(await good('GET','/suite/records/'+kind,undefined,role)).data
-async function login(role:string,pw=password){const r=await api.post('/api/v1/auth/login',{data:{schoolId,username:'suite.'+role.toLowerCase(),password:pw}});expect(r.status(),await r.text()).toBe(200);sessions[role]=(await r.json()).data}
+// nginx limits login and reset-password to 10/min per client (burst 10); wait out a 429 when earlier specs used the budget.
+async function throttled(send:()=>Promise<APIResponse>){for(let i=0;;i++){const r=await send();if(r.status()!==429||i>=15)return r;await new Promise(f=>setTimeout(f,6500))}}
+async function login(role:string,pw=password){const r=await throttled(()=>api.post('/api/v1/auth/login',{data:{schoolId,username:'suite.'+role.toLowerCase(),password:pw}}));expect(r.status(),await r.text()).toBe(200);sessions[role]=(await r.json()).data}
 async function browserSession(page:Page,role='SuperAdmin'){await page.addInitScript(s=>{localStorage.setItem('accessToken',s.accessToken);localStorage.setItem('refreshToken',s.refreshToken);localStorage.setItem('user',JSON.stringify(s.user))},sessions[role])}
 test.describe.serial('Complete school suite',()=>{
  test.beforeAll(async({playwright})=>{
+  test.setTimeout(180000)
   const role=randomUUID()
   sql("BEGIN; INSERT INTO school_db.schools(id,name) VALUES('"+schoolId+"','Suite QA School'); INSERT INTO auth_db.roles(id,school_id,name) VALUES('"+role+"','"+schoolId+"','SuperAdmin'); INSERT INTO auth_db.users(id,school_id,username,email,password_hash,first_name,last_name,role_id) SELECT '"+adminId+"','"+schoolId+"','suite.superadmin','suite-"+schoolId+"@example.test',password_hash,'Suite','Admin','"+role+"' FROM auth_db.users WHERE school_id='"+env.EDUOS_BOOTSTRAP_SCHOOL_ID+"' AND username='"+env.EDUOS_BOOTSTRAP_ADMIN_USERNAME.replaceAll("'","''")+"'; "+['Principal','Teacher','Parent','Student'].map(r=>"INSERT INTO auth_db.roles(id,school_id,name) VALUES(gen_random_uuid(),'"+schoolId+"','"+r+"');").join(' ')+" COMMIT;")
   api=await playwright.request.newContext({baseURL:process.env.EDUOS_TEST_URL||'http://localhost:8080'});await login('SuperAdmin')
@@ -200,11 +203,11 @@ test.describe.serial('Complete school suite',()=>{
  test('recovery codes expire after one use and revoke previous sessions',async()=>{
   const code=(await good('POST','/users/'+users.Parent+'/recovery-code')).code
   const newPassword='QA-Recovered-'+randomUUID()
-  const response=await api.post('/api/v1/auth/reset-password',{data:{code,password:newPassword}})
+  const response=await throttled(()=>api.post('/api/v1/auth/reset-password',{data:{code,password:newPassword}}))
   expect(response.status(),await response.text()).toBe(200)
   expect((await req('GET','/suite/catalog',undefined,'Parent')).status()).toBe(401)
   expect((await api.post('/api/v1/auth/refresh',{data:{refreshToken:sessions.Parent.refreshToken}})).status()).toBe(401)
-  expect((await api.post('/api/v1/auth/reset-password',{data:{code,password:newPassword}})).status()).toBe(400)
+  expect((await throttled(()=>api.post('/api/v1/auth/reset-password',{data:{code,password:newPassword}}))).status()).toBe(400)
   await login('Parent',newPassword);expect((await req('GET','/suite/catalog',undefined,'Parent')).status()).toBe(200)
  })
  test('prevents concurrent requests from disabling the last two administrators',async()=>{

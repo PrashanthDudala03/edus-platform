@@ -34,7 +34,11 @@ builder.Services.AddEduOSAuthentication(builder.Configuration, events =>
             using var response=await client.SendAsync(request);
             var state=response.IsSuccessStatusCode?await response.Content.ReadFromJsonAsync<SessionState>():null;
             if(state is null || !context.Principal!.IsInRole(state.Role) || (context.Principal.FindFirst(EduOSClaims.TokenVersion)?.Value ?? "0") != state.Version.ToString()) context.Fail("Account access changed.");
-        } catch {context.Fail("Account is unavailable.");}
+        } catch (Exception ex) {
+            // A slow or unreachable auth-service fails closed; log why so a timeout is not mistaken for a revoked session.
+            Log.Warning(ex, "Session check failed for user {UserId}", id);
+            context.Fail("Account is unavailable.");
+        }
     };
     events.OnAuthenticationFailed = context =>
     {
