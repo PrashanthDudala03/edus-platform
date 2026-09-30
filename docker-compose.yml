@@ -66,6 +66,9 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
       ASPNETCORE_URLS: http://+:6002
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?Set JWT_PUBLIC_KEY in .env}
+      JWT_ISSUER: ${JWT_ISSUER:-edus-auth-service}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-edus-api}
       ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-edus};Username=${POSTGRES_USER:-edus};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env};"
       SERILOG_LEVEL: ${SERILOG_LEVEL:-Information}
     depends_on:
@@ -87,6 +90,9 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
       ASPNETCORE_URLS: http://+:6003
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?Set JWT_PUBLIC_KEY in .env}
+      JWT_ISSUER: ${JWT_ISSUER:-edus-auth-service}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-edus-api}
       ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-edus};Username=${POSTGRES_USER:-edus};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env};"
       SERILOG_LEVEL: ${SERILOG_LEVEL:-Information}
     depends_on:
@@ -108,6 +114,9 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
       ASPNETCORE_URLS: http://+:6004
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?Set JWT_PUBLIC_KEY in .env}
+      JWT_ISSUER: ${JWT_ISSUER:-edus-auth-service}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-edus-api}
       ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-edus};Username=${POSTGRES_USER:-edus};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env};"
       SERILOG_LEVEL: ${SERILOG_LEVEL:-Information}
     depends_on:
@@ -126,9 +135,14 @@ services:
     build:
       context: .
       dockerfile: services/Dockerfile.school
+    volumes:
+      - school_documents:/app/documents
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
       ASPNETCORE_URLS: http://+:6005
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?Set JWT_PUBLIC_KEY in .env}
+      JWT_ISSUER: ${JWT_ISSUER:-edus-auth-service}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-edus-api}
       ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-edus};Username=${POSTGRES_USER:-edus};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env};"
       SERILOG_LEVEL: ${SERILOG_LEVEL:-Information}
     depends_on:
@@ -221,6 +235,7 @@ services:
     networks: [edus-network]
 
 volumes:
+  school_documents:
   postgres_data:
 
 networks:

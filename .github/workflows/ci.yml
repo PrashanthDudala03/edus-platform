@@ -33,6 +33,7 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 9.0.x
+      - run: dotnet test services/shared/EduOS.ServiceAuth.Tests/EduOS.ServiceAuth.Tests.csproj --configuration Release
       - run: dotnet test services/auth-service.tests/auth-service.tests.csproj --configuration Release
       - run: dotnet build services/auth-service/auth-service.csproj --configuration Release
       - run: dotnet build services/api-gateway/api-gateway.csproj --configuration Release
@@ -95,3 +96,24 @@ jobs:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
           push: false
+
+  integration:
+    name: Real-service school workflow tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm --prefix frontend ci
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - run: node scripts/setup-local.mjs
+      - run: docker compose up -d --build --wait --wait-timeout 180
+      - run: npx playwright test
+        working-directory: frontend
+      - if: always()
+        run: docker compose down

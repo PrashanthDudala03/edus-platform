@@ -1,4 +1,4 @@
-import { test, expect, APIRequestContext } from '@playwright/test'
+import { test, expect, APIRequestContext, APIResponse } from '@playwright/test'
 import { readFileSync, mkdirSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
@@ -11,13 +11,16 @@ let token='',refresh='',studentId='',api:APIRequestContext
 const password=env.EDUOS_BOOTSTRAP_ADMIN_PASSWORD
 const sql=(query:string)=>execFileSync('docker',['compose','exec','-T','postgres','psql','-U',env.POSTGRES_USER,'-d',env.POSTGRES_DB,'-v','ON_ERROR_STOP=1','-c',query],{cwd:root,encoding:'utf8',stdio:['pipe','pipe','pipe']})
 const headers=()=>({Authorization:'Bearer '+token})
+// nginx limits login to 10/min per client (burst 10); wait out a 429 when earlier specs used the budget.
+async function throttled(send:()=>Promise<APIResponse>){for(let i=0;;i++){const r=await send();if(r.status()!==429||i>=15)return r;await new Promise(f=>setTimeout(f,6500))}}
 const student={schoolId,rollNumber:'QA-001',firstName:'Aarav',lastName:'TestStudent',email:'aarav@example.test',phoneNumber:'9000000001',currentClass:'Grade 6 - A',dateOfBirth:'2014-03-12T00:00:00Z'}
 const date=new Date().toISOString().slice(0,10)
 test.describe.serial('School workspace against real Docker services',()=>{
  test.beforeAll(async({playwright})=>{
+  test.setTimeout(180000)
   sql("BEGIN; INSERT INTO school_db.schools(id,name) VALUES('"+schoolId+"','QA School'); INSERT INTO auth_db.roles(id,school_id,name) VALUES('"+roleId+"','"+schoolId+"','SuperAdmin'); INSERT INTO auth_db.roles(id,school_id,name) VALUES(gen_random_uuid(),'"+schoolId+"','Principal'); INSERT INTO auth_db.users(id,school_id,username,email,password_hash,first_name,last_name,role_id) SELECT '"+userId+"','"+schoolId+"','qa.admin','qa-"+schoolId+"@example.test',password_hash,'QA','Administrator','"+roleId+"' FROM auth_db.users WHERE school_id='"+otherSchool+"' AND username='"+env.EDUOS_BOOTSTRAP_ADMIN_USERNAME.replaceAll("'","''")+"'; COMMIT;")
   api=await playwright.request.newContext({baseURL:process.env.EDUOS_TEST_URL||'http://localhost:8080'})
-  const response=await api.post('/api/v1/auth/login',{data:{username:'qa.admin',password,schoolId}})
+  const response=await throttled(()=>api.post('/api/v1/auth/login',{data:{username:'qa.admin',password,schoolId}}))
   expect(response.status()).toBe(200)
   const login=(await response.json()).data;token=login.accessToken;refresh=login.refreshToken
  })
@@ -85,7 +88,7 @@ test.describe.serial('School workspace against real Docker services',()=>{
   const created=await api.post('/api/v1/users',{headers:headers(),data:{schoolId,roleId:principal.id,username:'qa.principal',firstName:'QA',lastName:'Principal',email:'principal-'+schoolId+'@example.test',password}})
   expect(created.status(),await created.text()).toBe(201)
   const id=(await created.json()).data.id
-  const login=await api.post('/api/v1/auth/login',{data:{schoolId,username:'qa.principal',password}})
+  const login=await throttled(()=>api.post('/api/v1/auth/login',{data:{schoolId,username:'qa.principal',password}}))
   expect(login.status()).toBe(200);const session=(await login.json()).data
   expect((await api.put('/api/v1/users/'+id,{headers:headers(),data:{isActive:false}})).status()).toBe(200)
   expect((await api.get('/api/v1/students',{headers:{Authorization:'Bearer '+session.accessToken}})).status()).toBe(401)
@@ -104,17 +107,17 @@ test.describe.serial('School workspace against real Docker services',()=>{
   await expect(page.getByText('Total students',{exact:true})).toBeVisible()
   mkdirSync(path.join(root,'.local/screenshots'),{recursive:true})
   await page.screenshot({path:path.join(root,'.local/screenshots/dashboard-desktop.png'),fullPage:true})
-  await page.getByRole('link',{name:'Students',exact:true}).click()
+  await page.getByRole('link',{name:'Student records',exact:true}).click()
   await page.getByRole('button',{name:'Edit Aarav TestStudent'}).click()
   await expect(page.getByLabel('Date of birth')).toHaveValue('2014-03-12')
   await page.getByLabel('First name',{exact:true}).fill('Aarav Updated')
   await page.getByRole('button',{name:'Save student'}).click();await expect(page.getByText('student saved successfully.')).toBeVisible()
   await page.reload();await expect(page.getByText('Aarav Updated TestStudent',{exact:true})).toBeVisible()
-  await page.getByRole('link',{name:'Attendance',exact:true}).click()
+  await page.goto('/attendance')
   await page.getByLabel('Attendance for Aarav Updated TestStudent').selectOption('Present')
   await page.getByRole('button',{name:'Save attendance'}).click();await expect(page.getByText('Attendance saved successfully.')).toBeVisible()
-  await page.getByRole('link',{name:'Noticeboard',exact:true}).click();await expect(page.getByRole('heading',{name:'Welcome to the new term'})).toBeVisible()
-  await page.getByRole('link',{name:'School settings',exact:true}).click();await expect(page.getByLabel('School name')).toHaveValue('QA School')
+  await page.getByRole('link',{name:'Admin noticeboard',exact:true}).click();await expect(page.getByRole('heading',{name:'Welcome to the new term'})).toBeVisible()
+  await page.getByRole('link',{name:'School settings & accounts',exact:true}).click();await expect(page.getByLabel('School name')).toHaveValue('QA School')
   await page.getByRole('button',{name:'Sign out',exact:true}).click();await expect(page.getByRole('heading',{name:'Good to see you.'})).toBeVisible()
   expect(errors).toEqual([])
  })
@@ -125,7 +128,7 @@ test.describe.serial('School workspace against real Docker services',()=>{
   await page.getByRole('button',{name:'Sign in to workspace'}).click();await expect(page.getByRole('heading',{name:/Good .*QA/})).toBeVisible()
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy()
   await page.screenshot({path:path.join(root,'.local/screenshots/dashboard-mobile.png'),fullPage:true})
-  await page.getByRole('button',{name:'Open navigation'}).click();await page.getByRole('link',{name:'Students',exact:true}).click()
+  await page.getByRole('button',{name:'Open navigation'}).click();await page.getByRole('link',{name:'Student records',exact:true}).click()
   await expect(page.getByRole('heading',{name:'Students',exact:true})).toBeVisible()
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy()
  })

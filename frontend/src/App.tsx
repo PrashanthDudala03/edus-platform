@@ -1,9 +1,10 @@
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useAuthStore } from './store/auth'
 import { Shell } from './components/Shell'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
+import SuiteRouter, { SchoolModules } from './pages/suite/SuitePage'
 import DirectoryPage from './pages/DirectoryPage'
 import { AttendancePage, AnnouncementsPage, AuditPage, SettingsPage } from './pages/OperationsPages'
 const queryClient = new QueryClient({defaultOptions:{queries:{retry:1,staleTime:15000,refetchOnWindowFocus:false}}})
@@ -12,6 +13,8 @@ useAuthStore.subscribe((state, previous) => {
 })
 function Protected() {
   const {isAuthenticated,user}=useAuthStore()
+  const location=useLocation()
+  if(isAuthenticated&&user&&!user.roles.some(r=>["SuperAdmin","Principal"].includes(r))&&!location.pathname.startsWith("/suite"))return <Navigate to="/suite" replace/>
   return isAuthenticated && user ? <Shell><Outlet /></Shell> : <Navigate to="/login" replace />
 }
 export default function App() {
@@ -19,6 +22,8 @@ export default function App() {
     <Route path="/login" element={<LoginPage />} />
     <Route element={<Protected />}>
       <Route index element={<DashboardPage />} />
+      <Route path="suite" element={<SchoolModules />} />
+      <Route path="suite/:kind" element={<SuiteRouter />} />
       <Route path="students" element={<DirectoryPage key="students" kind="students" />} />
       <Route path="teachers" element={<DirectoryPage key="teachers" kind="teachers" />} />
       <Route path="parents" element={<DirectoryPage key="parents" kind="parents" />} />

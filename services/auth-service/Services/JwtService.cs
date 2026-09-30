@@ -49,6 +49,7 @@ public class JwtService : IJwtService
             new Claim(ClaimTypes.Name, user.Username),
             new Claim(ClaimTypes.Email, user.Email),
             new Claim("school_id", user.SchoolId.ToString()),
+            new Claim("token_version", user.TokenVersion.ToString()),
             new Claim("first_name", user.FirstName ?? string.Empty),
             new Claim("last_name", user.LastName ?? string.Empty),
         };

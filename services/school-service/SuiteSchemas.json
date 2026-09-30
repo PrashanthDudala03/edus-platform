@@ -1,0 +1,1173 @@
+[
+  {
+    "kind": "academic-years",
+    "title": "Academic years",
+    "group": "Academics",
+    "fields": [
+      {
+        "key": "name",
+        "label": "Year name",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "startsOn",
+        "label": "Starts on",
+        "type": "date",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "endsOn",
+        "label": "Ends on",
+        "type": "date",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "status",
+        "label": "Status",
+        "type": "select",
+        "required": true,
+        "source": null,
+        "options": [
+          "Planned",
+          "Current",
+          "Closed"
+        ]
+      }
+    ],
+    "read": [
+      "SuperAdmin",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ],
+    "write": [
+      "SuperAdmin",
+      "Principal"
+    ]
+  },
+  {
+    "kind": "classes",
+    "title": "Classes & sections",
+    "group": "Academics",
+    "fields": [
+      {
+        "key": "name",
+        "label": "Class name",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "section",
+        "label": "Section",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "yearId",
+        "label": "Academic year",
+        "type": "reference",
+        "required": true,
+        "source": "academic-years",
+        "options": null
+      },
+      {
+        "key": "teacherId",
+        "label": "Class teacher",
+        "type": "reference",
+        "required": true,
+        "source": "teachers",
+        "options": null
+      },
+      {
+        "key": "capacity",
+        "label": "Capacity",
+        "type": "number",
+        "required": true,
+        "source": null,
+        "options": null
+      }
+    ],
+    "read": [
+      "SuperAdmin",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ],
+    "write": [
+      "SuperAdmin",
+      "Principal"
+    ]
+  },
+  {
+    "kind": "subjects",
+    "title": "Subjects",
+    "group": "Academics",
+    "fields": [
+      {
+        "key": "name",
+        "label": "Subject",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "code",
+        "label": "Subject code",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      }
+    ],
+    "read": [
+      "SuperAdmin",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ],
+    "write": [
+      "SuperAdmin",
+      "Principal"
+    ]
+  },
+  {
+    "kind": "teaching-assignments",
+    "title": "Teaching assignments",
+    "group": "Academics",
+    "fields": [
+      {
+        "key": "classId",
+        "label": "Class / section",
+        "type": "reference",
+        "required": true,
+        "source": "classes",
+        "options": null
+      },
+      {
+        "key": "subjectId",
+        "label": "Subject",
+        "type": "reference",
+        "required": true,
+        "source": "subjects",
+        "options": null
+      },
+      {
+        "key": "teacherId",
+        "label": "Teacher",
+        "type": "reference",
+        "required": true,
+        "source": "teachers",
+        "options": null
+      }
+    ],
+    "read": [
+      "SuperAdmin",
+      "Principal",
+      "Teacher"
+    ],
+    "write": [
+      "SuperAdmin",
+      "Principal"
+    ]
+  },
+  {
+    "kind": "admissions",
+    "title": "Admissions",
+    "group": "Admissions",
+    "fields": [
+      {
+        "key": "admissionNumber",
+        "label": "Admission number",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "firstName",
+        "label": "First name",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "lastName",
+        "label": "Last name",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "dateOfBirth",
+        "label": "Date of birth",
+        "type": "date",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "gender",
+        "label": "Gender",
+        "type": "select",
+        "required": true,
+        "source": null,
+        "options": [
+          "Female",
+          "Male",
+          "Other",
+          "Prefer not to say"
+        ]
+      },
+      {
+        "key": "email",
+        "label": "Student email",
+        "type": "email",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "phoneNumber",
+        "label": "Student phone",
+        "type": "text",
+        "required": false,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "guardianName",
+        "label": "Guardian full name",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "guardianEmail",
+        "label": "Guardian email",
+        "type": "email",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "guardianPhone",
+        "label": "Guardian phone",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "address",
+        "label": "Address",
+        "type": "textarea",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "classId",
+        "label": "Allocated class",
+        "type": "reference",
+        "required": true,
+        "source": "classes",
+        "options": null
+      },
+      {
+        "key": "status",
+        "label": "Application status",
+        "type": "select",
+        "required": true,
+        "source": null,
+        "options": [
+          "Draft",
+          "Submitted",
+          "Rejected"
+        ]
+      }
+    ],
+    "read": [
+      "SuperAdmin",
+      "Principal"
+    ],
+    "write": [
+      "SuperAdmin",
+      "Principal"
+    ]
+  },
+  {
+    "kind": "staff-attendance",
+    "title": "Staff attendance",
+    "group": "Attendance",
+    "fields": [
+      {
+        "key": "teacherId",
+        "label": "Staff member",
+        "type": "reference",
+        "required": true,
+        "source": "teachers",
+        "options": null
+      },
+      {
+        "key": "day",
+        "label": "Date",
+        "type": "date",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "status",
+        "label": "Attendance",
+        "type": "select",
+        "required": true,
+        "source": null,
+        "options": [
+          "Present",
+          "Absent",
+          "Late",
+          "Excused"
+        ]
+      },
+      {
+        "key": "notes",
+        "label": "Correction / notes",
+        "type": "textarea",
+        "required": false,
+        "source": null,
+        "options": null
+      }
+    ],
+    "read": [
+      "SuperAdmin",
+      "Principal",
+      "Teacher"
+    ],
+    "write": [
+      "SuperAdmin",
+      "Principal"
+    ]
+  },
+  {
+    "kind": "leave-requests",
+    "title": "Leave requests",
+    "group": "Attendance",
+    "fields": [
+      {
+        "key": "teacherId",
+        "label": "Staff member",
+        "type": "reference",
+        "required": true,
+        "source": "teachers",
+        "options": null
+      },
+      {
+        "key": "fromDate",
+        "label": "From",
+        "type": "date",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "toDate",
+        "label": "Through",
+        "type": "date",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "reason",
+        "label": "Reason",
+        "type": "textarea",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "status",
+        "label": "Status",
+        "type": "select",
+        "required": true,
+        "source": null,
+        "options": [
+          "Pending",
+          "Approved",
+          "Rejected"
+        ]
+      },
+      {
+        "key": "approvalRemark",
+        "label": "Approval remark",
+        "type": "textarea",
+        "required": false,
+        "source": null,
+        "options": null
+      }
+    ],
+    "read": [
+      "SuperAdmin",
+      "Principal",
+      "Teacher"
+    ],
+    "write": [
+      "SuperAdmin",
+      "Principal",
+      "Teacher"
+    ]
+  },
+  {
+    "kind": "fee-structures",
+    "title": "Fee structures",
+    "group": "Fees",
+    "fields": [
+      {
+        "key": "name",
+        "label": "Fee name",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "classId",
+        "label": "Class",
+        "type": "reference",
+        "required": true,
+        "source": "classes",
+        "options": null
+      },
+      {
+        "key": "amount",
+        "label": "Amount",
+        "type": "money",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "installment",
+        "label": "Instalment name",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "dueDate",
+        "label": "Due date",
+        "type": "date",
+        "required": true,
+        "source": null,
+        "options": null
+      }
+    ],
+    "read": [
+      "SuperAdmin",
+      "Principal"
+    ],
+    "write": [
+      "SuperAdmin",
+      "Principal"
+    ]
+  },
+  {
+    "kind": "exams",
+    "title": "Exam schedules",
+    "group": "Exams",
+    "fields": [
+      {
+        "key": "name",
+        "label": "Exam / term",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "classId",
+        "label": "Class",
+        "type": "reference",
+        "required": true,
+        "source": "classes",
+        "options": null
+      },
+      {
+        "key": "subjectId",
+        "label": "Subject",
+        "type": "reference",
+        "required": true,
+        "source": "subjects",
+        "options": null
+      },
+      {
+        "key": "date",
+        "label": "Exam date",
+        "type": "date",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "maxMarks",
+        "label": "Maximum marks",
+        "type": "number",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "passMarks",
+        "label": "Pass marks",
+        "type": "number",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "status",
+        "label": "Publication",
+        "type": "select",
+        "required": true,
+        "source": null,
+        "options": [
+          "Draft",
+          "Published"
+        ]
+      }
+    ],
+    "read": [
+      "SuperAdmin",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ],
+    "write": [
+      "SuperAdmin",
+      "Principal"
+    ]
+  },
+  {
+    "kind": "marks",
+    "title": "Marks & remarks",
+    "group": "Exams",
+    "fields": [
+      {
+        "key": "examId",
+        "label": "Exam",
+        "type": "reference",
+        "required": true,
+        "source": "exams",
+        "options": null
+      },
+      {
+        "key": "studentId",
+        "label": "Student",
+        "type": "reference",
+        "required": true,
+        "source": "students",
+        "options": null
+      },
+      {
+        "key": "score",
+        "label": "Marks obtained",
+        "type": "number",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "remarks",
+        "label": "Teacher remarks",
+        "type": "textarea",
+        "required": false,
+        "source": null,
+        "options": null
+      }
+    ],
+    "read": [
+      "SuperAdmin",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ],
+    "write": [
+      "SuperAdmin",
+      "Principal",
+      "Teacher"
+    ]
+  },
+  {
+    "kind": "circulars",
+    "title": "Circulars",
+    "group": "Communication",
+    "fields": [
+      {
+        "key": "title",
+        "label": "Title",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "message",
+        "label": "Circular",
+        "type": "textarea",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "audience",
+        "label": "Audience",
+        "type": "select",
+        "required": true,
+        "source": null,
+        "options": [
+          "All",
+          "Teacher",
+          "Parent",
+          "Student"
+        ]
+      },
+      {
+        "key": "classId",
+        "label": "Target class (blank for all)",
+        "type": "reference",
+        "required": false,
+        "source": "classes",
+        "options": null
+      },
+      {
+        "key": "dueDate",
+        "label": "Acknowledge by",
+        "type": "date",
+        "required": false,
+        "source": null,
+        "options": null
+      }
+    ],
+    "read": [
+      "SuperAdmin",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ],
+    "write": [
+      "SuperAdmin",
+      "Principal"
+    ]
+  },
+  {
+    "kind": "calendar",
+    "title": "School calendar",
+    "group": "Communication",
+    "fields": [
+      {
+        "key": "title",
+        "label": "Event",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "startsOn",
+        "label": "Starts on",
+        "type": "date",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "endsOn",
+        "label": "Ends on",
+        "type": "date",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "description",
+        "label": "Details",
+        "type": "textarea",
+        "required": true,
+        "source": null,
+        "options": null
+      }
+    ],
+    "read": [
+      "SuperAdmin",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ],
+    "write": [
+      "SuperAdmin",
+      "Principal"
+    ]
+  },
+  {
+    "kind": "messages",
+    "title": "Targeted messages",
+    "group": "Communication",
+    "fields": [
+      {
+        "key": "title",
+        "label": "Subject",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "message",
+        "label": "Message",
+        "type": "textarea",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "recipientUserId",
+        "label": "Recipient",
+        "type": "reference",
+        "required": true,
+        "source": "users",
+        "options": null
+      }
+    ],
+    "read": [
+      "SuperAdmin",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ],
+    "write": [
+      "SuperAdmin",
+      "Principal",
+      "Teacher"
+    ]
+  },
+  {
+    "kind": "homework",
+    "title": "Homework",
+    "group": "Learning",
+    "fields": [
+      {
+        "key": "title",
+        "label": "Assignment",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "classId",
+        "label": "Class",
+        "type": "reference",
+        "required": true,
+        "source": "classes",
+        "options": null
+      },
+      {
+        "key": "subjectId",
+        "label": "Subject",
+        "type": "reference",
+        "required": true,
+        "source": "subjects",
+        "options": null
+      },
+      {
+        "key": "dueDate",
+        "label": "Due date",
+        "type": "date",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "instructions",
+        "label": "Instructions",
+        "type": "textarea",
+        "required": true,
+        "source": null,
+        "options": null
+      }
+    ],
+    "read": [
+      "SuperAdmin",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ],
+    "write": [
+      "SuperAdmin",
+      "Principal",
+      "Teacher"
+    ]
+  },
+  {
+    "kind": "submissions",
+    "title": "Submissions & feedback",
+    "group": "Learning",
+    "fields": [
+      {
+        "key": "homeworkId",
+        "label": "Homework",
+        "type": "reference",
+        "required": true,
+        "source": "homework",
+        "options": null
+      },
+      {
+        "key": "studentId",
+        "label": "Student",
+        "type": "reference",
+        "required": true,
+        "source": "students",
+        "options": null
+      },
+      {
+        "key": "response",
+        "label": "Student response",
+        "type": "textarea",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "feedback",
+        "label": "Teacher feedback",
+        "type": "textarea",
+        "required": false,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "grade",
+        "label": "Grade / result",
+        "type": "text",
+        "required": false,
+        "source": null,
+        "options": null
+      }
+    ],
+    "read": [
+      "SuperAdmin",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ],
+    "write": [
+      "SuperAdmin",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ]
+  },
+  {
+    "kind": "timetable",
+    "title": "Weekly timetable",
+    "group": "Learning",
+    "fields": [
+      {
+        "key": "classId",
+        "label": "Class",
+        "type": "reference",
+        "required": true,
+        "source": "classes",
+        "options": null
+      },
+      {
+        "key": "subjectId",
+        "label": "Subject",
+        "type": "reference",
+        "required": true,
+        "source": "subjects",
+        "options": null
+      },
+      {
+        "key": "teacherId",
+        "label": "Teacher",
+        "type": "reference",
+        "required": true,
+        "source": "teachers",
+        "options": null
+      },
+      {
+        "key": "day",
+        "label": "Day",
+        "type": "select",
+        "required": true,
+        "source": null,
+        "options": [
+          "Monday",
+          "Tuesday",
+          "Wednesday",
+          "Thursday",
+          "Friday",
+          "Saturday",
+          "Sunday"
+        ]
+      },
+      {
+        "key": "startsAt",
+        "label": "Starts",
+        "type": "time",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "endsAt",
+        "label": "Ends",
+        "type": "time",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "room",
+        "label": "Room",
+        "type": "text",
+        "required": false,
+        "source": null,
+        "options": null
+      }
+    ],
+    "read": [
+      "SuperAdmin",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ],
+    "write": [
+      "SuperAdmin",
+      "Principal"
+    ]
+  },
+  {
+    "kind": "certificates",
+    "title": "Certificates & ID cards",
+    "group": "Records",
+    "fields": [
+      {
+        "key": "studentId",
+        "label": "Student",
+        "type": "reference",
+        "required": true,
+        "source": "students",
+        "options": null
+      },
+      {
+        "key": "type",
+        "label": "Document type",
+        "type": "select",
+        "required": true,
+        "source": null,
+        "options": [
+          "Student ID",
+          "Transfer certificate",
+          "Bonafide certificate"
+        ]
+      },
+      {
+        "key": "issuedOn",
+        "label": "Issue date",
+        "type": "date",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "remarks",
+        "label": "Remarks",
+        "type": "textarea",
+        "required": false,
+        "source": null,
+        "options": null
+      }
+    ],
+    "read": [
+      "SuperAdmin",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ],
+    "write": [
+      "SuperAdmin",
+      "Principal"
+    ]
+  },
+  {
+    "kind": "account-links",
+    "title": "Portal access links",
+    "group": "Security",
+    "fields": [
+      {
+        "key": "userId",
+        "label": "User account",
+        "type": "reference",
+        "required": true,
+        "source": "users",
+        "options": null
+      },
+      {
+        "key": "studentId",
+        "label": "Student (parent/student account)",
+        "type": "reference",
+        "required": false,
+        "source": "students",
+        "options": null
+      },
+      {
+        "key": "teacherId",
+        "label": "Teacher (teacher account)",
+        "type": "reference",
+        "required": false,
+        "source": "teachers",
+        "options": null
+      }
+    ],
+    "read": [
+      "SuperAdmin",
+      "Principal"
+    ],
+    "write": [
+      "SuperAdmin",
+      "Principal"
+    ]
+  },
+  {
+    "kind": "school-config",
+    "title": "Branding & print settings",
+    "group": "Security",
+    "fields": [
+      {
+        "key": "name",
+        "label": "Display name",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "address",
+        "label": "School address",
+        "type": "textarea",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "phone",
+        "label": "School phone",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "website",
+        "label": "Website",
+        "type": "text",
+        "required": false,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "currency",
+        "label": "Currency",
+        "type": "select",
+        "required": true,
+        "source": null,
+        "options": [
+          "INR",
+          "USD",
+          "GBP",
+          "EUR",
+          "AED"
+        ]
+      },
+      {
+        "key": "printFooter",
+        "label": "Certificate / report footer",
+        "type": "textarea",
+        "required": false,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "gradeA",
+        "label": "A threshold (%)",
+        "type": "number",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "gradeB",
+        "label": "B threshold (%)",
+        "type": "number",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "gradeC",
+        "label": "C threshold (%)",
+        "type": "number",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "gradeD",
+        "label": "D threshold (%)",
+        "type": "number",
+        "required": true,
+        "source": null,
+        "options": null
+      }
+    ],
+    "read": [
+      "SuperAdmin",
+      "Principal"
+    ],
+    "write": [
+      "SuperAdmin",
+      "Principal"
+    ]
+  }
+]
