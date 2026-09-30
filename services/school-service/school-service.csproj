@@ -16,4 +16,8 @@
     <Content Update="SuiteSchemas.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Update="SuiteSchema.sql" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../shared/EduOS.ServiceAuth/EduOS.ServiceAuth.csproj" />
+  </ItemGroup>
+
 </Project>

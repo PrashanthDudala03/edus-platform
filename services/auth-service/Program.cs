@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Security.Cryptography;
+using EduOS.ServiceAuth;
 using FluentValidation;
 using MediatR;
 using Microsoft.AspNetCore.Http;
@@ -66,6 +67,9 @@ builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 
 // Health checks
 builder.Services.AddHealthChecks();
+
+// Account and session endpoints verify the caller's access token with the shared rules.
+builder.Services.AddEduOSAuthentication(builder.Configuration);
 
 var app = builder.Build();
 
@@ -152,9 +156,10 @@ using (var scope = app.Services.CreateScope())
 
 app.Use(async (context,next)=>{try{await next();}catch(DbUpdateException){context.Response.StatusCode=409;await context.Response.WriteAsJsonAsync(new{message="A record with these details already exists or the update conflicts with another change."});}});
 app.UseRouting();
+app.UseEduOSAuthorization("/api", "/api/health", "/api/auth/login", "/api/auth/refresh", "/api/auth/reset-password");
 
 // Health endpoint - return Prometheus metrics format
-app.MapGet("/api/health", async (AuthDbContext db) => {try { return await db.Database.CanConnectAsync() ? Results.Ok(new {status="ready"}) : Results.StatusCode(503); } catch { return Results.StatusCode(503); }});
+app.MapGet("/api/health", async (AuthDbContext db) => {try { return await db.Database.CanConnectAsync() ? Results.Ok(new {status="ready"}) : Results.StatusCode(503); } catch { return Results.StatusCode(503); }}).AllowAnonymous();
 
 app.MapGet("/api/roles", async (string? schoolId, AuthDbContext db) =>
 {
@@ -169,10 +174,11 @@ app.MapGet("/api/roles", async (string? schoolId, AuthDbContext db) =>
         .Select(role => new { id = role.Id, name = role.Name })
         .ToListAsync();
     return Results.Ok(new { statusCode = 200, data = roles });
-});
+}).RequireAuthorization(EduOSPolicies.Administrators);
 
-// Auth endpoints
-app.MapPost("/api/auth/login", async (LoginRequest request, IMediator mediator) =>
+// Auth endpoints: login and refresh are the only anonymous account operations besides password recovery.
+var publicAuth = app.MapGroup("/api/auth").AllowAnonymous();
+publicAuth.MapPost("/login", async (LoginRequest request, IMediator mediator) =>
 {
     try
     {
@@ -201,7 +207,7 @@ app.MapPost("/api/auth/login", async (LoginRequest request, IMediator mediator) 
     }
 });
 
-app.MapPost("/api/auth/refresh", async (RefreshRequest request, IMediator mediator, AuthDbContext db) =>
+publicAuth.MapPost("/refresh", async (RefreshRequest request, IMediator mediator, AuthDbContext db) =>
 {
     try
     {
@@ -234,15 +240,18 @@ app.MapPost("/api/auth/logout", async (RefreshRequest request, IRefreshTokenRepo
     }
 
     return Results.Ok(new { statusCode = 200, message = "Signed out" });
-});
+}).RequireAuthorization(EduOSPolicies.Suite);
 
-app.MapGet("/api/internal/session/{id:guid}", async (Guid id, Guid schoolId, AuthDbContext db) => {
-    var user=await db.Users.Include(u=>u.Role).FirstOrDefaultAsync(u=>u.Id==id && u.SchoolId==schoolId && u.IsActive);
+// Called by the gateway with the caller's own bearer token; a token may only inspect its own session.
+app.MapGet("/api/internal/session/{id:guid}", async (Guid id, TenantContext tenant, AuthDbContext db) => {
+    if (id != tenant.UserId) return Results.Forbid();
+    var user=await db.Users.Include(u=>u.Role).FirstOrDefaultAsync(u=>u.Id==id && u.SchoolId==tenant.SchoolId && u.IsActive);
     return user?.Role is null ? Results.Unauthorized() : Results.Ok(new{role=user.Role.Name,version=user.TokenVersion});
-});
+}).RequireAuthorization(EduOSPolicies.Suite);
 
-// User endpoints
-app.MapGet("/api/users", async (AuthDbContext db, int page = 1, int pageSize = 20, string? schoolId = null) =>
+// User endpoints: school administration only.
+var userAccounts = app.MapGroup("/api/users").RequireAuthorization(EduOSPolicies.Administrators);
+userAccounts.MapGet("", async (AuthDbContext db, int page = 1, int pageSize = 20, string? schoolId = null) =>
 {
     if (string.IsNullOrEmpty(schoolId)) return Results.BadRequest(new { statusCode = 400, message = "schoolId required" });
     if (!Guid.TryParse(schoolId, out var schoolIdGuid)) return Results.BadRequest(new { statusCode = 400, message = "Invalid schoolId" });
@@ -261,7 +270,7 @@ app.MapGet("/api/users", async (AuthDbContext db, int page = 1, int pageSize = 2
     return Results.Ok(new { statusCode = 200, data = new { page, pageSize, totalCount, data = users } });
 });
 
-app.MapPost("/api/users", async (CreateUserRequest request, AuthDbContext db) =>
+userAccounts.MapPost("", async (CreateUserRequest request, AuthDbContext db) =>
 {
     if (!Guid.TryParse(request.SchoolId, out var schoolId)) return Results.BadRequest(new { statusCode = 400, message = "Invalid schoolId" });
     if (!Guid.TryParse(request.RoleId, out var roleId)) return Results.BadRequest(new { statusCode = 400, message = "Invalid roleId" });
@@ -298,7 +307,7 @@ app.MapPost("/api/users", async (CreateUserRequest request, AuthDbContext db) =>
     return Results.Json(new { statusCode = 201, data = new { user.Id, user.Username, user.Email, user.FirstName, user.LastName, user.IsActive } }, statusCode: 201);
 });
 
-app.MapPut("/api/users/{id}", async (string id, UpdateUserRequest request, string? schoolId, AuthDbContext db) =>
+userAccounts.MapPut("/{id}", async (string id, UpdateUserRequest request, string? schoolId, AuthDbContext db) =>
 {
     if (!Guid.TryParse(id, out var userId)) return Results.BadRequest(new { statusCode = 400, message = "Invalid user ID" });
     if (string.IsNullOrWhiteSpace(schoolId) || !Guid.TryParse(schoolId, out var schoolIdGuid)) return Results.BadRequest(new { statusCode = 400, message = "schoolId required" });
@@ -328,7 +337,7 @@ app.MapPut("/api/users/{id}", async (string id, UpdateUserRequest request, strin
     return Results.Ok(new { statusCode = 200, data = new { user.Id, user.Username, user.Email, user.FirstName, user.LastName, user.IsActive } });
 });
 
-app.MapDelete("/api/users/{id}", async (string id, string? schoolId, AuthDbContext db) =>
+userAccounts.MapDelete("/{id}", async (string id, string? schoolId, AuthDbContext db) =>
 {
     if (!Guid.TryParse(id, out var userId)) return Results.BadRequest(new { statusCode = 400, message = "Invalid user ID" });
     if (string.IsNullOrEmpty(schoolId)) return Results.BadRequest(new { statusCode = 400, message = "schoolId required" });

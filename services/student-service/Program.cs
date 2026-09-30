@@ -1,3 +1,4 @@
+using EduOS.ServiceAuth;
 using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -39,6 +40,9 @@ builder.Services.AddScoped<IStudentRepository, StudentRepository>();
 // Health checks
 builder.Services.AddHealthChecks();
 
+// This service verifies access tokens itself; it does not trust gateway headers.
+builder.Services.AddEduOSAuthentication(builder.Configuration);
+
 var app = builder.Build();
 app.Use(async (ctx, next) => {
     if ((ctx.Request.Query.TryGetValue("page", out var p) && (!int.TryParse(p, out var page) || page < 1 || page > 100000)) ||
@@ -66,12 +70,14 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.UseRouting();
+app.UseEduOSAuthorization("/api", "/api/health");
 
 // Health endpoint - return Prometheus metrics format
-app.MapGet("/api/health", async (StudentDbContext db) => {try { return await db.Database.CanConnectAsync() ? Results.Ok(new {status="ready"}) : Results.StatusCode(503); } catch { return Results.StatusCode(503); }});
+app.MapGet("/api/health", async (StudentDbContext db) => {try { return await db.Database.CanConnectAsync() ? Results.Ok(new {status="ready"}) : Results.StatusCode(503); } catch { return Results.StatusCode(503); }}).AllowAnonymous();
 
-// Student endpoints
-app.MapGet("/api/students", async (IMediator mediator, int page = 1, int pageSize = 20, string? schoolId = null) =>
+// Student endpoints: school administration only. schoolId is rewritten from the verified token before handlers run.
+var students = app.MapGroup("/api/students").RequireAuthorization(EduOSPolicies.Administrators);
+students.MapGet("", async (IMediator mediator, int page = 1, int pageSize = 20, string? schoolId = null) =>
 {
     if (string.IsNullOrEmpty(schoolId) || !Guid.TryParse(schoolId, out var schoolIdGuid))
     {
@@ -98,7 +104,7 @@ app.MapGet("/api/students", async (IMediator mediator, int page = 1, int pageSiz
     }
 });
 
-app.MapGet("/api/students/count", async (IMediator mediator, string? schoolId = null) =>
+students.MapGet("/count", async (IMediator mediator, string? schoolId = null) =>
 {
     if (string.IsNullOrEmpty(schoolId) || !Guid.TryParse(schoolId, out var schoolIdGuid))
     {
@@ -120,7 +126,7 @@ app.MapGet("/api/students/count", async (IMediator mediator, string? schoolId = 
     }
 });
 
-app.MapPost("/api/students", async (CreateStudentCommand request, IMediator mediator, IValidator<CreateStudentCommand> validator) =>
+students.MapPost("", async (CreateStudentCommand request, IMediator mediator, IValidator<CreateStudentCommand> validator) =>
 {
     try
     {
@@ -149,7 +155,7 @@ app.MapPost("/api/students", async (CreateStudentCommand request, IMediator medi
     }
 });
 
-app.MapPut("/api/students/{id}", async (string id, UpdateStudentCommand request, IMediator mediator, IValidator<UpdateStudentCommand> validator) =>
+students.MapPut("/{id}", async (string id, UpdateStudentCommand request, IMediator mediator, IValidator<UpdateStudentCommand> validator) =>
 {
     if (!Guid.TryParse(id, out var studentId))
     {
@@ -188,7 +194,7 @@ app.MapPut("/api/students/{id}", async (string id, UpdateStudentCommand request,
     }
 });
 
-app.MapDelete("/api/students/{id}", async (string id, IMediator mediator, string? schoolId = null) =>
+students.MapDelete("/{id}", async (string id, IMediator mediator, string? schoolId = null) =>
 {
     if (!Guid.TryParse(id, out var studentId))
     {

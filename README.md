@@ -66,6 +66,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 . .\scripts\dev-shell.ps1
 npm --prefix frontend ci
 npm --prefix frontend run build
+dotnet test services/shared/EduOS.ServiceAuth.Tests/EduOS.ServiceAuth.Tests.csproj -c Release
 dotnet test services/auth-service.tests/auth-service.tests.csproj -c Release
 cd frontend
 npx playwright install chromium
@@ -73,6 +74,14 @@ npx playwright test
 ~~~
 
 The browser/API tests use real Docker services and temporary school records. Reports are in frontend/playwright-report. The frontend development server proxies requests to localhost:8080.
+
+## Service authentication
+
+Every service verifies the caller's access token itself using the shared rules in services/shared/EduOS.ServiceAuth (RSA-SHA256 signature against JWT_PUBLIC_KEY, exact issuer and audience, no clock skew). The gateway additionally confirms with auth-service that the session is still current. Only auth-service holds the signing key.
+
+- The school scope of every request comes from the token's school claim. A schoolId in the query string, JSON body or path that names another school is rejected with 403, and X-EduOS-* headers are overwritten from the verified claims, so bypassing the gateway gives no extra access.
+- Each endpoint names a policy: EduOSAdministrators (SuperAdmin, Principal), EduOSStaff (plus Teacher) or EduOSSuite (every school role). Anything without a policy still requires a valid token. Only health, login, refresh and reset-password are anonymous.
+- services/shared/EduOS.ServiceAuth.Tests holds the denial tests: forged, expired and mis-scoped tokens, role mismatches and spoofed scope values.
 
 ## Backup and restore
 

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using EduOS.ServiceAuth;
 using Npgsql;
 using NpgsqlTypes;
 
@@ -49,9 +50,9 @@ public static partial class Suite
         Require(rows.Count==1,"Record not found in this school.",404);return Record(rows[0]);
     }
     static async Task<SchoolAccess> Access(HttpContext http,NpgsqlConnection c){
-        Require(Guid.TryParse(http.Request.Query["schoolId"],out var school)&&Guid.TryParse(http.Request.Headers["X-EduOS-User"],out _),"School scope is missing.",403);
-        Guid.TryParse(http.Request.Headers["X-EduOS-User"],out var user);
-        var role=http.Request.Headers["X-EduOS-Role"].ToString();Require(KnownRoles.Contains(role),"Role is not allowed.",403);
+        // Scope comes from the verified access token only, never from headers or query values a caller could set.
+        var tenant=http.TryGetTenant();Require(tenant is not null,"School scope is missing.",403);
+        var school=tenant!.SchoolId;var user=tenant.UserId;var role=tenant.Role;Require(KnownRoles.Contains(role),"Role is not allowed.",403);
         var a=new SchoolAccess{School=school,User=user,Role=role};
         if(a.Admin)return a;
         var links=await Q(c,"SELECT data::text FROM suite.records WHERE school_id=@s AND kind='account-links' AND archived_at IS NULL AND data->>'userId'=@u",("s",school),("u",user.ToString()));
@@ -103,7 +104,8 @@ public static partial class Suite
         await E(c,File.ReadAllText(Path.Combine(AppContext.BaseDirectory,"SuiteSchema.sql")));
     }
     public static void Map(WebApplication app){
-        var group=app.MapGroup("/api/suite");
+        // Every school role may enter the suite; each handler then narrows by role and profile links.
+        var group=app.MapGroup("/api/suite").RequireAuthorization(EduOSPolicies.Suite);
         group.AddEndpointFilter(async(context,next)=>{
             try{return await next(context);}
             catch(System.Text.Json.JsonException){return Results.BadRequest(new{message="Invalid JSON field value."});}

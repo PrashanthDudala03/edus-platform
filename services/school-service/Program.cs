@@ -1,3 +1,4 @@
+using EduOS.ServiceAuth;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 
@@ -19,6 +20,9 @@ builder.Services.AddDbContext<SchoolDbContext>(options =>
 
 builder.Services.AddHealthChecks();
 
+// This service verifies access tokens itself; it does not trust gateway headers.
+builder.Services.AddEduOSAuthentication(builder.Configuration);
+
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
@@ -37,10 +41,13 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.UseRouting();
+app.UseEduOSAuthorization("/api", "/api/health");
 // Health endpoint - return Prometheus metrics format
-app.MapGet("/api/health", async (SchoolDbContext db) => {try { return await db.Database.CanConnectAsync() ? Results.Ok(new {status="ready"}) : Results.StatusCode(503); } catch { return Results.StatusCode(503); }});
+app.MapGet("/api/health", async (SchoolDbContext db) => {try { return await db.Database.CanConnectAsync() ? Results.Ok(new {status="ready"}) : Results.StatusCode(503); } catch { return Results.StatusCode(503); }}).AllowAnonymous();
 
-app.MapGet("/api/schools/{schoolId}", async (string schoolId, SchoolDbContext db) =>
+// School profile: administrators only. The path schoolId must match the verified token.
+var schools = app.MapGroup("/api/schools").RequireAuthorization(EduOSPolicies.Administrators);
+schools.MapGet("/{schoolId}", async (string schoolId, SchoolDbContext db) =>
 {
     if (!Guid.TryParse(schoolId, out var id)) return Results.BadRequest(new { statusCode = 400, message = "Invalid ID" });
     try
@@ -52,7 +59,7 @@ app.MapGet("/api/schools/{schoolId}", async (string schoolId, SchoolDbContext db
     catch (Exception ex) { Log.Error(ex, "Error fetching school"); return Results.Json(new { statusCode = 500, message = "Error" }, statusCode: 500); }
 });
 
-app.MapPut("/api/schools/{schoolId}", async (string schoolId, SchoolUpdateRequest request, SchoolDbContext db) =>
+schools.MapPut("/{schoolId}", async (string schoolId, SchoolUpdateRequest request, SchoolDbContext db) =>
 {
     if (!Guid.TryParse(schoolId, out var id)) return Results.BadRequest(new {message="Invalid school ID"});
     if(string.IsNullOrWhiteSpace(request.Name)||request.Name.Length>255||request.PrincipalName?.Length>255) return Results.BadRequest(new {message="School name is required and profile fields must be at most 255 characters."});

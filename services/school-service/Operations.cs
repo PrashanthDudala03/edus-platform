@@ -1,3 +1,4 @@
+using EduOS.ServiceAuth;
 using Npgsql;
 using NpgsqlTypes;
 using System.Data;
@@ -66,7 +67,7 @@ public static class Operations
 
     public static void Map(WebApplication app, string connectionString)
     {
-        var group=app.MapGroup("/api/operations");
+        var group=app.MapGroup("/api/operations").RequireAuthorization(EduOSPolicies.Administrators);
         group.MapGet("/overview", async (Guid schoolId, DateOnly day) => {
             var stats=await Query(connectionString,"""
                 SELECT

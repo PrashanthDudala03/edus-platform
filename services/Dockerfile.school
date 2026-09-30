@@ -1,5 +1,6 @@
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS builder
 WORKDIR /src
+COPY services/shared/ ./shared/
 COPY services/school-service/ ./school-service/
 WORKDIR /src/school-service
 RUN dotnet restore

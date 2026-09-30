@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using EduOS.ServiceAuth;
 using Microsoft.EntityFrameworkCore;
 using Services.Auth.Data;
 public static class AuthRecovery
@@ -19,7 +20,7 @@ public static class AuthRecovery
    await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE auth_db.password_resets SET used_at=NOW() WHERE user_id={id} AND school_id={schoolId} AND used_at IS NULL");
    await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO auth_db.password_resets(id,school_id,user_id,code_hash,expires_at) VALUES({Guid.NewGuid()},{schoolId},{id},{hash},{DateTime.UtcNow.AddMinutes(15)})");
    await tx.CommitAsync();return Results.Ok(new{data=new{code,expiresInMinutes=15},message="Share this one-time code privately with the verified account holder. No email or SMS was sent."});
-  });
+  }).RequireAuthorization(EduOSPolicies.Administrators);
   app.MapPost("/api/auth/reset-password",async(PasswordRecoveryRequest request,AuthDbContext db)=>{
    if(string.IsNullOrWhiteSpace(request.Password)||request.Password.Length<16||Encoding.UTF8.GetByteCount(request.Password)>72)
     return Results.BadRequest(new{message="Use a password of at least 16 characters and no more than 72 UTF-8 bytes."});
@@ -35,7 +36,7 @@ public static class AuthRecovery
    await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE auth_db.password_resets SET used_at=NOW() WHERE id={reset.Id}");
    await db.RefreshTokens.IgnoreQueryFilters().Where(t=>t.UserId==user.Id).ExecuteUpdateAsync(s=>s.SetProperty(t=>t.RevokedAt,DateTime.UtcNow));
    await tx.CommitAsync();return Results.Ok(new{message="Password changed. Previous sessions have been revoked. Sign in with the new password."});
-  });
+  }).AllowAnonymous();
  }
 }
 public record PasswordRecoveryRequest(string? Code,string? Password);
