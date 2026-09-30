@@ -62,7 +62,7 @@ builder.Services
                 try {
                     var client=context.HttpContext.RequestServices.GetRequiredService<IHttpClientFactory>().CreateClient("auth-session");
                     var state=await client.GetFromJsonAsync<SessionState>("/api/internal/session/"+id+"?schoolId="+school);
-                    if(state is null || !context.Principal!.IsInRole(state.Role)) context.Fail("Account access changed.");
+                    if(state is null || !context.Principal!.IsInRole(state.Role) || (context.Principal.FindFirst("token_version")?.Value ?? "0") != state.Version.ToString()) context.Fail("Account access changed.");
                 } catch {context.Fail("Account is unavailable.");}
             },
             OnAuthenticationFailed = context =>
@@ -81,12 +81,13 @@ builder.Services.AddAuthorization(options =>
         .RequireAuthenticatedUser()
         .Build();
     options.AddPolicy("EduOSAdministrators", policy => policy.RequireRole("SuperAdmin", "Principal"));
+    options.AddPolicy("EduOSSuite", policy => policy.RequireRole("SuperAdmin","Principal","Teacher","Parent","Student"));
 });
 builder.Services.AddReverseProxy()
     .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
 
 builder.Services.AddHealthChecks();
-builder.WebHost.ConfigureKestrel(o=>o.Limits.MaxRequestBodySize=1024*1024);
+builder.WebHost.ConfigureKestrel(o=>o.Limits.MaxRequestBodySize=10*1024*1024);
 
 var app = builder.Build();
 
@@ -102,7 +103,8 @@ app.Use(async (context, next) =>
     if (!path.StartsWithSegments("/api/v1") ||
         string.Equals(path.Value, "/api/v1/health", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(path.Value, "/api/v1/auth/login", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(path.Value, "/api/v1/auth/refresh", StringComparison.OrdinalIgnoreCase))
+        string.Equals(path.Value, "/api/v1/auth/refresh", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(path.Value, "/api/v1/auth/reset-password", StringComparison.OrdinalIgnoreCase))
     {
         await next();
         return;
@@ -116,6 +118,8 @@ app.Use(async (context, next) =>
         return;
     }
 
+    context.Request.Headers["X-EduOS-User"] = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+    context.Request.Headers["X-EduOS-Role"] = context.User.FindFirst(ClaimTypes.Role)?.Value;
     var requestedSchoolIds = context.Request.Query
         .Where(pair => string.Equals(pair.Key, "schoolId", StringComparison.OrdinalIgnoreCase))
         .SelectMany(pair => pair.Value)
@@ -192,4 +196,4 @@ app.MapGet("/api/v1/health", () =>
 app.MapReverseProxy();
 
 app.Run();
-public record SessionState(string Role);
+public record SessionState(string Role,int Version);

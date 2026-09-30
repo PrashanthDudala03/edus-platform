@@ -38,6 +38,7 @@ public class AuthDbContext : DbContext
             entity.Property(e => e.LastLoginAt).HasColumnName("last_login_at");
             entity.Property(e => e.CreatedByUserId).HasColumnName("created_by_user_id");
             entity.Property(e => e.RoleId).HasColumnName("role_id");
+            entity.Property(e => e.TokenVersion).HasColumnName("token_version");
             entity.HasOne(e => e.Role).WithMany().HasForeignKey(e => e.RoleId);
 
             entity.HasIndex(e => new { e.SchoolId, e.Username }).IsUnique();

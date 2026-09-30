@@ -93,6 +93,7 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
     try
     {
+        await AuthRecovery.Initialize(db);
         await db.Database.ExecuteSqlRawAsync("SELECT 1 FROM auth_db.users LIMIT 1");
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO school_db.schools (id, name, is_active, subscription_tier, created_at, updated_at)
@@ -104,6 +105,9 @@ using (var scope = app.Services.CreateScope())
         {
             (Name: "SuperAdmin", Description: "School system administrator", IsSystem: true),
             (Name: "Principal", Description: "School principal", IsSystem: true),
+            (Name: "Teacher", Description: "Assigned classes and teaching", IsSystem: true),
+            (Name: "Parent", Description: "Linked student family portal", IsSystem: true),
+            (Name: "Student", Description: "Personal learning portal", IsSystem: true),
         };
         foreach (var role in bootstrapRoles)
         {
@@ -234,7 +238,7 @@ app.MapPost("/api/auth/logout", async (RefreshRequest request, IRefreshTokenRepo
 
 app.MapGet("/api/internal/session/{id:guid}", async (Guid id, Guid schoolId, AuthDbContext db) => {
     var user=await db.Users.Include(u=>u.Role).FirstOrDefaultAsync(u=>u.Id==id && u.SchoolId==schoolId && u.IsActive);
-    return user?.Role is null ? Results.Unauthorized() : Results.Ok(new{role=user.Role.Name});
+    return user?.Role is null ? Results.Unauthorized() : Results.Ok(new{role=user.Role.Name,version=user.TokenVersion});
 });
 
 // User endpoints
@@ -299,6 +303,8 @@ app.MapPut("/api/users/{id}", async (string id, UpdateUserRequest request, strin
     if (!Guid.TryParse(id, out var userId)) return Results.BadRequest(new { statusCode = 400, message = "Invalid user ID" });
     if (string.IsNullOrWhiteSpace(schoolId) || !Guid.TryParse(schoolId, out var schoolIdGuid)) return Results.BadRequest(new { statusCode = 400, message = "schoolId required" });
 
+    await using var changeTransaction=await db.Database.BeginTransactionAsync();
+    await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({schoolIdGuid.ToString()},0))");
     var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId && u.SchoolId == schoolIdGuid && u.DeletedAt == null);
     if (user == null) return Results.NotFound(new { statusCode = 404, message = "User not found" });
 
@@ -312,11 +318,12 @@ app.MapPut("/api/users/{id}", async (string id, UpdateUserRequest request, strin
     if (!string.IsNullOrEmpty(request.FirstName)) user.FirstName = request.FirstName;
     if (!string.IsNullOrEmpty(request.LastName)) user.LastName = request.LastName;
     if(request.IsActive==false && user.IsActive && await db.Roles.AnyAsync(r=>r.Id==user.RoleId && r.Name=="SuperAdmin") && await db.Users.CountAsync(u=>u.SchoolId==schoolIdGuid && u.IsActive && u.DeletedAt==null && u.Role!=null && u.Role.Name=="SuperAdmin")<=1) return Results.Conflict(new {message="The last active school administrator cannot be disabled."});
-    if (request.IsActive.HasValue) user.IsActive = request.IsActive.Value;
+    if (request.IsActive.HasValue && user.IsActive!=request.IsActive.Value) {user.TokenVersion++; user.IsActive = request.IsActive.Value;}
 
     user.UpdatedAt = DateTime.UtcNow;
     db.Users.Update(user);
     await db.SaveChangesAsync();
+    await changeTransaction.CommitAsync();
 
     return Results.Ok(new { statusCode = 200, data = new { user.Id, user.Username, user.Email, user.FirstName, user.LastName, user.IsActive } });
 });
@@ -327,6 +334,8 @@ app.MapDelete("/api/users/{id}", async (string id, string? schoolId, AuthDbConte
     if (string.IsNullOrEmpty(schoolId)) return Results.BadRequest(new { statusCode = 400, message = "schoolId required" });
     if (!Guid.TryParse(schoolId, out var schoolIdGuid)) return Results.BadRequest(new { statusCode = 400, message = "Invalid schoolId" });
 
+    await using var changeTransaction=await db.Database.BeginTransactionAsync();
+    await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({schoolIdGuid.ToString()},0))");
     var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId && u.SchoolId == schoolIdGuid && u.DeletedAt == null);
     if (user == null) return Results.NotFound(new { statusCode = 404, message = "User not found" });
 
@@ -342,10 +351,12 @@ app.MapDelete("/api/users/{id}", async (string id, string? schoolId, AuthDbConte
     user.IsActive = false;
     db.Users.Update(user);
     await db.SaveChangesAsync();
+    await changeTransaction.CommitAsync();
 
     return Results.Ok(new { statusCode = 200, message = "User deleted" });
 });
 
+AuthRecovery.Map(app);
 app.Run();
 
 // Request/Response models
