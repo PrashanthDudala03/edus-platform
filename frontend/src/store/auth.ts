@@ -16,8 +16,10 @@ interface AuthStore {
   accessToken: string | null
   refreshToken: string | null
   isAuthenticated: boolean
+  /** Shown on the sign-in page after a session ends without the user signing out. */
+  notice: string | null
   setAuth: (user: User, accessToken: string, refreshToken: string) => void
-  clearAuth: () => void
+  clearAuth: (notice?: string) => void
   hasPermission: (permission: string) => boolean
 }
 
@@ -26,19 +28,20 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   accessToken: localStorage.getItem('accessToken'),
   refreshToken: localStorage.getItem('refreshToken'),
   isAuthenticated: !!localStorage.getItem('accessToken'),
+  notice: null,
 
   setAuth: (user, accessToken, refreshToken) => {
     localStorage.setItem('accessToken', accessToken)
     localStorage.setItem('refreshToken', refreshToken)
     localStorage.setItem('user', JSON.stringify(user))
-    set({ user, accessToken, refreshToken, isAuthenticated: true })
+    set({ user, accessToken, refreshToken, isAuthenticated: true, notice: null })
   },
 
-  clearAuth: () => {
+  clearAuth: (notice) => {
     localStorage.removeItem('accessToken')
     localStorage.removeItem('refreshToken')
     localStorage.removeItem('user')
-    set({ user: null, accessToken: null, refreshToken: null, isAuthenticated: false })
+    set({ user: null, accessToken: null, refreshToken: null, isAuthenticated: false, notice: notice ?? null })
   },
 
   hasPermission: (permission: string) => {

@@ -7,7 +7,7 @@ import client,{errorMessage} from '../../api/client'
 import { useAuthStore } from '../../store/auth'
 import { Dialog, Empty, ErrorBox, Loading, PageHeader, today } from '../../components/UI'
 import {data,Options,Row,workbook,printSchoolDocument} from './helpers'
-const isAdmin=(role:string|undefined)=>role==='SuperAdmin'||role==='Principal'
+import { isAdministrator as isAdmin, isLeadership } from '../../roles'
 export function FeesPage(){
  const admin=isAdmin(useAuthStore(s=>s.user?.roles[0])),cache=useQueryClient()
  const [modal,setModal]=useState<'charge'|Row|null>(null),[error,setError]=useState(''),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[key,setKey]=useState('')
@@ -42,13 +42,13 @@ export function RegisterPage(){
  const list=useQuery<Row[]>({queryKey:['suite','register',day],queryFn:()=>data('/student-attendance',{day})})
  async function save(){setBusy(true);setError('');try{await client.post('/suite/student-attendance',{day,entries:Object.entries(draft).map(([studentId,status])=>({studentId,status}))});setDraft({});setMessage('Attendance saved.');await cache.invalidateQueries()}catch(e){setError(errorMessage(e))}finally{setBusy(false)}}
  async function notify(){setBusy(true);try{const r=await client.post('/suite/absence-notifications',{day});setMessage(r.data.message)}catch(e){setError(errorMessage(e))}finally{setBusy(false)}}
- const admin=isAdmin(useAuthStore(s=>s.user?.roles[0]))
+ const admin=isLeadership(useAuthStore(s=>s.user?.roles[0]))
  return <><PageHeader eyebrow="DAILY ATTENDANCE" title="Student register" description="Administrators see the school; teachers see only students in their assigned classes."><button className="button primary" disabled={!Object.keys(draft).length||busy} onClick={save}><Save size={16}/>Save changes</button></PageHeader>
  {error&&<ErrorBox message={error}/>} {message&&<div className="success-box">{message}</div>}<section className="panel"><div className="attendance-toolbar"><label>Date<input type="date" value={day} max={today()} onChange={e=>{if(Object.keys(draft).length&&!window.confirm('Discard unsaved attendance?'))return;setDay(e.target.value);setDraft({})}}/></label>{admin&&<button className="button secondary" disabled={busy||!!Object.keys(draft).length} onClick={notify}><Send size={16}/>Issue absence notices</button>}<Link className="button secondary" to="/suite/reports">Monthly reports</Link></div>
  {list.isPending?<Loading/>:list.isError?<ErrorBox message={errorMessage(list.error)}/>:!list.data.length?<Empty title="No assigned students" description="Allocate students to classes and link the teacher account to its staff profile."/>:<div className="table-scroll"><table><thead><tr><th>Student</th><th>Admission number</th><th>Class</th><th>Status</th></tr></thead><tbody>{list.data.map(s=><tr key={s.id}><td>{s.name}</td><td>{s.code}</td><td>{s.class}</td><td><select value={draft[s.id]||s.status||''} aria-label={'Attendance for '+s.name} onChange={e=>setDraft({...draft,[s.id]:e.target.value})}><option value="" disabled>Unmarked</option>{['Present','Absent','Late','Excused'].map(v=><option key={v}>{v}</option>)}</select></td></tr>)}</tbody></table></div>}</section></>
 }
 export function ReportsPage(){
- const role=useAuthStore(s=>s.user?.roles[0]),admin=isAdmin(role)
+ const role=useAuthStore(s=>s.user?.roles[0]),admin=isLeadership(role)
  const [type,setType]=useState('attendance'),[month,setMonth]=useState(today().slice(0,7)),[student,setStudent]=useState(''),[term,setTerm]=useState(''),[error,setError]=useState('')
  const options=useQuery<Options>({queryKey:['suite','options'],queryFn:()=>data('/options')})
  const rows=useQuery<Row[]>({queryKey:['suite','reports',type,month],queryFn:()=>data(type==='fees'?'/fees':'/reports/'+type,{month})})
@@ -58,7 +58,7 @@ export function ReportsPage(){
  {error&&<ErrorBox message={error}/>}<section className="panel"><div className="attendance-toolbar"><label>Report<select value={type} onChange={e=>setType(e.target.value)}><option value="attendance">Monthly student attendance</option>{(admin||role==='Teacher')&&<option value="staff-attendance">Monthly staff attendance</option>}<option value="marks">Marks</option>{admin&&<option value="admissions">Admissions</option>}{role!=='Teacher'&&<option value="fees">Fee balances</option>}{admin&&<option value="audit">Attributed activity (latest 100)</option>}</select></label>{type.includes('attendance')&&<label>Month<input type="month" value={month} onChange={e=>setMonth(e.target.value)}/></label>}<button className="button secondary" disabled={!rows.data?.length} onClick={()=>workbook(type+'-'+month,rows.data!)}><FileDown size={16}/>Download Excel</button></div>
  {rows.isPending?<Loading/>:rows.isError?<ErrorBox message={errorMessage(rows.error)}/>:!rows.data.length?<Empty title="No records for this report" description="Saved school data will appear here when available."/>:<div className="table-scroll"><table><thead><tr>{fields.map(f=><th key={f}>{f.replace(/([A-Z])/g,' $1')}</th>)}</tr></thead><tbody>{rows.data.map((r,i)=><tr key={i}>{fields.map(f=><td key={f} className="truncate-cell">{String(r[f]??'—')}</td>)}</tr>)}</tbody></table></div>}</section>
  <section className="panel suite-section"><div className="panel-heading"><div><h2>Downloadable report card</h2><p>Only published exams with saved marks are included. Print or choose Save as PDF in your browser.</p></div></div><div className="attendance-toolbar"><label>Student<select value={student} onChange={e=>setStudent(e.target.value)}><option value="">Select student</option>{options.data?.students.map(s=><option key={s.id} value={s.id}>{s.label}</option>)}</select></label><label>Exam / term name (optional)<input value={term} onChange={e=>setTerm(e.target.value)} placeholder="All published exams"/></label><button className="button primary" disabled={!student} onClick={report}><Printer size={16}/>Open report card</button></div></section>
- {admin&&<ImportPanel/>}</>
+ {isAdmin(role)&&<ImportPanel/>}</>
 }
 function ImportPanel(){
  const cache=useQueryClient(),[kind,setKind]=useState('students'),[rows,setRows]=useState<Row[]>([]),[result,setResult]=useState<Row|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false)
