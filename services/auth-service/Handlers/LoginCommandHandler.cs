@@ -73,8 +73,8 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, JwtTokenRespons
 
         // Account state is revealed only to someone who already proved the password.
         var user = matches[0];
-        if (!user.IsActive)
-            throw new LoginRejectedException(403, "This account is disabled. Contact your school administrator.");
+        if (!user.CanSignIn)
+            throw new LoginRejectedException(403, "Your account is currently disabled. Contact your school administrator.");
         if (!await _userRepository.IsSchoolActiveAsync(user.SchoolId))
             throw new LoginRejectedException(403, "This school's EduOS workspace is deactivated. Contact EduOS support.");
         var schoolId = user.SchoolId;

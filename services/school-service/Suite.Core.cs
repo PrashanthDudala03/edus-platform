@@ -11,7 +11,9 @@ public sealed class SchoolAccess
 {
     public Guid School {get;init;} public Guid User {get;init;} public string Role {get;init;}="";
     /// <summary>School administrator: operational configuration, finance, users and archiving.</summary>
-    public bool Admin => Role == "Administrator";
+    public bool Admin => SchoolWide;
+    public HashSet<string> Permissions {get;init;}=[];
+    public bool Can(string permission)=>Permissions.Contains(permission);
     /// <summary>Administrator or Principal: sees the whole school without profile-link scoping. Writes are still limited by each module's Write roles.</summary>
     public bool SchoolWide => Role is "Administrator" or "Principal";
     public HashSet<string> Students {get;}=[]; public HashSet<string> Teachers {get;}=[]; public HashSet<string> Classes {get;}=[];
@@ -55,11 +57,12 @@ public static partial class Suite
     static async Task<SchoolAccess> Access(HttpContext http,NpgsqlConnection c){
         // Scope comes from the verified access token only, never from headers or query values a caller could set.
         var tenant=http.TryGetTenant();Require(tenant is not null,"School scope is missing.",403);
-        var school=tenant!.SchoolId;var user=tenant.UserId;var role=tenant.Role;Require(KnownRoles.Contains(role),"Role is not allowed.",403);
-        var a=new SchoolAccess{School=school,User=user,Role=role};
+        var school=tenant!.SchoolId;var user=tenant.UserId;var role=http.User.FindFirst("data_scope")?.Value switch {"school"=>"Principal","teacher"=>"Teacher","parent"=>"Parent","student"=>"Student",_=>""};Require(role!="","Data scope is not allowed.",403);
+        var a=new SchoolAccess{School=school,User=user,Role=role,Permissions=http.User.FindAll("permission").Select(p=>p.Value).ToHashSet()};
         if(a.SchoolWide)return a;
         var links=await Q(c,"SELECT data::text FROM suite.records WHERE school_id=@s AND kind='account-links' AND archived_at IS NULL AND data->>'userId'=@u",("s",school),("u",user.ToString()));
-        foreach(var l in links){var d=JsonNode.Parse(Text(l,"data"))!.AsObject();if(Text(d,"studentId")!="")a.Students.Add(Text(d,"studentId"));if(Text(d,"teacherId")!="")a.Teachers.Add(Text(d,"teacherId"));}
+        foreach(var l in links){var d=JsonNode.Parse(Text(l,"data"))!.AsObject();if((role=="Parent"&&Text(d,"relationship")=="parent"||role=="Student"&&Text(d,"relationship")=="student") && Text(d,"studentId")!="")a.Students.Add(Text(d,"studentId"));if(role=="Teacher" && Text(d,"relationship")=="teacher" && Text(d,"teacherId")!="")a.Teachers.Add(Text(d,"teacherId"));}
+        Require(role!="Student"||a.Students.Count<=1,"Student link requires administrator review.",403);
         var classes=await Records(c,school,"classes");
         foreach(var cl in classes)if(a.Teachers.Contains(Text(cl,"teacherId")))a.Classes.Add(Text(cl,"id"));
         foreach(var assignment in await Records(c,school,"teaching-assignments"))if(a.Teachers.Contains(Text(assignment,"teacherId")))a.Classes.Add(Text(assignment,"classId"));
@@ -71,8 +74,8 @@ public static partial class Suite
         return a;
     }
     static bool Readable(string kind,JsonObject d,SchoolAccess a){
+        if(!a.Can(kind+".view"))return false;
         if(a.SchoolWide)return true;
-        if(!Schemas[kind].Read.Contains(a.Role))return false;
         return kind switch{
             "academic-years" or "subjects" or "calendar" or "school-config"=>true,
             "classes"=>a.Classes.Contains(Text(d,"id")),
@@ -89,7 +92,7 @@ public static partial class Suite
         };
     }
     static void Writable(string kind,JsonObject d,SchoolAccess a,JsonObject? old){
-        Require(Schemas[kind].Write.Contains(a.Role),"Your role cannot change this module.",403);
+        Require(a.Can(kind+".manage"),"Your role cannot change this module.",403);
         if(a.SchoolWide)return;
         if(a.Role=="Teacher"){
             if(kind=="leave-requests"){Require(a.Teachers.Contains(Text(d,"teacherId")),"Leave must belong to your staff profile.",403);Require(Text(d,"status")=="Pending"&&Text(d,"approvalRemark")=="","Only school leadership can approve leave.",403);Require(old is null||Text(old,"status")=="Pending","Reviewed leave cannot be changed.",409);}
@@ -117,18 +120,19 @@ public static partial class Suite
             catch(PostgresException ex) when(ex.SqlState is "23505" or "23503" or "23514" or "40001"){return Results.Conflict(new{message="This change conflicts with an existing record or another update. Refresh and try again."});}
         });
         group.MapGet("/school",async(HttpContext http)=>{await using var c=await Open();var a=await Access(http,c);return Results.Ok(new{data=(await Q(c,"SELECT name FROM school_db.schools WHERE id=@s",("s",a.School))).First()});});
-        group.MapGet("/catalog",async(HttpContext http)=>{await using var c=await Open();var a=await Access(http,c);return Results.Ok(new{data=Schemas.Values.Where(s=>s.Read.Contains(a.Role)).Select(s=>new{s.Kind,s.Title,s.Group,s.Fields,canWrite=s.Write.Contains(a.Role)})});});
+        group.MapGet("/catalog",async(HttpContext http)=>{await using var c=await Open();var a=await Access(http,c);return Results.Ok(new{data=Schemas.Values.Where(s=>a.Can(s.Kind+".view")).Select(s=>new{s.Kind,s.Title,s.Group,s.Fields,canWrite=a.Can(s.Kind+".manage")})});});
         group.MapGet("/records/{kind}",async(string kind,HttpContext http,int page=1,string? search=null)=>{
             Require(Schemas.ContainsKey(kind),"Module not found.",404);Require(page>0&&page<100000,"Invalid page.");
-            await using var c=await Open();var a=await Access(http,c);Require(Schemas[kind].Read.Contains(a.Role),"Access denied.",403);
+            await using var c=await Open();var a=await Access(http,c);Require(a.Can(kind+".view"),"Access denied.",403);
             var rows=(await Records(c,a.School,kind)).Where(d=>Readable(kind,d,a)&& (string.IsNullOrEmpty(search)||d.ToJsonString().Contains(search,StringComparison.OrdinalIgnoreCase))).ToList();
             return Results.Ok(new{data=new{data=rows.Skip((page-1)*20).Take(20),totalCount=rows.Count,page,pageSize=20}});
         });
         group.MapPost("/records/{kind}",async(string kind,JsonObject data,HttpContext http)=>await Save(kind,null,data,http));
         group.MapPut("/records/{kind}/{id:guid}",async(string kind,Guid id,JsonObject data,HttpContext http)=>await Save(kind,id,data,http));
         group.MapDelete("/records/{kind}/{id:guid}",async(string kind,Guid id,HttpContext http)=>{
-            Require(Schemas.ContainsKey(kind),"Module not found.",404);await using var c=await Open();var a=await Access(http,c);Require(a.Admin,"Only school administrators may archive records.",403);
+            Require(Schemas.ContainsKey(kind),"Module not found.",404);await using var c=await Open();var a=await Access(http,c);Require(a.Can(kind+".archive"),"Archive permission required.",403);
             Require(!new[]{"academic-years","classes","subjects","fee-structures","exams","marks","school-config","certificates","admissions"}.Contains(kind),"This record is retained for academic or financial history. Change its status instead.",409);
+            Require(kind!="account-links","Profile links are retained. Contact platform support to correct a relationship.",409);
             var old=await Get(c,a.School,kind,id);
             await E(c,"UPDATE suite.records SET archived_at=now(),updated_by=@u,version=version+1 WHERE id=@id AND school_id=@s",("u",a.User),("id",id),("s",a.School));
             return Results.Ok(new{message="Record archived."});
@@ -140,10 +144,10 @@ public static partial class Suite
             foreach(var schema in Schemas.Values){var records=await Records(c,a.School,schema.Kind);result[schema.Kind]=records.Where(d=>Readable(schema.Kind,d,a)).Select(d=>new{id=Text(d,"id"),label=OptionLabel(schema.Kind,d)}).ToList();}
             foreach(var(kind,table)in new[]{("students","student_db.students"),("teachers","teacher_db.teachers"),("parents","parent_db.parents")}){
                 var rows=await Q(c,$"SELECT id::text AS id,first_name || ' ' || last_name AS label FROM {table} WHERE school_id=@s AND deleted_at IS NULL ORDER BY first_name",("s",a.School));
-                result[kind]=rows.Where(d=>a.SchoolWide||(kind=="students"&&a.Students.Contains(Text(d,"id")))||(kind=="teachers"&&a.Teachers.Contains(Text(d,"id")))).ToList();
+                result[kind]=rows.Where(d=>(a.SchoolWide && (a.Can(kind+".view")||Schemas.Values.Any(s=>a.Can(s.Kind+".manage")&&s.Fields.Any(f=>f.Source==kind))))||(kind=="students"&&a.Students.Contains(Text(d,"id")))||(kind=="teachers"&&a.Teachers.Contains(Text(d,"id")))).ToList();
             }
             var users=await Q(c,"SELECT id::text AS id,first_name || ' ' || last_name || ' (' || username || ')' AS label FROM auth_db.users WHERE school_id=@s AND deleted_at IS NULL AND is_active",("s",a.School));
-            if(a.SchoolWide)result["users"]=users;
+            if(a.Can("users.view")||a.Can("account-links.manage")||a.Can("messages.manage"))result["users"]=a.SchoolWide?users:users.Where(u=>Text(u,"id")==a.User.ToString()).ToList();
             else if(a.Role=="Teacher"){
                 var links=await Records(c,a.School,"account-links");var ids=links.Where(l=>a.Students.Contains(Text(l,"studentId"))).Select(l=>Text(l,"userId")).ToHashSet();
                 result["users"]=users.Where(u=>ids.Contains(Text(u,"id"))).ToList();
@@ -161,7 +165,7 @@ public static partial class Suite
     static async Task<IResult> Save(string kind,Guid? id,JsonObject input,HttpContext http){
         Require(Schemas.ContainsKey(kind),"Module not found.",404);await using var c=await Open();var a=await Access(http,c);
         // Authorize before validating: a role that cannot write this module learns nothing from field or reference checks.
-        Require(Schemas[kind].Write.Contains(a.Role),"Your role cannot change this module.",403);
+        Require(a.Can(kind+".manage"),"Your role cannot change this module.",403);
         await using var tx=await c.BeginTransactionAsync();
         await E(c,"SELECT pg_advisory_xact_lock(hashtextextended(@s,0))",("s",a.School.ToString()));
         var old=id.HasValue?await Get(c,a.School,kind,id.Value):null;
@@ -193,6 +197,11 @@ public static partial class Suite
             Require(changed==1,"This record changed since you opened it. Refresh before saving.",409);
         }
         if(kind=="classes")await E(c,"UPDATE student_db.students SET current_class=@label,updated_at=now() WHERE school_id=@s AND id IN(SELECT student_id FROM suite.student_classes WHERE school_id=@s AND class_id=@c)",("label",Label("classes",d)),("s",a.School),("c",id));
+        if(kind=="account-links"){
+            await E(c,"UPDATE auth_db.users SET token_version=token_version+1 WHERE id=@id AND school_id=@s",("id",Id(d,"userId")),("s",a.School));
+            await E(c,"UPDATE auth_db.refresh_tokens SET revoked_at=now() WHERE user_id=@id AND school_id=@s AND revoked_at IS NULL",("id",Id(d,"userId")),("s",a.School));
+            await E(c,"INSERT INTO auth_db.iam_audit(school_id,actor_id,actor_role,action,target_id,old_value,new_value) VALUES(@s,@u,@r,'profile.linked',@id,@old::jsonb,@new::jsonb)",("s",a.School),("u",a.User),("r",http.GetTenant().Role),("id",Id(d,"userId")),("old",old?.ToJsonString()??"null"),("new",d.ToJsonString()));
+        }
         await tx.CommitAsync();return Results.Json(new{data=new{id}},statusCode:old is null?201:200);
     }
     static async Task Reference(NpgsqlConnection c,SchoolAccess a,string source,string value){

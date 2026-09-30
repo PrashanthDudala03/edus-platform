@@ -1,3 +1,4 @@
+import { seedIamSql, clearIamSql } from './iam-fixtures'
 import {test,expect,APIRequestContext,APIResponse,Page} from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import {readFileSync,mkdirSync} from 'node:fs'
@@ -24,6 +25,7 @@ test.describe.serial('Complete school suite',()=>{
   test.setTimeout(180000)
   const role=randomUUID()
   sql("BEGIN; INSERT INTO school_db.schools(id,name) VALUES('"+schoolId+"','Suite QA School'); INSERT INTO auth_db.roles(id,school_id,name) VALUES('"+role+"','"+schoolId+"','Administrator'); INSERT INTO auth_db.users(id,school_id,username,email,password_hash,first_name,last_name,role_id) SELECT '"+adminId+"','"+schoolId+"','suite.administrator','suite-"+schoolId+"@example.test',password_hash,'Suite','Admin','"+role+"' FROM auth_db.users WHERE school_id='"+env.EDUOS_BOOTSTRAP_SCHOOL_ID+"' AND username='"+env.EDUOS_BOOTSTRAP_ADMIN_USERNAME.replaceAll("'","''")+"'; "+['Principal','Teacher','Parent','Student'].map(r=>"INSERT INTO auth_db.roles(id,school_id,name) VALUES(gen_random_uuid(),'"+schoolId+"','"+r+"');").join(' ')+" COMMIT;")
+  sql(seedIamSql(schoolId))
   api=await playwright.request.newContext({baseURL:process.env.EDUOS_TEST_URL||'http://localhost:8080'});await login('Administrator')
   const roles=await good('GET','/roles')
   for(const role of ['Principal','Teacher','Parent','Student']){
@@ -34,7 +36,7 @@ test.describe.serial('Complete school suite',()=>{
  test.afterAll(async()=>{
   await api?.dispose()
   const tables=['suite.documents','suite.acknowledgements','suite.payments','suite.charges','suite.student_classes','suite.records','suite.counters','school_db.attendance','student_db.students','teacher_db.teachers','parent_db.parents','school_db.announcements','auth_db.password_resets','auth_db.refresh_tokens','auth_db.users']
-  sql("BEGIN; "+tables.map(t=>"DELETE FROM "+t+" WHERE school_id='"+schoolId+"';").join(' ')+" DELETE FROM auth_db.role_permissions WHERE role_id IN(SELECT id FROM auth_db.roles WHERE school_id='"+schoolId+"'); DELETE FROM auth_db.roles WHERE school_id='"+schoolId+"'; DELETE FROM school_db.schools WHERE id='"+schoolId+"'; DELETE FROM school_db.audit_logs WHERE school_id='"+schoolId+"'; DELETE FROM suite.audit WHERE school_id='"+schoolId+"'; COMMIT;")
+  sql("BEGIN; "+clearIamSql(schoolId)+tables.map(t=>"DELETE FROM "+t+" WHERE school_id='"+schoolId+"';").join(' ')+" DELETE FROM auth_db.role_permissions WHERE role_id IN(SELECT id FROM auth_db.roles WHERE school_id='"+schoolId+"'); DELETE FROM auth_db.roles WHERE school_id='"+schoolId+"'; DELETE FROM school_db.schools WHERE id='"+schoolId+"'; DELETE FROM school_db.audit_logs WHERE school_id='"+schoolId+"'; DELETE FROM suite.audit WHERE school_id='"+schoolId+"'; COMMIT;")
   for(const id of docs)execFileSync('docker',['compose','exec','-T','school-service','rm','--','/app/documents/'+id.replaceAll('-','')+'.bin'],{cwd:root,stdio:'pipe'})
  })
  test('sets up academics and admits a student once, with class and guardian records',async()=>{
@@ -52,6 +54,7 @@ test.describe.serial('Complete school suite',()=>{
   await create('account-links',{userId:users.Teacher,teacherId:teacher})
   await create('account-links',{userId:users.Parent,studentId:student})
   await create('account-links',{userId:users.Student,studentId:student})
+  for(const role of ['Teacher','Parent','Student'])await login(role)
   await create('school-config',{name:'Suite QA School',address:'12 School Lane',phone:'9000000000',currency:'INR',gradeA:90,gradeB:75,gradeC:60,gradeD:40,printFooter:'School office verification required.'})
  })
  test('enforces tenant and role boundaries on every module and linked profile',async()=>{
@@ -214,12 +217,15 @@ test.describe.serial('Complete school suite',()=>{
   // Only an Administrator may manage accounts, so the acting administrator disables itself and the only other
   // administrator at once. Exactly one request may win; the loser is refused (409) or, if it arrives after its
   // own account was disabled, signed out (401). Either way the school keeps one active administrator.
-  const roles=await good('GET','/roles')
-  const second=(await good('POST','/users',{schoolId,roleId:roles.find((r:any)=>r.name==='Administrator').id,username:'suite.secondadmin',email:'second'+schoolId+'@example.test',firstName:'Second',lastName:'Admin',password},'Administrator',201)).id
+  // Administrators are provisioned by the platform, never by a school administrator, so the second one is seeded directly.
+  const second=randomUUID()
+  sql("INSERT INTO auth_db.users(id,school_id,username,email,password_hash,first_name,last_name,role_id) SELECT '"+second+"','"+schoolId+"','suite.secondadmin','second"+schoolId+"@example.test',password_hash,'Second','Admin',role_id FROM auth_db.users WHERE id='"+adminId+"'")
+  expect((await req('POST','/users',{schoolId,roleId:(await good('GET','/roles')).find((r:any)=>r.name==='Administrator').id,username:'suite.thirdadmin',email:'third'+schoolId+'@example.test',firstName:'Third',lastName:'Admin',password})).status(),'school administrators cannot provision administrators').toBe(403)
+  // Administrator accounts are platform-controlled: a school administrator can disable neither itself nor a peer, so
+  // concurrent attempts both fail and the school keeps every active administrator.
   const statuses=(await Promise.all([adminId,second].map(id=>req('PUT','/users/'+id,{isActive:false})))).map(r=>r.status())
-  expect(statuses.filter(s=>s===200)).toHaveLength(1)
-  expect(statuses.filter(s=>s!==200).every(s=>s===409||s===401)).toBe(true)
-  expect(sql("SELECT 'active='||count(*) FROM auth_db.users u JOIN auth_db.roles r ON r.id=u.role_id WHERE u.school_id='"+schoolId+"' AND u.is_active AND u.deleted_at IS NULL AND r.name='Administrator'")).toContain('active=1')
+  expect(statuses,'administrators are managed by the platform, not by each other').toEqual([403,403])
+  expect(sql("SELECT 'active='||count(*) FROM auth_db.users u JOIN auth_db.roles r ON r.id=u.role_id WHERE u.school_id='"+schoolId+"' AND u.is_active AND u.deleted_at IS NULL AND r.name='Administrator'")).toContain('active=2')
  })
 
 })

@@ -2,7 +2,7 @@ import { LayoutDashboard, GraduationCap, Users, BookOpen, CalendarCheck, Megapho
 import type { User } from './store/auth'
 
 // Presentation only. Every API call is authorized again by the gateway and the owning service.
-export type Role = 'SuperAdmin' | 'Administrator' | 'Principal' | 'Teacher' | 'Parent' | 'Student'
+export type Role = string
 export const SCHOOL_ROLES: Role[] = ['Administrator', 'Principal', 'Teacher', 'Parent', 'Student']
 export const LEADERSHIP: Role[] = ['Administrator', 'Principal']
 
@@ -14,7 +14,7 @@ const homes: Record<Role, string> = {
   SuperAdmin: '/super-admin', Administrator: '/admin', Principal: '/principal',
   Teacher: '/teacher', Parent: '/parent', Student: '/student',
 }
-export const homeFor = (role: string) => homes[role as Role] || '/login'
+export const homeFor = (role: string, scope?: string) => scope==='platform'?'/super-admin':homes[role as Role] || '/suite'
 
 export const portalName: Record<Role, string> = {
   SuperAdmin: 'Super Admin portal', Administrator: 'Administrator portal', Principal: 'Principal portal',

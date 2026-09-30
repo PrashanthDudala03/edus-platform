@@ -11,12 +11,23 @@ public class AuthDbContext : DbContext
     public DbSet<RefreshToken> RefreshTokens { get; set; } = null!;
     public DbSet<Role> Roles { get; set; } = null!;
     public DbSet<RolePermission> RolePermissions { get; set; } = null!;
+    public DbSet<PermissionDefinition> Permissions => Set<PermissionDefinition>();
+    public DbSet<RoleTemplate> Templates => Set<RoleTemplate>();
+    public DbSet<SchoolAccessBoundary> Boundaries => Set<SchoolAccessBoundary>();
+    public DbSet<SignupRequest> Signups => Set<SignupRequest>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
 
         modelBuilder.HasDefaultSchema("auth_db");
+        modelBuilder.Entity<PermissionDefinition>().ToTable("permissions").HasKey(x => x.Key);
+        modelBuilder.Entity<RoleTemplate>().ToTable("role_templates").HasKey(x => x.Id);
+        modelBuilder.Entity<SchoolAccessBoundary>().ToTable("school_access").HasKey(x => x.SchoolId);
+        modelBuilder.Entity<SignupRequest>().ToTable("signup_requests").HasKey(x => x.Id);
+        foreach (var type in new[] { typeof(PermissionDefinition), typeof(RoleTemplate), typeof(SchoolAccessBoundary), typeof(SignupRequest) })
+            foreach (var property in modelBuilder.Entity(type).Metadata.GetProperties())
+                property.SetColumnName(System.Text.RegularExpressions.Regex.Replace(property.Name, "(?<!^)([A-Z])", "_$1").ToLowerInvariant());
 
         // Users table (map to lowercase 'users' created by init-db.sql)
         modelBuilder.Entity<User>(entity =>
@@ -56,6 +67,10 @@ public class AuthDbContext : DbContext
             entity.Property(role => role.Id).HasColumnName("id");
             entity.Property(role => role.SchoolId).HasColumnName("school_id");
             entity.Property(role => role.Name).HasColumnName("name").HasMaxLength(100);
+            entity.Property(role => role.TemplateId).HasColumnName("template_id");
+            entity.Property(role => role.Enabled).HasColumnName("enabled");
+            entity.Property(role => role.Assignable).HasColumnName("assignable");
+            entity.Property(role => role.Description).HasColumnName("description");
             entity.HasMany(role => role.Permissions).WithOne().HasForeignKey(permission => permission.RoleId);
         });
 

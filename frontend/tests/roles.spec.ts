@@ -1,3 +1,4 @@
+import { seedIamSql, clearIamSql } from './iam-fixtures'
 import {test,expect,APIRequestContext,APIResponse,Page} from '@playwright/test'
 import {readFileSync,mkdirSync} from 'node:fs'
 import {execFileSync} from 'node:child_process'
@@ -15,10 +16,10 @@ type Role='SuperAdmin'|'Administrator'|'Principal'|'Teacher'|'Parent'|'Student'
 const demo:Record<Role,{user:string,home:string,heading:RegExp,has:string[],lacks:string[]}>={
  SuperAdmin:{user:'superadmin@eduos.local',home:'/super-admin',heading:/Platform overview/,has:['Schools'],lacks:['Student records','All school modules']},
  Administrator:{user:'admin@demo.eduos.local',home:'/admin',heading:/^Good (morning|afternoon|evening), Asha\.$/,has:['School settings & accounts','Fee structures','Class allocation & promotion'],lacks:['Schools']},
- Principal:{user:'principal@demo.eduos.local',home:'/principal',heading:/^Good (morning|afternoon|evening), Meera\.$/,has:['Staff attendance','Fees (view only)','Leave approvals'],lacks:['School settings & accounts','Fee structures','Class allocation & promotion']},
+ Principal:{user:'principal@demo.eduos.local',home:'/principal',heading:/^Good (morning|afternoon|evening), Meera\.$/,has:['Staff attendance','Fees (view only)','Leave approvals','Fee structures'],lacks:['School settings & accounts','Access control','Class allocation & promotion']},
  Teacher:{user:'teacher@demo.eduos.local',home:'/teacher',heading:/^Welcome, Ravi\.$/,has:['My classes','Attendance','Marks'],lacks:['Fees & receipts','Student records','School settings & accounts']},
  Parent:{user:'parent@demo.eduos.local',home:'/parent',heading:/^Hello, Neha\.$/,has:['Fees & receipts','Results','Documents & certificates'],lacks:['Student records','Attendance','Marks']},
- Student:{user:'student@demo.eduos.local',home:'/student',heading:/^Hi, Aarav\.$/,has:['My results','My submissions','Timetable'],lacks:['Fees & receipts','Student records','Attendance']},
+ Student:{user:'student@demo.eduos.local',home:'/student',heading:/^Hi, Aarav\.$/,has:['My results','My submissions','Timetable','Fees & receipts'],lacks:['Access control','Student records','Attendance']},
 }
 const roles=Object.keys(demo) as Role[]
 const forbidden='This area isn’t available for your role'
@@ -95,7 +96,7 @@ test.describe.serial('Six role portals against the seeded demo school',()=>{
   await api?.dispose()
   if(!B.id)return
   const tables=['suite.documents','suite.acknowledgements','suite.payments','suite.charges','suite.student_classes','suite.records','suite.counters','school_db.attendance','student_db.students','teacher_db.teachers','parent_db.parents','school_db.announcements','auth_db.password_resets','auth_db.refresh_tokens','auth_db.users']
-  sql("BEGIN; "+tables.map(t=>"DELETE FROM "+t+" WHERE school_id='"+B.id+"';").join(' ')+" DELETE FROM auth_db.role_permissions WHERE role_id IN(SELECT id FROM auth_db.roles WHERE school_id='"+B.id+"'); DELETE FROM auth_db.roles WHERE school_id='"+B.id+"'; DELETE FROM school_db.schools WHERE id='"+B.id+"'; DELETE FROM school_db.audit_logs WHERE school_id='"+B.id+"'; DELETE FROM suite.audit WHERE school_id='"+B.id+"'; COMMIT;")
+  sql("BEGIN; "+clearIamSql(B.id)+tables.map(t=>"DELETE FROM "+t+" WHERE school_id='"+B.id+"';").join(' ')+" DELETE FROM auth_db.role_permissions WHERE role_id IN(SELECT id FROM auth_db.roles WHERE school_id='"+B.id+"'); DELETE FROM auth_db.roles WHERE school_id='"+B.id+"'; DELETE FROM school_db.schools WHERE id='"+B.id+"'; DELETE FROM school_db.audit_logs WHERE school_id='"+B.id+"'; DELETE FROM suite.audit WHERE school_id='"+B.id+"'; COMMIT;")
   if(ids.documentB)execFileSync('docker',['compose','exec','-T','school-service','rm','-f','--','/app/documents/'+ids.documentB.replaceAll('-','')+'.bin'],{cwd:root,stdio:'pipe'})
  })
 

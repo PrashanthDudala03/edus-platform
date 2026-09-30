@@ -1053,6 +1053,18 @@
         "required": false,
         "source": "teachers",
         "options": null
+      },
+      {
+        "key": "relationship",
+        "label": "Verified relationship",
+        "type": "select",
+        "required": false,
+        "source": null,
+        "options": [
+          "parent",
+          "student",
+          "teacher"
+        ]
       }
     ],
     "read": [

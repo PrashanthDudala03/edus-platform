@@ -50,6 +50,8 @@ public class JwtService : IJwtService
             new Claim(ClaimTypes.Email, user.Email),
             new Claim("school_id", user.SchoolId.ToString()),
             new Claim("token_version", user.TokenVersion.ToString()),
+            new Claim("data_scope", user.DataScope),
+            new Claim("role_id", user.RoleId?.ToString() ?? ""),
             new Claim("first_name", user.FirstName ?? string.Empty),
             new Claim("last_name", user.LastName ?? string.Empty),
         };
@@ -57,9 +59,9 @@ public class JwtService : IJwtService
         if (user.Role is not null)
         {
             claims.Add(new Claim(ClaimTypes.Role, user.Role.Name));
-            foreach (var permission in user.Role.Permissions)
+            foreach (var permission in user.EffectivePermissions)
             {
-                claims.Add(new Claim("permission", permission.PermissionKey));
+                claims.Add(new Claim("permission", permission));
             }
         }
 

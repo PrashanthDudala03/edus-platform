@@ -1,5 +1,10 @@
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom'
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
+import { useEffect } from 'react'
+import client from './api/client'
+import { canVisit } from './access'
+import AccessControlPage from './pages/AccessControlPage'
+import SignupPage from './pages/SignupPage'
 import { useAuthStore } from './store/auth'
 import { Shell } from './components/Shell'
 import LoginPage from './pages/LoginPage'
@@ -15,23 +20,27 @@ import { ForbiddenPage } from './pages/ForbiddenPage'
 import { homeFor, roleOf, LEADERSHIP, SCHOOL_ROLES, type Role } from './roles'
 const queryClient = new QueryClient({defaultOptions:{queries:{retry:1,staleTime:15000,refetchOnWindowFocus:false}}})
 useAuthStore.subscribe((state, previous) => {
-  if (state.user?.id !== previous.user?.id || state.user?.schoolId !== previous.user?.schoolId) queryClient.clear()
+  if (state.user?.id !== previous.user?.id || state.user?.schoolId !== previous.user?.schoolId || JSON.stringify(state.user?.permissions)!==JSON.stringify(previous.user?.permissions)) queryClient.clear()
 })
 function Protected() {
   const {isAuthenticated,user}=useAuthStore()
+  const me=useQuery({queryKey:["effective-session",user?.id],enabled:isAuthenticated&&!!user,refetchInterval:15000,queryFn:async()=>(await client.get("/control/me")).data.data})
+  useEffect(()=>{if(me.data)useAuthStore.setState({user:me.data})},[me.data])
   return isAuthenticated && user ? <Shell><Outlet /></Shell> : <Navigate to="/login" replace />
 }
 // Hides pages from roles that cannot use them. The API refuses those roles independently.
-function RoleGate({allow}:{allow:Role[]}) {
-  const role=roleOf(useAuthStore(s=>s.user))
-  return allow.includes(role as Role) ? <Outlet /> : <ForbiddenPage />
+function RoleGate(_props:{allow:Role[]}) {
+  const user=useAuthStore(s=>s.user),location=useLocation()
+  return canVisit(user,location.pathname) ? <Outlet /> : <ForbiddenPage />
 }
-function Home() { return <Navigate to={homeFor(roleOf(useAuthStore(s=>s.user)))} replace /> }
+function Home() { const user=useAuthStore(s=>s.user);return <Navigate to={homeFor(roleOf(user),user?.dataScope)} replace /> }
 export default function App() {
   return <QueryClientProvider client={queryClient}><BrowserRouter><Routes>
     <Route path="/login" element={<LoginPage />} />
+    <Route path="/signup" element={<SignupPage />} />
     <Route element={<Protected />}>
       <Route index element={<Home />} />
+      <Route element={<RoleGate allow={[]} />}><Route path="control/*" element={<AccessControlPage/>}/><Route path="super-admin/access-control" element={<AccessControlPage/>}/></Route>
       <Route element={<RoleGate allow={['SuperAdmin']} />}>
         <Route path="super-admin" element={<PlatformDashboard />} />
         <Route path="super-admin/schools" element={<SchoolsPage />} />

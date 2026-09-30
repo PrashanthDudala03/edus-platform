@@ -1,0 +1,732 @@
+[
+  {
+    "key": "platform.manage",
+    "group": "Platform",
+    "defaults": [
+      "SuperAdmin"
+    ]
+  },
+  {
+    "key": "academic-years.view",
+    "group": "Academics",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ]
+  },
+  {
+    "key": "academic-years.manage",
+    "group": "Academics",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "classes.view",
+    "group": "Academics",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ]
+  },
+  {
+    "key": "classes.manage",
+    "group": "Academics",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "subjects.view",
+    "group": "Academics",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ]
+  },
+  {
+    "key": "subjects.manage",
+    "group": "Academics",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "teaching-assignments.view",
+    "group": "Academics",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher"
+    ]
+  },
+  {
+    "key": "teaching-assignments.manage",
+    "group": "Academics",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "teaching-assignments.archive",
+    "group": "Academics",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "admissions.view",
+    "group": "Admissions",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "admissions.manage",
+    "group": "Admissions",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "staff-attendance.view",
+    "group": "Attendance",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher"
+    ]
+  },
+  {
+    "key": "staff-attendance.manage",
+    "group": "Attendance",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "staff-attendance.archive",
+    "group": "Attendance",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "leave-requests.view",
+    "group": "Attendance",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher"
+    ]
+  },
+  {
+    "key": "leave-requests.manage",
+    "group": "Attendance",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher"
+    ]
+  },
+  {
+    "key": "leave-requests.archive",
+    "group": "Attendance",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "fee-structures.view",
+    "group": "Fees",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "fee-structures.manage",
+    "group": "Fees",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "exams.view",
+    "group": "Exams",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ]
+  },
+  {
+    "key": "exams.manage",
+    "group": "Exams",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "marks.view",
+    "group": "Exams",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ]
+  },
+  {
+    "key": "marks.manage",
+    "group": "Exams",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher"
+    ]
+  },
+  {
+    "key": "circulars.view",
+    "group": "Communication",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ]
+  },
+  {
+    "key": "circulars.manage",
+    "group": "Communication",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "circulars.archive",
+    "group": "Communication",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "calendar.view",
+    "group": "Communication",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ]
+  },
+  {
+    "key": "calendar.manage",
+    "group": "Communication",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "calendar.archive",
+    "group": "Communication",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "messages.view",
+    "group": "Communication",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ]
+  },
+  {
+    "key": "messages.manage",
+    "group": "Communication",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher"
+    ]
+  },
+  {
+    "key": "messages.archive",
+    "group": "Communication",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "homework.view",
+    "group": "Learning",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ]
+  },
+  {
+    "key": "homework.manage",
+    "group": "Learning",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher"
+    ]
+  },
+  {
+    "key": "homework.archive",
+    "group": "Learning",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "submissions.view",
+    "group": "Learning",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ]
+  },
+  {
+    "key": "submissions.manage",
+    "group": "Learning",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ]
+  },
+  {
+    "key": "submissions.archive",
+    "group": "Learning",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "timetable.view",
+    "group": "Learning",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ]
+  },
+  {
+    "key": "timetable.manage",
+    "group": "Learning",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "timetable.archive",
+    "group": "Learning",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "certificates.view",
+    "group": "Records",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ]
+  },
+  {
+    "key": "certificates.manage",
+    "group": "Records",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "account-links.view",
+    "group": "Security",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "account-links.manage",
+    "group": "Security",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "account-links.archive",
+    "group": "Security",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "school-config.view",
+    "group": "Security",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "school-config.manage",
+    "group": "Security",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "students.view",
+    "group": "Students",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "students.create",
+    "group": "Students",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "students.update",
+    "group": "Students",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "students.archive",
+    "group": "Students",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "teachers.view",
+    "group": "Teachers",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "teachers.create",
+    "group": "Teachers",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "teachers.update",
+    "group": "Teachers",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "teachers.archive",
+    "group": "Teachers",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "parents.view",
+    "group": "Parents",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "parents.create",
+    "group": "Parents",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "parents.update",
+    "group": "Parents",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "parents.archive",
+    "group": "Parents",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "overview.view",
+    "group": "Dashboard",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "school.settings.view",
+    "group": "Settings",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "school.settings.manage",
+    "group": "Settings",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "attendance.view",
+    "group": "Attendance",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ]
+  },
+  {
+    "key": "attendance.mark",
+    "group": "Attendance",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher"
+    ]
+  },
+  {
+    "key": "fees.view",
+    "group": "Fees",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Parent",
+      "Student"
+    ]
+  },
+  {
+    "key": "fees.manage",
+    "group": "Fees",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "fees.collect",
+    "group": "Fees",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "reports.view",
+    "group": "Reports",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ]
+  },
+  {
+    "key": "documents.view",
+    "group": "Documents",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ]
+  },
+  {
+    "key": "documents.upload",
+    "group": "Documents",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ]
+  },
+  {
+    "key": "allocations.view",
+    "group": "Academics",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ]
+  },
+  {
+    "key": "allocations.manage",
+    "group": "Academics",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "announcements.view",
+    "group": "Communication",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "announcements.manage",
+    "group": "Communication",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "audit.view",
+    "group": "Reports",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "circulars.acknowledge",
+    "group": "Communication",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ]
+  },
+  {
+    "key": "users.view",
+    "group": "Access control",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "users.create",
+    "group": "Access control",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "users.update",
+    "group": "Access control",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "users.disable",
+    "group": "Access control",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "roles.view",
+    "group": "Access control",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "roles.manage",
+    "group": "Access control",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "roles.assign",
+    "group": "Access control",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "permissions.view",
+    "group": "Access control",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "signup.review",
+    "group": "Access control",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "access-history.view",
+    "group": "Access control",
+    "defaults": [
+      "Administrator"
+    ]
+  }
+]

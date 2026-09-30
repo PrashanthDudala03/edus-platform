@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 
 export interface User {
+  dataScope?: string
   id: string
   username: string
   email: string

@@ -33,23 +33,28 @@ public class UserRepository : IUserRepository
             .FirstOrDefaultAsync(u => u.SchoolId == schoolId && u.Username == username && u.IsActive);
     }
 
-    public Task<List<User>> FindLoginCandidatesAsync(Guid? schoolId, string login) =>
-        _context.Users
+    public async Task<List<User>> FindLoginCandidatesAsync(Guid? schoolId, string login) {
+        var users = await _context.Users
             .Include(u => u.Role)
                 .ThenInclude(role => role!.Permissions)
             .Where(u => (schoolId == null || u.SchoolId == schoolId) && (u.Username == login || u.Email == login))
             .OrderBy(u => u.CreatedAt)
             .Take(10)
             .ToListAsync();
+        foreach(var user in users) await Iam.Hydrate(_context,user);
+        return users;
+    }
 
     public Task<bool> IsSchoolActiveAsync(Guid schoolId) => RoleModel.SchoolIsActive(_context, schoolId);
 
     public async Task<User?> GetByIdAsync(Guid userId)
     {
-        return await _context.Users
+        var user = await _context.Users
             .Include(u => u.Role)
                 .ThenInclude(role => role!.Permissions)
             .FirstOrDefaultAsync(u => u.Id == userId && u.IsActive);
+        if(user != null) await Iam.Hydrate(_context,user);
+        return user?.CanSignIn == true ? user : null;
     }
 
     public async Task<User?> GetByEmailAsync(Guid schoolId, string email)
@@ -68,7 +73,8 @@ public class UserRepository : IUserRepository
 
     public async Task UpdateAsync(User user)
     {
-        _context.Users.Update(user);
+        // Login only updates LastLoginAt; never overwrite a concurrent authorization version.
+        _context.Entry(user).Property(u=>u.LastLoginAt).IsModified=true;
         await _context.SaveChangesAsync();
     }
 

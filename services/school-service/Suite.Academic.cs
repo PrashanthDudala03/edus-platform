@@ -40,11 +40,15 @@ public static partial class Suite
             var assignments=await Records(c,a.School,"teaching-assignments");Require(assignments.Any(x=>Text(x,"classId")==Text(d,"classId")&&Text(x,"subjectId")==Text(d,"subjectId")&&Text(x,"teacherId")==Text(d,"teacherId")),"Create the matching teacher / class / subject assignment first.");
         }
         if(kind=="account-links"){
+            Require(old is null || Text(old,"userId")==Text(d,"userId"),"A profile link cannot be transferred to another account.");
             Require((Text(d,"studentId")!="")^(Text(d,"teacherId")!=""),"Link either one student or one teacher per access link.");
-            var user=await Q(c,"SELECT r.name AS role FROM auth_db.users u JOIN auth_db.roles r ON r.id=u.role_id WHERE u.id=@id AND u.school_id=@s",("id",Id(d,"userId")),("s",a.School));
-            var role=Text(user[0],"role");Require(Text(d,"teacherId")!=""?role=="Teacher":role is "Parent" or "Student","Account role does not match this record.");
+            var user=await Q(c,"SELECT t.data_scope AS role FROM auth_db.users u JOIN auth_db.roles r ON r.id=u.role_id JOIN auth_db.role_templates t ON t.id=r.template_id WHERE u.id=@id AND u.school_id=@s",("id",Id(d,"userId")),("s",a.School));
+            var role=Text(user[0],"role");
+            if(Text(d,"relationship")=="")d["relationship"]=Text(d,"teacherId")!=""?"teacher":role=="student"?"student":"parent";
+            Require(Text(d,"teacherId")!=""?Text(d,"relationship")=="teacher":Text(d,"relationship") is "parent" or "student","Relationship does not match the linked profile.");
+            Require(old is null || Text(old,"relationship")==Text(d,"relationship"),"Create a new verified link to change relationship type.");
             Unique("userId","studentId","teacherId");
-            if(role=="Student"||role=="Teacher")Require(!peers.Any(p=>Text(p,"userId")==Text(d,"userId")),"This account already has a profile link.",409);
+            if(Text(d,"relationship")=="student"||Text(d,"teacherId")!="")Require(!peers.Any(p=>Text(p,"userId")==Text(d,"userId") && Text(p,"relationship")==Text(d,"relationship")),"This account already has a profile link.",409);
         }
         if(kind=="school-config"){
             Require(peers.Count==0,"Edit the existing school configuration.",409);

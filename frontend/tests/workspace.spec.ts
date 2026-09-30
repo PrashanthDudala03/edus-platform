@@ -1,3 +1,4 @@
+import { seedIamSql, clearIamSql } from './iam-fixtures'
 import { test, expect, APIRequestContext, APIResponse } from '@playwright/test'
 import { readFileSync, mkdirSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
@@ -19,6 +20,7 @@ test.describe.serial('School workspace against real Docker services',()=>{
  test.beforeAll(async({playwright})=>{
   test.setTimeout(180000)
   sql("BEGIN; INSERT INTO school_db.schools(id,name) VALUES('"+schoolId+"','QA School'); INSERT INTO auth_db.roles(id,school_id,name) VALUES('"+roleId+"','"+schoolId+"','Administrator'); INSERT INTO auth_db.roles(id,school_id,name) VALUES(gen_random_uuid(),'"+schoolId+"','Principal'); INSERT INTO auth_db.users(id,school_id,username,email,password_hash,first_name,last_name,role_id) SELECT '"+userId+"','"+schoolId+"','qa.admin','qa-"+schoolId+"@example.test',password_hash,'QA','Administrator','"+roleId+"' FROM auth_db.users WHERE school_id='"+otherSchool+"' AND username='"+env.EDUOS_BOOTSTRAP_ADMIN_USERNAME.replaceAll("'","''")+"'; COMMIT;")
+  sql(seedIamSql(schoolId))
   api=await playwright.request.newContext({baseURL:process.env.EDUOS_TEST_URL||'http://localhost:8080'})
   const response=await throttled(()=>api.post('/api/v1/auth/login',{data:{username:'qa.admin',password,schoolId}}))
   expect(response.status()).toBe(200)
@@ -27,7 +29,7 @@ test.describe.serial('School workspace against real Docker services',()=>{
  test.afterAll(async()=>{
   await api?.dispose()
   // Remove only this run's isolated, randomly named QA tenant and records.
-  sql("BEGIN; DELETE FROM school_db.attendance WHERE school_id='"+schoolId+"'; DELETE FROM student_db.students WHERE school_id='"+schoolId+"'; DELETE FROM teacher_db.teachers WHERE school_id='"+schoolId+"'; DELETE FROM parent_db.parents WHERE school_id='"+schoolId+"'; DELETE FROM school_db.announcements WHERE school_id='"+schoolId+"'; DELETE FROM auth_db.refresh_tokens WHERE school_id='"+schoolId+"'; DELETE FROM auth_db.users WHERE school_id='"+schoolId+"'; DELETE FROM auth_db.role_permissions WHERE role_id IN(SELECT id FROM auth_db.roles WHERE school_id='"+schoolId+"'); DELETE FROM auth_db.roles WHERE school_id='"+schoolId+"'; DELETE FROM school_db.schools WHERE id='"+schoolId+"'; DELETE FROM school_db.audit_logs WHERE school_id='"+schoolId+"'; COMMIT;")
+  sql("BEGIN; "+clearIamSql(schoolId)+"DELETE FROM school_db.attendance WHERE school_id='"+schoolId+"'; DELETE FROM student_db.students WHERE school_id='"+schoolId+"'; DELETE FROM teacher_db.teachers WHERE school_id='"+schoolId+"'; DELETE FROM parent_db.parents WHERE school_id='"+schoolId+"'; DELETE FROM school_db.announcements WHERE school_id='"+schoolId+"'; DELETE FROM auth_db.refresh_tokens WHERE school_id='"+schoolId+"'; DELETE FROM auth_db.users WHERE school_id='"+schoolId+"'; DELETE FROM auth_db.role_permissions WHERE role_id IN(SELECT id FROM auth_db.roles WHERE school_id='"+schoolId+"'); DELETE FROM auth_db.roles WHERE school_id='"+schoolId+"'; DELETE FROM school_db.schools WHERE id='"+schoolId+"'; DELETE FROM school_db.audit_logs WHERE school_id='"+schoolId+"'; COMMIT;")
  })
  test('protects anonymous routes, school scope, malformed JSON, and duplicate scope',async()=>{
   expect((await api.get('/api/v1/students')).status()).toBe(401)
@@ -93,8 +95,8 @@ test.describe.serial('School workspace against real Docker services',()=>{
   expect((await api.put('/api/v1/users/'+id,{headers:headers(),data:{isActive:false}})).status()).toBe(200)
   expect((await api.get('/api/v1/students',{headers:{Authorization:'Bearer '+session.accessToken}})).status()).toBe(401)
   expect((await api.post('/api/v1/auth/refresh',{data:{refreshToken:session.refreshToken}})).status()).toBe(401)
-  expect((await api.put('/api/v1/users/'+userId,{headers:headers(),data:{isActive:false}})).status()).toBe(409)
-  expect((await api.delete('/api/v1/users/'+userId,{headers:headers()})).status()).toBe(409)
+  expect((await api.put('/api/v1/users/'+userId,{headers:headers(),data:{isActive:false}})).status()).toBe(403)
+  expect((await api.delete('/api/v1/users/'+userId,{headers:headers()})).status()).toBe(403)
  })
  test('desktop browser supports sign in, editing, attendance, noticeboard, and reload',async({page})=>{
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message))
