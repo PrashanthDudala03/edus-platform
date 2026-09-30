@@ -1,3 +1,4 @@
+import { seedIamSql, clearIamSql } from './iam-fixtures'
 import {test,expect,APIRequestContext,APIResponse} from '@playwright/test'
 import {readFileSync} from 'node:fs'
 import {execFileSync} from 'node:child_process'
@@ -26,6 +27,7 @@ async function login(s:School,role:string,pw=password){const r=await loginReques
 async function bootstrap(s:School,signInRoles:string[]){
  const roleId=randomUUID()
  sql("BEGIN; INSERT INTO school_db.schools(id,name) VALUES('"+s.id+"','Security QA "+s.tag+"'); INSERT INTO auth_db.roles(id,school_id,name) VALUES('"+roleId+"','"+s.id+"','Administrator'); "+['Principal','Teacher','Parent','Student'].map(r=>"INSERT INTO auth_db.roles(id,school_id,name) VALUES(gen_random_uuid(),'"+s.id+"','"+r+"');").join(' ')+" INSERT INTO auth_db.users(id,school_id,username,email,password_hash,first_name,last_name,role_id) SELECT '"+s.adminId+"','"+s.id+"','"+username(s,'Administrator')+"','sec-"+s.id+"@example.test',password_hash,'Security','Admin','"+roleId+"' FROM auth_db.users WHERE school_id='"+env.EDUOS_BOOTSTRAP_SCHOOL_ID+"' AND username='"+env.EDUOS_BOOTSTRAP_ADMIN_USERNAME.replaceAll("'","''")+"'; COMMIT;")
+  sql(seedIamSql(s.id))
  await login(s,'Administrator')
  const roles=await ok(s,'Administrator','GET','/roles')
  for(const role of lower){
@@ -43,6 +45,7 @@ async function bootstrap(s:School,signInRoles:string[]){
  await create('account-links',{userId:s.users.Teacher,teacherId:s.teacher})
  await create('account-links',{userId:s.users.Parent,studentId:s.student})
  await create('account-links',{userId:s.users.Student,studentId:s.student})
+ for(const role of signInRoles.filter(r=>r!=='Administrator'))await login(s,role)
  s.circular=await create('circulars',{title:'Notice '+s.tag,message:'Read and acknowledge.',audience:'All',dueDate:day})
  s.homework=await create('homework',{title:'Fractions',classId:s.cl,subjectId:s.subject,dueDate:day,instructions:'Solve the worksheet.'},signInRoles.includes('Teacher')?'Teacher':'Administrator')
  s.certificate=await create('certificates',{studentId:s.student,type:'Bonafide certificate',issuedOn:day,remarks:'Verification.'})
@@ -69,7 +72,7 @@ test.describe.serial('Security boundaries against real Docker services',()=>{
   await api?.dispose()
   const tables=['suite.documents','suite.acknowledgements','suite.payments','suite.charges','suite.student_classes','suite.records','suite.counters','school_db.attendance','student_db.students','teacher_db.teachers','parent_db.parents','school_db.announcements','auth_db.password_resets','auth_db.refresh_tokens','auth_db.users']
   for(const s of [A,B]){
-   sql("BEGIN; "+tables.map(t=>"DELETE FROM "+t+" WHERE school_id='"+s.id+"';").join(' ')+" DELETE FROM auth_db.role_permissions WHERE role_id IN(SELECT id FROM auth_db.roles WHERE school_id='"+s.id+"'); DELETE FROM auth_db.roles WHERE school_id='"+s.id+"'; DELETE FROM school_db.schools WHERE id='"+s.id+"'; DELETE FROM school_db.audit_logs WHERE school_id='"+s.id+"'; DELETE FROM suite.audit WHERE school_id='"+s.id+"'; COMMIT;")
+   sql("BEGIN; "+clearIamSql(s.id)+tables.map(t=>"DELETE FROM "+t+" WHERE school_id='"+s.id+"';").join(' ')+" DELETE FROM auth_db.role_permissions WHERE role_id IN(SELECT id FROM auth_db.roles WHERE school_id='"+s.id+"'); DELETE FROM auth_db.roles WHERE school_id='"+s.id+"'; DELETE FROM school_db.schools WHERE id='"+s.id+"'; DELETE FROM school_db.audit_logs WHERE school_id='"+s.id+"'; DELETE FROM suite.audit WHERE school_id='"+s.id+"'; COMMIT;")
    if(s.document)execFileSync('docker',['compose','exec','-T','school-service','rm','-f','--','/app/documents/'+s.document.replaceAll('-','')+'.bin'],{cwd:root,stdio:'pipe'})
   }
  })

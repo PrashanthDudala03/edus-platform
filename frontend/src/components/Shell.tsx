@@ -1,15 +1,18 @@
 import { ReactNode, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { GraduationCap, LogOut, Menu, X, ArrowUpRight } from 'lucide-react'
+import { GraduationCap, LogOut, Menu, X, ArrowUpRight, ShieldCheck } from 'lucide-react'
 import { useAuthStore } from '../store/auth'
+import { canVisit } from '../access'
 import { authAPI } from '../api/auth'
 import client from '../api/client'
 import { homeFor, isLeadership, navigation, portalName, roleOf, type Role } from '../roles'
 export function Shell({children}:{children:ReactNode}) {
  const [open,setOpen]=useState(false),[menuSearch,setMenuSearch]=useState("")
  const {user,refreshToken,clearAuth}=useAuthStore()
- const role=roleOf(user) as Role,sections=navigation[role]||[],home=homeFor(role),platform=role==='SuperAdmin'
+ const role=roleOf(user) as Role,home=homeFor(role,user?.dataScope),platform=user?.dataScope==='platform'
+ const seen=new Set<string>()
+ const sections=(platform?[...navigation.SuperAdmin,{title:'Governance',links:[['/super-admin/access-control','Access control',ShieldCheck] as const]}]:[...(navigation[role]||[]),...Object.values(navigation).flat(),{title:'Access control',links:[['/control','Access control',ShieldCheck] as const]}]).map(s=>({...s,links:s.links.filter(([path])=>{if(seen.has(path)||!canVisit(user,path)||(['/admin','/principal','/teacher','/parent','/student'].includes(path)&&path!==home))return false;seen.add(path);return true})})).filter(s=>s.links.length)
  const cache=useQueryClient(),navigate=useNavigate(),location=useLocation()
  const school=useQuery({queryKey:['school',user?.schoolId,role],enabled:!platform,queryFn:async()=>(await client.get(isLeadership(role)?'/schools/'+user?.schoolId:'/suite/school')).data.data})
  const links=sections.flatMap(s=>s.links)

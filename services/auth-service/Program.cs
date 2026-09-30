@@ -69,7 +69,16 @@ builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 builder.Services.AddHealthChecks();
 
 // Account and session endpoints verify the caller's access token with the shared rules.
-builder.Services.AddEduOSAuthentication(builder.Configuration);
+builder.Services.AddEduOSAuthentication(builder.Configuration, events => {
+    events.OnTokenValidated = async context => {
+        var db=context.HttpContext.RequestServices.GetRequiredService<AuthDbContext>();
+        if(!TenantContext.TryFrom(context.Principal!,out var tenant)){context.Fail("Invalid scope.");return;}
+        var user=await db.Users.Include(u=>u.Role).SingleOrDefaultAsync(u=>u.Id==tenant.UserId && u.SchoolId==tenant.SchoolId && u.IsActive);
+        if(user!=null)await Iam.Hydrate(db,user);
+        if(user==null || !user.CanSignIn ||user.Role?.Name!=tenant.Role || context.Principal!.FindFirst("token_version")?.Value!=user.TokenVersion.ToString() || !await RoleModel.SchoolIsActive(db,tenant.SchoolId))
+            context.Fail("Account access changed.");
+    };
+});
 
 var app = builder.Build();
 
@@ -148,6 +157,7 @@ using (var scope = app.Services.CreateScope())
             await db.SaveChangesAsync();
         }
         await RoleModel.ProvisionPlatformAdmin(db, builder.Configuration);
+        await Iam.Initialize(db);
         Log.Information("Database schema verified");
     }
     catch (Exception ex)
@@ -157,9 +167,9 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-app.Use(async (context,next)=>{try{await next();}catch(DbUpdateException){context.Response.StatusCode=409;await context.Response.WriteAsJsonAsync(new{message="A record with these details already exists or the update conflicts with another change."});}});
+app.Use(async (context,next)=>{try{await next();}catch(IamError ex){context.Response.StatusCode=ex.Status;await context.Response.WriteAsJsonAsync(new{message=ex.Message});}catch(DbUpdateException){context.Response.StatusCode=409;await context.Response.WriteAsJsonAsync(new{message="A record with these details already exists or the update conflicts with another change."});}});
 app.UseRouting();
-app.UseEduOSAuthorization("/api", "/api/health", "/api/auth/login", "/api/auth/refresh", "/api/auth/reset-password");
+app.UseEduOSAuthorization("/api", "/api/health", "/api/auth/login", "/api/auth/refresh", "/api/auth/reset-password", "/api/auth/signup");
 
 // Health endpoint - return Prometheus metrics format
 app.MapGet("/api/health", async (AuthDbContext db) => {try { return await db.Database.CanConnectAsync() ? Results.Ok(new {status="ready"}) : Results.StatusCode(503); } catch { return Results.StatusCode(503); }}).AllowAnonymous();
@@ -181,15 +191,27 @@ app.MapGet("/api/roles", async (string? schoolId, AuthDbContext db) =>
 
 // Auth endpoints: login and refresh are the only anonymous account operations besides password recovery.
 var publicAuth = app.MapGroup("/api/auth").AllowAnonymous();
-publicAuth.MapPost("/login", async (LoginRequest request, IMediator mediator) =>
+publicAuth.MapPost("/login", async (LoginRequest request, IMediator mediator, AuthDbContext db) =>
 {
     try
     {
+        await using var tx=await db.Database.BeginTransactionAsync(); await Iam.SharedLock(db);
         var command = new LoginCommand(
             request.Username,
             request.Password,
             request.SchoolId ?? string.Empty);
-        var result = await mediator.Send(command);
+        JwtTokenResponse result;
+        try { result = await mediator.Send(command); }
+        catch (InvalidOperationException)
+        {
+            // Only failed credentials can belong to an unapproved signup, so successful logins skip these bcrypt checks.
+            var pending=await db.Signups.Where(s=>s.Email==request.Username.Trim().ToLower() && (s.Status=="Pending"||s.Status=="Rejected")).OrderByDescending(s=>s.CreatedAt).Take(10).ToListAsync();
+            var accessRequest=pending.FirstOrDefault(s=>BCrypt.Net.BCrypt.Verify(request.Password,s.PasswordHash));
+            if(accessRequest!=null && !await db.Users.AnyAsync(u=>u.SchoolId==accessRequest.SchoolId&&u.Email==accessRequest.Email))
+                return Results.Json(new{message=accessRequest.Status=="Pending"?"Your account is awaiting school administrator approval.":"Your access request was not approved. Contact your school administrator."},statusCode:403);
+            throw;
+        }
+        await tx.CommitAsync();
         return Results.Ok(new { statusCode = 200, data = result });
     }
     catch (FluentValidation.ValidationException ex)
@@ -219,6 +241,7 @@ publicAuth.MapPost("/refresh", async (RefreshRequest request, IMediator mediator
     try
     {
         await using var tx=await db.Database.BeginTransactionAsync();
+        await Iam.SharedLock(db);
         var command = new RefreshTokenCommand(request.RefreshToken);
         var result = await mediator.Send(command);
         await tx.CommitAsync();
@@ -233,7 +256,7 @@ publicAuth.MapPost("/refresh", async (RefreshRequest request, IMediator mediator
     }
 });
 
-app.MapPost("/api/auth/logout", async (RefreshRequest request, IRefreshTokenRepository repository) =>
+app.MapPost("/api/auth/logout", async (RefreshRequest request, TenantContext tenant, IRefreshTokenRepository repository) =>
 {
     if (string.IsNullOrWhiteSpace(request.RefreshToken))
     {
@@ -241,7 +264,7 @@ app.MapPost("/api/auth/logout", async (RefreshRequest request, IRefreshTokenRepo
     }
 
     var storedToken = await repository.GetByTokenAsync(request.RefreshToken);
-    if (storedToken is not null)
+    if (storedToken is not null && storedToken.UserId==tenant.UserId && storedToken.SchoolId==tenant.SchoolId)
     {
         await repository.RevokeAsync(storedToken.Id);
     }
@@ -250,7 +273,7 @@ app.MapPost("/api/auth/logout", async (RefreshRequest request, IRefreshTokenRepo
 }).RequireAuthorization(EduOSPolicies.AnyRole);
 
 // Called by the gateway with the caller's own bearer token; a token may only inspect its own session.
-app.MapGet("/api/internal/session/{id:guid}", async (Guid id, TenantContext tenant, AuthDbContext db) => {
+app.MapGet("/api/internal/session/{id:guid}", async (Guid id, TenantContext tenant, HttpContext http, AuthDbContext db) => {
     if (id != tenant.UserId) return Results.Forbid();
     if (!await RoleModel.SchoolIsActive(db, tenant.SchoolId)) return Results.Unauthorized();
     var user=await db.Users.Include(u=>u.Role).FirstOrDefaultAsync(u=>u.Id==id && u.SchoolId==tenant.SchoolId && u.IsActive);
@@ -278,11 +301,13 @@ userAccounts.MapGet("", async (AuthDbContext db, int page = 1, int pageSize = 20
     return Results.Ok(new { statusCode = 200, data = new { page, pageSize, totalCount, data = users } });
 });
 
-userAccounts.MapPost("", async (CreateUserRequest request, AuthDbContext db) =>
+userAccounts.MapPost("", async (CreateUserRequest request, HttpContext http, AuthDbContext db) =>
 {
     if (!Guid.TryParse(request.SchoolId, out var schoolId)) return Results.BadRequest(new { statusCode = 400, message = "Invalid schoolId" });
     if (!Guid.TryParse(request.RoleId, out var roleId)) return Results.BadRequest(new { statusCode = 400, message = "Invalid roleId" });
-    var role = await db.Roles.FirstOrDefaultAsync(item => item.Id == roleId && item.SchoolId == schoolId);
+    await using var createTransaction=await db.Database.BeginTransactionAsync(); await Iam.Lock(db);
+    Iam.Permit(http,"roles.assign");
+    var role = await Iam.AssignableRole(db,http,schoolId,roleId);
     if (role == null || role.Name == EduOSRoles.SuperAdmin) return Results.BadRequest(new { statusCode = 400, message = "Role does not belong to this school" });
 
     if(string.IsNullOrWhiteSpace(request.Username) || request.Username.Length>100 || string.IsNullOrWhiteSpace(request.FirstName) || request.FirstName.Length>100 || string.IsNullOrWhiteSpace(request.LastName) || request.LastName.Length>100 || request.Password.Length<16 || request.Password.Length>72 || !System.Net.Mail.MailAddress.TryCreate(request.Email,out _)) return Results.BadRequest(new {message="Enter valid account details and a password between 16 and 72 characters."});
@@ -312,18 +337,22 @@ userAccounts.MapPost("", async (CreateUserRequest request, AuthDbContext db) =>
     db.Users.Add(user);
     await db.SaveChangesAsync();
 
+    await Iam.Audit(db,http.GetTenant(),schoolId,"user.created",user.Id,null,new{user.RoleId,user.Email,user.IsActive});
+    await createTransaction.CommitAsync();
     return Results.Json(new { statusCode = 201, data = new { user.Id, user.Username, user.Email, user.FirstName, user.LastName, user.IsActive } }, statusCode: 201);
 });
 
-userAccounts.MapPut("/{id}", async (string id, UpdateUserRequest request, string? schoolId, TenantContext tenant, AuthDbContext db) =>
+userAccounts.MapPut("/{id}", async (string id, UpdateUserRequest request, string? schoolId, TenantContext tenant, HttpContext http, AuthDbContext db) =>
 {
     if (!Guid.TryParse(id, out var userId)) return Results.BadRequest(new { statusCode = 400, message = "Invalid user ID" });
     if (string.IsNullOrWhiteSpace(schoolId) || !Guid.TryParse(schoolId, out var schoolIdGuid)) return Results.BadRequest(new { statusCode = 400, message = "schoolId required" });
 
-    await using var changeTransaction=await db.Database.BeginTransactionAsync();
+    await using var changeTransaction=await db.Database.BeginTransactionAsync(); await Iam.Lock(db);
     await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({schoolIdGuid.ToString()},0))");
     var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId && u.SchoolId == schoolIdGuid && u.DeletedAt == null);
     if (user == null) return Results.NotFound(new { statusCode = 404, message = "User not found" });
+    await Iam.ManageableUser(db,http,user);
+    var oldAccess=new{user.RoleId,user.IsActive,user.Email,user.FirstName,user.LastName};
 
     if (!string.IsNullOrEmpty(request.Email) && request.Email != user.Email)
     {
@@ -337,12 +366,15 @@ userAccounts.MapPut("/{id}", async (string id, UpdateUserRequest request, string
     var isAdministrator = await db.Roles.AnyAsync(r=>r.Id==user.RoleId && r.Name==EduOSRoles.Administrator);
     var lastAdministrator = isAdministrator && user.IsActive && await db.Users.CountAsync(u=>u.SchoolId==schoolIdGuid && u.IsActive && u.DeletedAt==null && u.Role!=null && u.Role.Name==EduOSRoles.Administrator)<=1;
     if(request.IsActive==false && lastAdministrator) return Results.Conflict(new {message="The last active school administrator cannot be disabled."});
+    if(request.IsActive==false)Iam.Permit(http,"users.disable");
     var endSessions = request.IsActive == false && user.IsActive;
     if (!string.IsNullOrWhiteSpace(request.RoleId))
     {
         // Role assignment stays inside this school and can never grant the platform role.
         if (!Guid.TryParse(request.RoleId, out var newRoleId)) return Results.BadRequest(new { message = "Invalid roleId" });
-        var newRole = await db.Roles.FirstOrDefaultAsync(r => r.Id == newRoleId && r.SchoolId == schoolIdGuid && r.Name != EduOSRoles.SuperAdmin);
+        Iam.Permit(http,"roles.assign");
+        var newRole = await Iam.AssignableRole(db,http,schoolIdGuid,newRoleId);
+        await Iam.ValidateLinks(db,schoolIdGuid,user.Id,newRole.TemplateId!.Value);
         if (newRole == null) return Results.BadRequest(new { message = "Role does not belong to this school" });
         if (newRole.Id != user.RoleId)
         {
@@ -358,21 +390,25 @@ userAccounts.MapPut("/{id}", async (string id, UpdateUserRequest request, string
     await db.SaveChangesAsync();
     // Disabling or a role change ends every session: a refresh token issued earlier must not resume it later.
     if (endSessions) await db.RefreshTokens.IgnoreQueryFilters().Where(t => t.UserId == user.Id && t.RevokedAt == null).ExecuteUpdateAsync(s => s.SetProperty(t => t.RevokedAt, DateTime.UtcNow));
+    await Iam.Revoke(db,schoolIdGuid,user.Id);
+    await Iam.Audit(db,http.GetTenant(),schoolIdGuid,"user.changed",user.Id,oldAccess,new{user.RoleId,user.IsActive,user.Email,user.FirstName,user.LastName,user.DeletedAt});
     await changeTransaction.CommitAsync();
 
     return Results.Ok(new { statusCode = 200, data = new { user.Id, user.Username, user.Email, user.FirstName, user.LastName, user.IsActive } });
 });
 
-userAccounts.MapDelete("/{id}", async (string id, string? schoolId, AuthDbContext db) =>
+userAccounts.MapDelete("/{id}", async (string id, string? schoolId, HttpContext http, AuthDbContext db) =>
 {
     if (!Guid.TryParse(id, out var userId)) return Results.BadRequest(new { statusCode = 400, message = "Invalid user ID" });
     if (string.IsNullOrEmpty(schoolId)) return Results.BadRequest(new { statusCode = 400, message = "schoolId required" });
     if (!Guid.TryParse(schoolId, out var schoolIdGuid)) return Results.BadRequest(new { statusCode = 400, message = "Invalid schoolId" });
 
-    await using var changeTransaction=await db.Database.BeginTransactionAsync();
+    await using var changeTransaction=await db.Database.BeginTransactionAsync(); await Iam.Lock(db);
     await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({schoolIdGuid.ToString()},0))");
     var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId && u.SchoolId == schoolIdGuid && u.DeletedAt == null);
     if (user == null) return Results.NotFound(new { statusCode = 404, message = "User not found" });
+    await Iam.ManageableUser(db,http,user);
+    var oldAccess=new{user.RoleId,user.IsActive,user.Email,user.FirstName,user.LastName};
 
     // Guard: Prevent deletion of last Super Admin
     var superAdminCount = await db.Users.CountAsync(u =>
@@ -386,6 +422,8 @@ userAccounts.MapDelete("/{id}", async (string id, string? schoolId, AuthDbContex
     user.IsActive = false;
     db.Users.Update(user);
     await db.SaveChangesAsync();
+    await Iam.Revoke(db,schoolIdGuid,user.Id);
+    await Iam.Audit(db,http.GetTenant(),schoolIdGuid,"user.changed",user.Id,oldAccess,new{user.RoleId,user.IsActive,user.Email,user.FirstName,user.LastName,user.DeletedAt});
     await changeTransaction.CommitAsync();
 
     return Results.Ok(new { statusCode = 200, message = "User deleted" });
@@ -393,6 +431,7 @@ userAccounts.MapDelete("/{id}", async (string id, string? schoolId, AuthDbContex
 
 AuthRecovery.Map(app);
 PlatformAdmin.Map(app);
+Iam.Map(app);
 app.Run();
 
 // Request/Response models

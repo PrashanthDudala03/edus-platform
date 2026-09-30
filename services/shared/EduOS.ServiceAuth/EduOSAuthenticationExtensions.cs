@@ -1,6 +1,8 @@
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
@@ -59,11 +61,23 @@ public static class EduOSAuthenticationExtensions
     public static IServiceCollection AddEduOSAuthentication(this IServiceCollection services, IConfiguration configuration, Action<JwtBearerEvents>? configureEvents = null)
     {
         var parameters = TokenValidationParametersFrom(configuration);
+        services.AddHttpClient("eduos-session", c => { c.BaseAddress=new Uri(configuration["AuthSessionUrl"] ?? "http://auth-service:6001"); c.Timeout=TimeSpan.FromSeconds(5); });
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
             {
                 options.TokenValidationParameters = parameters;
                 options.Events ??= new JwtBearerEvents();
+                options.Events.OnTokenValidated = async context => {
+                    try {
+                        var principal=context.Principal!;
+                        var client=context.HttpContext.RequestServices.GetRequiredService<IHttpClientFactory>().CreateClient("eduos-session");
+                        using var request=new HttpRequestMessage(HttpMethod.Get,"/api/internal/session/"+principal.FindFirst(ClaimTypes.NameIdentifier)?.Value);
+                        request.Headers.Authorization=AuthenticationHeaderValue.Parse(context.Request.Headers.Authorization.ToString());
+                        using var response=await client.SendAsync(request);
+                        var state=response.IsSuccessStatusCode?await response.Content.ReadFromJsonAsync<AuthorizationSession>():null;
+                        if(state==null || !principal.IsInRole(state.Role) || principal.FindFirst("token_version")?.Value!=state.Version.ToString())context.Fail("Account access changed.");
+                    } catch { context.Fail("Authorization service unavailable."); }
+                };
                 configureEvents?.Invoke(options.Events);
             });
 
@@ -72,13 +86,11 @@ public static class EduOSAuthenticationExtensions
             options.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();
             // Platform access needs both the role and the reserved platform tenant, so a school role that
             // happened to be named SuperAdmin could never reach cross-school operations.
-            options.AddPolicy(EduOSPolicies.Platform, policy => policy.RequireRole(EduOSRoles.SuperAdmin)
+            options.AddPolicy(EduOSPolicies.Platform, policy => policy.RequireClaim("data_scope","platform").RequireClaim("permission","platform.manage")
                 .RequireClaim(EduOSClaims.SchoolId, EduOSTenants.Platform.ToString()));
-            options.AddPolicy(EduOSPolicies.Administrators, policy => policy.RequireRole(EduOSRoles.Administrator));
-            options.AddPolicy(EduOSPolicies.Leadership, policy => policy.RequireRole(EduOSRoles.Administrator, EduOSRoles.Principal));
-            options.AddPolicy(EduOSPolicies.Staff, policy => policy.RequireRole(EduOSRoles.Administrator, EduOSRoles.Principal, EduOSRoles.Teacher));
-            options.AddPolicy(EduOSPolicies.Suite, policy => policy.RequireRole(EduOSRoles.School));
-            options.AddPolicy(EduOSPolicies.AnyRole, policy => policy.RequireRole(EduOSRoles.All));
+            foreach(var name in new[]{EduOSPolicies.Administrators,EduOSPolicies.Leadership,EduOSPolicies.Staff,EduOSPolicies.Suite})
+                options.AddPolicy(name, policy => policy.RequireAuthenticatedUser().RequireClaim("data_scope","school","teacher","parent","student"));
+            options.AddPolicy(EduOSPolicies.AnyRole, policy => policy.RequireAuthenticatedUser().RequireClaim(ClaimTypes.Role));
         });
 
         services.AddHttpContextAccessor();
@@ -99,3 +111,4 @@ public static class EduOSAuthenticationExtensions
         return app.UseAuthentication().UseAuthorization().UseMiddleware<TenantScopeMiddleware>(options);
     }
 }
+public record AuthorizationSession(string Role,int Version);

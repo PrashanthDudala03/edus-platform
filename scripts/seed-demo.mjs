@@ -74,6 +74,13 @@ for(const role of ['Principal','Teacher','Parent','Student']){
 }
 const teacherToken=await login(accounts.Teacher.username),studentToken=await login(accounts.Student.username)
 
+// Pending access requests for the signup review demo. They go through the public signup endpoint
+// with the school's signup code, exactly as a real applicant would. 409 means one already exists.
+const signupCode=(await must('GET','/control/configuration',admin)).boundary.signupCode
+const pendingSignups={Teacher:'pending.teacher@demo.eduos.local',Parent:'pending.parent@demo.eduos.local',Student:'pending.student@demo.eduos.local'}
+for(const [requestedRole,email] of Object.entries(pendingSignups))
+ await must('POST','/auth/signup',undefined,{email,password:PASSWORD,firstName:'Pending',lastName:requestedRole+' (Demo)',phone:'9000000300',schoolCode:signupCode,requestedRole},[201,409])
+
 // 4. Academic records. ensure() finds a record by a unique value before creating it.
 const records=async(kind,token=admin,search='')=>(await must('GET','/suite/records/'+kind+(search?'?search='+encodeURIComponent(search):''),token)).data
 // listToken lets the administrator check for records the creating role cannot read back (a teacher's sent messages).
@@ -165,3 +172,5 @@ await ensure('school-config',()=>true,{name:SCHOOL,address:'12 Demo Lane, Bengal
 console.log('\nDemo school ready: '+SCHOOL+' ('+schoolId+')')
 console.log('All demo accounts use the development password shown in docs/DEMO.md.')
 for(const [role,a] of Object.entries(accounts))console.log('  '+role.padEnd(14)+a.username)
+console.log('\nSchool signup code: '+signupCode)
+for(const [role,email] of Object.entries(pendingSignups))console.log('  Pending '+role.padEnd(9)+email)

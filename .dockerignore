@@ -19,3 +19,5 @@ coverage
 backups
 frontend/test-results
 frontend/playwright-report
+services/auth-service.tests
+services/shared/EduOS.ServiceAuth.Tests

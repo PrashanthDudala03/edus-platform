@@ -69,13 +69,13 @@ public static class PlatformAdmin
             return Results.Ok(new { data = new { school, roles, administrators } });
         });
 
-        platform.MapPost("/schools", async (PlatformSchoolRequest request, AuthDbContext db) =>
+        platform.MapPost("/schools", async (PlatformSchoolRequest request, HttpContext http, AuthDbContext db) =>
         {
             var name = request.Name?.Trim() ?? "";
             var tier = string.IsNullOrWhiteSpace(request.SubscriptionTier) ? "trial" : request.SubscriptionTier.Trim();
             if (name.Length is < 1 or > 255 || (request.PrincipalName?.Length ?? 0) > 255 || !Tiers.Contains(tier))
                 return Results.BadRequest(new { message = "Enter a school name (up to 255 characters) and a plan of trial, standard or premium." });
-            await using var tx = await db.Database.BeginTransactionAsync();
+            await using var tx = await db.Database.BeginTransactionAsync(); await Iam.Lock(db);
             await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended('eduos-platform-schools', 0))");
             if ((await db.Database.SqlQuery<int>($"SELECT count(*)::int AS \"Value\" FROM school_db.schools WHERE deleted_at IS NULL AND lower(name) = lower({name})").ToListAsync())[0] > 0)
                 return Results.Conflict(new { message = "A school with this name already exists." });
@@ -85,18 +85,19 @@ public static class PlatformAdmin
                 VALUES ({id}, {name}, {request.PrincipalName?.Trim()}, TRUE, {tier}, NOW(), NOW())
                 """);
             await EnsureSchoolRoles(db, id);
+            await Iam.Audit(db,http.GetTenant(),id,"school.created",id,null,new{name,tier});
             await tx.CommitAsync();
             return Results.Json(new { data = new { id } }, statusCode: 201);
         });
 
-        platform.MapPut("/schools/{id:guid}", async (Guid id, PlatformSchoolRequest request, AuthDbContext db) =>
+        platform.MapPut("/schools/{id:guid}", async (Guid id, PlatformSchoolRequest request, HttpContext http, AuthDbContext db) =>
         {
             if (id == p) return Results.NotFound(new { message = "School not found." });
             var name = request.Name?.Trim();
             var tier = request.SubscriptionTier?.Trim();
             if ((name is not null && name.Length is < 1 or > 255) || (request.PrincipalName?.Length ?? 0) > 255 || (tier is not null && !Tiers.Contains(tier)))
                 return Results.BadRequest(new { message = "Enter a school name (up to 255 characters) and a plan of trial, standard or premium." });
-            await using var tx = await db.Database.BeginTransactionAsync();
+            await using var tx = await db.Database.BeginTransactionAsync(); await Iam.Lock(db);
             await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended('eduos-platform-schools', 0))");
             var current = (await db.Database.SqlQueryRaw<SchoolRow>(SchoolSelect + " WHERE s.deleted_at IS NULL AND s.id = {0}", id).ToListAsync()).FirstOrDefault();
             if (current is null) return Results.NotFound(new { message = "School not found." });
@@ -115,11 +116,12 @@ public static class PlatformAdmin
                 await db.RefreshTokens.IgnoreQueryFilters().Where(t => t.SchoolId == id && t.RevokedAt == null)
                     .ExecuteUpdateAsync(s => s.SetProperty(t => t.RevokedAt, DateTime.UtcNow));
             }
+            await Iam.Audit(db,http.GetTenant(),id,"school.changed",id,current,request);
             await tx.CommitAsync();
             return Results.Ok(new { message = request.IsActive == false ? "School deactivated. Its users have been signed out." : "School saved." });
         });
 
-        platform.MapPost("/schools/{id:guid}/administrators", async (Guid id, PlatformAdministratorRequest request, AuthDbContext db) =>
+        platform.MapPost("/schools/{id:guid}/administrators", async (Guid id, PlatformAdministratorRequest request, HttpContext http, AuthDbContext db) =>
         {
             if (id == p) return Results.NotFound(new { message = "School not found." });
             if ((await db.Database.SqlQuery<int>($"SELECT count(*)::int AS \"Value\" FROM school_db.schools WHERE deleted_at IS NULL AND id = {id}").ToListAsync())[0] != 1)
@@ -130,7 +132,7 @@ public static class PlatformAdmin
                 string.IsNullOrWhiteSpace(request.LastName) || request.LastName.Length > 100 || !System.Net.Mail.MailAddress.TryCreate(email, out _) ||
                 (request.Password?.Length ?? 0) < 16 || System.Text.Encoding.UTF8.GetByteCount(request.Password!) > 72)
                 return Results.BadRequest(new { message = "Enter valid account details and a password between 16 and 72 characters." });
-            await using var tx = await db.Database.BeginTransactionAsync();
+            await using var tx = await db.Database.BeginTransactionAsync(); await Iam.Lock(db);
             await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({id.ToString()}, 0))");
             if (await db.Users.AnyAsync(u => u.SchoolId == id && (u.Username == username || u.Email == email)))
                 return Results.Conflict(new { message = "That username or email already exists in this school." });
@@ -144,6 +146,7 @@ public static class PlatformAdmin
             };
             db.Users.Add(user);
             await db.SaveChangesAsync();
+            await Iam.Audit(db,http.GetTenant(),id,"administrator.provisioned",user.Id,null,new{user.Email,user.RoleId});
             await tx.CommitAsync();
             return Results.Json(new { data = new { user.Id, user.Username, user.Email } }, statusCode: 201);
         });
@@ -177,6 +180,7 @@ public static class PlatformAdmin
                 VALUES ({Guid.NewGuid()}, {schoolId}, {role.Name}, {role.Description}, TRUE, NOW(), NOW())
                 ON CONFLICT (school_id, name) DO NOTHING
                 """);
+        await Iam.EnsureSchools(db);
     }
 }
 

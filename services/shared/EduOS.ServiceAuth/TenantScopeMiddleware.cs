@@ -52,6 +52,11 @@ public sealed class TenantScopeMiddleware(RequestDelegate next, TenantScopeOptio
         request.Headers[UserHeader] = tenant.UserId.ToString();
         request.Headers[RoleHeader] = tenant.Role;
         request.Headers[SchoolHeader] = tenant.SchoolId.ToString();
+        if (!PermissionAccess.Allows(context))
+        {
+            await Reject(context, StatusCodes.Status403Forbidden, "Permission denied.");
+            return;
+        }
 
         var requestedSchoolIds = request.Query
             .Where(pair => string.Equals(pair.Key, "schoolId", StringComparison.OrdinalIgnoreCase))

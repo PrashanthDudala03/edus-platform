@@ -10,10 +10,11 @@ namespace EduOS.ServiceAuth;
 /// </summary>
 public sealed record TenantContext(Guid SchoolId, Guid UserId, string Role)
 {
+    public bool PlatformAuthority { get; init; }
     public bool IsAdministrator => Role == EduOSRoles.Administrator;
     public bool IsLeadership => Role is EduOSRoles.Administrator or EduOSRoles.Principal;
     /// <summary>True only for a SuperAdmin token issued in the platform tenant.</summary>
-    public bool IsPlatform => Role == EduOSRoles.SuperAdmin && SchoolId == EduOSTenants.Platform;
+    public bool IsPlatform => PlatformAuthority && SchoolId == EduOSTenants.Platform;
 
     public static bool TryFrom(ClaimsPrincipal user, out TenantContext tenant)
     {
@@ -22,11 +23,11 @@ public sealed record TenantContext(Guid SchoolId, Guid UserId, string Role)
         var role = user.FindFirst(ClaimTypes.Role)?.Value;
         if (!Guid.TryParse(user.FindFirst(EduOSClaims.SchoolId)?.Value, out var schoolId) ||
             !Guid.TryParse(user.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId) ||
-            role is null || !EduOSRoles.All.Contains(role))
+            string.IsNullOrWhiteSpace(role) || role.Length > 100)
         {
             return false;
         }
-        tenant = new TenantContext(schoolId, userId, role);
+        tenant = new TenantContext(schoolId, userId, role) { PlatformAuthority=user.HasClaim("data_scope","platform") && user.HasClaim("permission","platform.manage") };
         return true;
     }
 }

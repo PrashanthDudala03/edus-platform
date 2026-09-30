@@ -19,6 +19,15 @@ public class User
     public Guid? CreatedByUserId { get; set; }
     public Guid? RoleId { get; set; }
     public Role? Role { get; set; }
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string[] EffectivePermissions { get; set; } = [];
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string DataScope { get; set; } = "none";
+    /// <summary>Set by Iam.Hydrate when the role or its template is disabled. Never persisted, so re-enabling the role restores access.</summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public bool AccessSuspended { get; set; }
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public bool CanSignIn => IsActive && !AccessSuspended;
 
     public UserDto ToDto() => new()
     {
@@ -29,12 +38,17 @@ public class User
         LastName = LastName,
         SchoolId = SchoolId.ToString(),
         Roles = Role is null ? Array.Empty<string>() : new[] { Role.Name },
-        Permissions = Role?.Permissions.Select(permission => permission.PermissionKey).Distinct().ToArray() ?? Array.Empty<string>()
+        Permissions = EffectivePermissions,
+        DataScope = DataScope
     };
 }
 
 public class Role
 {
+    public Guid? TemplateId { get; set; }
+    public bool Enabled { get; set; } = true;
+    public bool Assignable { get; set; } = true;
+    public string Description { get; set; } = "";
     public Guid Id { get; set; }
     public Guid SchoolId { get; set; }
     public required string Name { get; set; }
@@ -50,6 +64,7 @@ public class RolePermission
 
 public class UserDto
 {
+    public string DataScope { get; set; } = "none";
     public required string Id { get; set; }
     public required string Username { get; set; }
     public required string Email { get; set; }

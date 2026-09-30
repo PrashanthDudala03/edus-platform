@@ -40,21 +40,22 @@ public sealed class ServiceHost : IAsyncLifetime
             ["JWT_ISSUER"] = "edus-auth-service",
             ["JWT_AUDIENCE"] = "edus-api",
         });
-        builder.Services.AddEduOSAuthentication(builder.Configuration);
+        // Signature/tenant tests isolate the session backend; live revocation is covered by IAM integration tests.
+        builder.Services.AddEduOSAuthentication(builder.Configuration, events=>events.OnTokenValidated=_=>Task.CompletedTask);
 
         app = builder.Build();
         app.UseRouting();
         app.UseEduOSAuthorization("/api", "/api/health");
         app.MapGet("/api/health", () => Results.Ok(new { status = "ready" })).AllowAnonymous();
-        app.MapGet("/api/admin", (TenantContext tenant) => Results.Ok(tenant)).RequireAuthorization(EduOSPolicies.Administrators);
-        app.MapGet("/api/leadership", (TenantContext tenant) => Results.Ok(tenant)).RequireAuthorization(EduOSPolicies.Leadership);
+        app.MapGet("/api/users", (TenantContext tenant) => Results.Ok(tenant)).RequireAuthorization(EduOSPolicies.Administrators);
+        app.MapGet("/api/operations/overview", (TenantContext tenant) => Results.Ok(tenant)).RequireAuthorization(EduOSPolicies.Leadership);
         app.MapGet("/api/platform", (TenantContext tenant) => Results.Ok(tenant)).RequireAuthorization(EduOSPolicies.Platform);
-        app.MapGet("/api/own-session", (TenantContext tenant) => Results.Ok(tenant)).RequireAuthorization(EduOSPolicies.AnyRole);
-        app.MapGet("/api/staff", (TenantContext tenant) => Results.Ok(tenant)).RequireAuthorization(EduOSPolicies.Staff);
-        app.MapGet("/api/suite", (TenantContext tenant) => Results.Ok(tenant)).RequireAuthorization(EduOSPolicies.Suite);
+        app.MapGet("/api/auth/session", (TenantContext tenant) => Results.Ok(tenant)).RequireAuthorization(EduOSPolicies.AnyRole);
+        app.MapGet("/api/suite/student-attendance", (TenantContext tenant) => Results.Ok(tenant)).RequireAuthorization(EduOSPolicies.Staff);
+        app.MapGet("/api/suite/catalog", (TenantContext tenant) => Results.Ok(tenant)).RequireAuthorization(EduOSPolicies.Suite);
         app.MapGet("/api/schools/{id}", (string id) => Results.Ok(new { id })).RequireAuthorization(EduOSPolicies.Administrators);
         app.MapGet("/api/unlabelled", () => Results.Ok("fallback policy only"));
-        app.MapPost("/api/suite/echo", async (HttpContext http, TenantContext tenant) =>
+        app.MapPost("/api/suite/options", async (HttpContext http, TenantContext tenant) =>
         {
             using var reader = new StreamReader(http.Request.Body);
             return Results.Ok(new
@@ -88,6 +89,9 @@ public sealed class ServiceHost : IAsyncLifetime
             new(ClaimTypes.Role, role),
             new(EduOSClaims.TokenVersion, "0"),
         };
+        claims.Add(new Claim("data_scope",role switch {"SuperAdmin"=>"platform","Teacher"=>"teacher","Parent"=>"parent","Student"=>"student",_=>"school"}));
+        var grants=role switch {"SuperAdmin"=>new[]{"platform.manage"},"Administrator"=>new[]{"users.view","overview.view","attendance.view","school.settings.view"},"Principal"=>new[]{"overview.view","attendance.view","school.settings.view"},"Teacher"=>new[]{"attendance.view"},_=>Array.Empty<string>()};
+        claims.AddRange(grants.Select(p=>new Claim("permission",p)));
         if (includeSchool) claims.Add(new Claim(EduOSClaims.SchoolId, (school ?? School).ToString()));
         var token = new JwtSecurityToken(issuer, audience, claims,
             notBefore: expired ? now.AddHours(-2) : now.AddMinutes(-1),
@@ -117,8 +121,8 @@ public class DenialTests(ServiceHost host) : IClassFixture<ServiceHost>
     }
 
     [Theory]
-    [InlineData("/api/admin")]
-    [InlineData("/api/suite")]
+    [InlineData("/api/users")]
+    [InlineData("/api/suite/catalog")]
     [InlineData("/api/unlabelled")]
     public async Task MissingTokenIsUnauthorized(string path)
     {
@@ -130,35 +134,35 @@ public class DenialTests(ServiceHost host) : IClassFixture<ServiceHost>
     public async Task TokenSignedWithAnotherKeyIsUnauthorized()
     {
         using var foreign = RSA.Create(2048);
-        var response = await Get("/api/suite", host.Token(EduOSRoles.Principal, signer: foreign));
+        var response = await Get("/api/suite/catalog", host.Token(EduOSRoles.Principal, signer: foreign));
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]
     public async Task ExpiredTokenIsUnauthorized()
     {
-        var response = await Get("/api/suite", host.Token(EduOSRoles.Principal, expired: true));
+        var response = await Get("/api/suite/catalog", host.Token(EduOSRoles.Principal, expired: true));
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]
     public async Task WrongAudienceIsUnauthorized()
     {
-        var response = await Get("/api/suite", host.Token(EduOSRoles.Principal, audience: "another-api"));
+        var response = await Get("/api/suite/catalog", host.Token(EduOSRoles.Principal, audience: "another-api"));
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]
     public async Task WrongIssuerIsUnauthorized()
     {
-        var response = await Get("/api/suite", host.Token(EduOSRoles.Principal, issuer: "someone-else"));
+        var response = await Get("/api/suite/catalog", host.Token(EduOSRoles.Principal, issuer: "someone-else"));
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]
     public async Task TokenWithoutSchoolClaimIsForbidden()
     {
-        var response = await Get("/api/suite", host.Token(EduOSRoles.Principal, includeSchool: false));
+        var response = await Get("/api/suite/catalog", host.Token(EduOSRoles.Principal, includeSchool: false));
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
@@ -170,19 +174,19 @@ public class DenialTests(ServiceHost host) : IClassFixture<ServiceHost>
     }
 
     [Theory]
-    [InlineData(EduOSRoles.Student, "/api/admin", HttpStatusCode.Forbidden)]
-    [InlineData(EduOSRoles.Parent, "/api/admin", HttpStatusCode.Forbidden)]
-    [InlineData(EduOSRoles.Teacher, "/api/admin", HttpStatusCode.Forbidden)]
-    [InlineData(EduOSRoles.Student, "/api/staff", HttpStatusCode.Forbidden)]
-    [InlineData(EduOSRoles.Parent, "/api/staff", HttpStatusCode.Forbidden)]
-    [InlineData(EduOSRoles.Teacher, "/api/staff", HttpStatusCode.OK)]
-    [InlineData(EduOSRoles.Administrator, "/api/admin", HttpStatusCode.OK)]
-    [InlineData(EduOSRoles.Principal, "/api/admin", HttpStatusCode.Forbidden)]
-    [InlineData(EduOSRoles.Principal, "/api/leadership", HttpStatusCode.OK)]
-    [InlineData(EduOSRoles.Administrator, "/api/leadership", HttpStatusCode.OK)]
-    [InlineData(EduOSRoles.Teacher, "/api/leadership", HttpStatusCode.Forbidden)]
-    [InlineData(EduOSRoles.Student, "/api/suite", HttpStatusCode.OK)]
-    [InlineData(EduOSRoles.Parent, "/api/suite", HttpStatusCode.OK)]
+    [InlineData(EduOSRoles.Student, "/api/users", HttpStatusCode.Forbidden)]
+    [InlineData(EduOSRoles.Parent, "/api/users", HttpStatusCode.Forbidden)]
+    [InlineData(EduOSRoles.Teacher, "/api/users", HttpStatusCode.Forbidden)]
+    [InlineData(EduOSRoles.Student, "/api/suite/student-attendance", HttpStatusCode.Forbidden)]
+    [InlineData(EduOSRoles.Parent, "/api/suite/student-attendance", HttpStatusCode.Forbidden)]
+    [InlineData(EduOSRoles.Teacher, "/api/suite/student-attendance", HttpStatusCode.OK)]
+    [InlineData(EduOSRoles.Administrator, "/api/users", HttpStatusCode.OK)]
+    [InlineData(EduOSRoles.Principal, "/api/users", HttpStatusCode.Forbidden)]
+    [InlineData(EduOSRoles.Principal, "/api/operations/overview", HttpStatusCode.OK)]
+    [InlineData(EduOSRoles.Administrator, "/api/operations/overview", HttpStatusCode.OK)]
+    [InlineData(EduOSRoles.Teacher, "/api/operations/overview", HttpStatusCode.Forbidden)]
+    [InlineData(EduOSRoles.Student, "/api/suite/catalog", HttpStatusCode.OK)]
+    [InlineData(EduOSRoles.Parent, "/api/suite/catalog", HttpStatusCode.OK)]
     [InlineData(EduOSRoles.Administrator, "/api/platform", HttpStatusCode.Forbidden)]
     [InlineData(EduOSRoles.Principal, "/api/platform", HttpStatusCode.Forbidden)]
     public async Task EndpointPoliciesDecideByRole(string role, string path, HttpStatusCode expected)
@@ -193,10 +197,10 @@ public class DenialTests(ServiceHost host) : IClassFixture<ServiceHost>
 
     [Theory]
     [InlineData("/api/platform", HttpStatusCode.OK)]
-    [InlineData("/api/admin", HttpStatusCode.Forbidden)]
-    [InlineData("/api/leadership", HttpStatusCode.Forbidden)]
-    [InlineData("/api/staff", HttpStatusCode.Forbidden)]
-    [InlineData("/api/suite", HttpStatusCode.Forbidden)]
+    [InlineData("/api/users", HttpStatusCode.Forbidden)]
+    [InlineData("/api/operations/overview", HttpStatusCode.Forbidden)]
+    [InlineData("/api/suite/student-attendance", HttpStatusCode.Forbidden)]
+    [InlineData("/api/suite/catalog", HttpStatusCode.Forbidden)]
     public async Task PlatformSuperAdminIsNotASchoolUser(string path, HttpStatusCode expected)
     {
         var response = await Get(path, host.Token(EduOSRoles.SuperAdmin, school: EduOSTenants.Platform));
@@ -207,10 +211,10 @@ public class DenialTests(ServiceHost host) : IClassFixture<ServiceHost>
     public async Task EveryRoleIncludingPlatformCanReachItsOwnSessionEndpoints()
     {
         // The gateway's per-request session check runs for platform tokens too; refusing them logs SuperAdmin out.
-        Assert.Equal(HttpStatusCode.OK, (await Get("/api/own-session", host.Token(EduOSRoles.SuperAdmin, school: EduOSTenants.Platform))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Get("/api/auth/session", host.Token(EduOSRoles.SuperAdmin, school: EduOSTenants.Platform))).StatusCode);
         foreach (var role in EduOSRoles.School)
-            Assert.Equal(HttpStatusCode.OK, (await Get("/api/own-session", host.Token(role))).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await Get("/api/own-session", host.Token("Auditor"))).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await Get("/api/auth/session", host.Token(role))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Get("/api/auth/session", host.Token("Auditor"))).StatusCode);
     }
 
     [Fact]
@@ -219,14 +223,14 @@ public class DenialTests(ServiceHost host) : IClassFixture<ServiceHost>
         // Legacy data or a hand-edited role named SuperAdmin inside a school must not grant cross-school access.
         var response = await Get("/api/platform", host.Token(EduOSRoles.SuperAdmin));
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await Get("/api/admin", host.Token(EduOSRoles.SuperAdmin))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Get("/api/users", host.Token(EduOSRoles.SuperAdmin))).StatusCode);
     }
 
     [Fact]
     public async Task TenantContextComesFromTheTokenClaims()
     {
         var user = Guid.NewGuid();
-        var response = await Get("/api/suite", host.Token(EduOSRoles.Student, user: user));
+        var response = await Get("/api/suite/catalog", host.Token(EduOSRoles.Student, user: user));
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal(host.School.ToString(), json.RootElement.GetProperty("schoolId").GetString());
@@ -238,7 +242,7 @@ public class DenialTests(ServiceHost host) : IClassFixture<ServiceHost>
     [Fact]
     public async Task QueryForAnotherSchoolIsForbidden()
     {
-        var response = await Get("/api/suite?schoolId=" + Guid.NewGuid(), host.Token(EduOSRoles.Principal));
+        var response = await Get("/api/suite/catalog?schoolId=" + Guid.NewGuid(), host.Token(EduOSRoles.Principal));
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
@@ -255,7 +259,7 @@ public class DenialTests(ServiceHost host) : IClassFixture<ServiceHost>
     [Fact]
     public async Task BodyForAnotherSchoolIsForbidden()
     {
-        var request = ServiceHost.Request(HttpMethod.Post, "/api/suite/echo", host.Token(EduOSRoles.Student),
+        var request = ServiceHost.Request(HttpMethod.Post, "/api/suite/options", host.Token(EduOSRoles.Student),
             JsonSerializer.Serialize(new { schoolId = Guid.NewGuid(), response = "late" }));
         var response = await host.Client.SendAsync(request);
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
@@ -264,7 +268,7 @@ public class DenialTests(ServiceHost host) : IClassFixture<ServiceHost>
     [Fact]
     public async Task MalformedJsonBodyIsRejected()
     {
-        var request = ServiceHost.Request(HttpMethod.Post, "/api/suite/echo", host.Token(EduOSRoles.Student), "{not json");
+        var request = ServiceHost.Request(HttpMethod.Post, "/api/suite/options", host.Token(EduOSRoles.Student), "{not json");
         var response = await host.Client.SendAsync(request);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -273,7 +277,7 @@ public class DenialTests(ServiceHost host) : IClassFixture<ServiceHost>
     public async Task SpoofedHeadersQueryAndBodyAreReplacedByClaimValues()
     {
         var user = Guid.NewGuid();
-        var request = ServiceHost.Request(HttpMethod.Post, "/api/suite/echo", host.Token(EduOSRoles.Student, user: user),
+        var request = ServiceHost.Request(HttpMethod.Post, "/api/suite/options", host.Token(EduOSRoles.Student, user: user),
             JsonSerializer.Serialize(new { response = "my homework", schoolId = "" }));
         request.Headers.Add(TenantScopeMiddleware.UserHeader, Guid.NewGuid().ToString());
         request.Headers.Add(TenantScopeMiddleware.RoleHeader, EduOSRoles.SuperAdmin);
