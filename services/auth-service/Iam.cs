@@ -16,7 +16,7 @@ public record BoundaryEdit(string[] Allowed);
 public static class Iam
 {
     // Platform-level permissions are never delegated to a school or granted through a school template.
-    public static bool PlatformOnly(string key) => key.StartsWith("platform.") || key.StartsWith("billing.");
+    public static bool PlatformOnly(string key) => key.StartsWith("platform.") || key.StartsWith("billing.") || key == "ai.platform.manage";
     public static void Check(bool condition, string message, int status = 400) { if (!condition) throw new IamError(status, message); }
     // Serialize security mutations and token issuance, including changes to global boundaries.
     public static Task Lock(AuthDbContext db) => db.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(610012026)");

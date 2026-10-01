@@ -31,6 +31,24 @@ public class PermissionTests
     {
         Assert.False(PermissionAccess.Allows(Context("Custom",scope,"/api/students","GET","students.view")));
     }
+    [Theory]
+    [InlineData("/api/ai/status","GET","ai.assistant.use")][InlineData("/api/v1/ai/assistant/ask","POST","ai.assistant.use")]
+    [InlineData("/api/ai/knowledge/documents","POST","ai.knowledge.manage")][InlineData("/api/ai/usage","GET","ai.usage.view")]
+    [InlineData("/api/ai/admin/schools","PUT","ai.platform.manage")]
+    public void AiRoutesRequireTheirOwnPermission(string path,string method,string permission)
+    {
+        Assert.Equal(permission,PermissionAccess.Required(path,method));
+        foreach(var scope in new[]{"school","teacher","parent","student"})
+        {
+            Assert.True(PermissionAccess.Allows(Context("Custom",scope,path,method,permission)));
+            Assert.False(PermissionAccess.Allows(Context("Administrator",scope,path,method,"students.view","ai.other")));
+        }
+    }
+    [Theory]
+    [InlineData("/api/ai")][InlineData("/api/ai/sql")][InlineData("/api/ai/models")][InlineData("/api/v1/ai/tools/run")]
+    public void UnlistedAiRoutesFailClosed(string path)=>Assert.False(PermissionAccess.Allows(Context("Administrator","school",path,"GET","ai.assistant.use","ai.knowledge.manage","ai.usage.view","ai.platform.manage")));
+    [Fact]
+    public void AiHealthNeedsNoPermission()=>Assert.Null(PermissionAccess.Required("/api/ai/health","GET"));
     [Fact]
     public void UnknownEndpointsFailClosed()=>Assert.False(PermissionAccess.Allows(Context("Administrator","school","/api/future-module","GET")));
     [Fact]

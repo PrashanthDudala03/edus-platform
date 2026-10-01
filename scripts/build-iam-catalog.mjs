@@ -14,5 +14,8 @@ for(const k of ['users.view','users.create','users.update','users.disable','role
 // Platform billing stays with the SuperAdmin; a school administrator only sees and pays for the school subscription.
 for(const k of ["billing.view","billing.plans.manage","billing.offers.manage","billing.subscriptions.manage","billing.payments.view","billing.settings.manage"])add(k,["SuperAdmin"],"Billing")
 for(const k of ["subscription.view","subscription.purchase"])add(k,["Administrator"],"Billing")
+// AI is off by default: no role holds these until the platform administrator grants them.
+for(const k of ["ai.assistant.use","ai.knowledge.manage","ai.usage.view"])add(k,[],"AI")
+add("ai.platform.manage",["SuperAdmin"],"AI")
 if([...entries.values()].some(e=>!e.group))throw Error('Every permission needs a module group.')
 fs.writeFileSync('services/auth-service/PermissionCatalogue.json',JSON.stringify([...entries.values()],null,2)+'\n')

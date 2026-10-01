@@ -1,0 +1,26 @@
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS builder
+
+WORKDIR /src
+
+COPY services/shared/ ./shared/
+COPY services/ai-service/ ./ai-service/
+
+WORKDIR /src/ai-service
+RUN dotnet restore
+RUN dotnet publish -c Release -o /app
+
+FROM mcr.microsoft.com/dotnet/aspnet:9.0
+
+WORKDIR /app
+
+COPY --from=builder /app .
+
+RUN mkdir -p logs && apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/* && chown -R app:app /app
+USER app
+
+HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
+    CMD curl -f http://localhost:6006/api/health || exit 1
+
+EXPOSE 6006
+
+ENTRYPOINT ["dotnet", "ai-service.dll"]

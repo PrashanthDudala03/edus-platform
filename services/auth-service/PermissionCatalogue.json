@@ -784,5 +784,27 @@
     "defaults": [
       "Administrator"
     ]
+  },
+  {
+    "key": "ai.assistant.use",
+    "group": "AI",
+    "defaults": []
+  },
+  {
+    "key": "ai.knowledge.manage",
+    "group": "AI",
+    "defaults": []
+  },
+  {
+    "key": "ai.usage.view",
+    "group": "AI",
+    "defaults": []
+  },
+  {
+    "key": "ai.platform.manage",
+    "group": "AI",
+    "defaults": [
+      "SuperAdmin"
+    ]
   }
 ]

@@ -35,6 +35,7 @@ jobs:
           dotnet-version: 9.0.x
       - run: dotnet test services/shared/EduOS.ServiceAuth.Tests/EduOS.ServiceAuth.Tests.csproj --configuration Release
       - run: dotnet test services/auth-service.tests/auth-service.tests.csproj --configuration Release
+      - run: dotnet test services/ai-service.tests/ai-service.tests.csproj --configuration Release
       - run: dotnet build services/auth-service/auth-service.csproj --configuration Release
       - run: dotnet build services/api-gateway/api-gateway.csproj --configuration Release
       - run: dotnet build services/school-service/school-service.csproj --configuration Release
@@ -73,6 +74,9 @@ jobs:
           - name: api-gateway
             context: .
             file: services/Dockerfile.gateway
+          - name: ai-service
+            context: .
+            file: services/Dockerfile.ai
           - name: school-service
             context: .
             file: services/Dockerfile.school

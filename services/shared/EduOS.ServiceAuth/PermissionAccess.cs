@@ -14,6 +14,10 @@ public static class PermissionAccess
         if (resource is "auth" or "internal" or "health" or "platform" or "control" or "billing" or "promotions") return null;
         // Platform billing is held to the platform policy; a school only reads and pays for its own subscription.
         if (resource == "subscription") return read || p.ElementAtOrDefault(3) == "quote" ? "subscription.view" : "subscription.purchase";
+        // AI routes are listed one by one; anything else under /api/ai is refused until it is added here.
+        if (resource == "ai") return p.ElementAtOrDefault(3) switch {
+            "health" => null, "status" or "assistant" => "ai.assistant.use", "knowledge" => "ai.knowledge.manage",
+            "usage" => "ai.usage.view", "admin" => "ai.platform.manage", _ => "unsupported" };
         if (resource == "roles") return "roles.view";
         if (resource == "users") return read ? "users.view" : method == "DELETE" ? "users.disable" : method == "POST" && p.Length == 3 ? "users.create" : "users.update";
         if (resource is "students" or "teachers" or "parents") return resource + (read ? ".view" : method == "POST" ? ".create" : method == "DELETE" ? ".archive" : ".update");
