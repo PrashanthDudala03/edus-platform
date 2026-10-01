@@ -34,7 +34,7 @@ browser ──> nginx ──> api-gateway (YARP) ──/api/v1/ai/*──> ai-se
 - `IModelProvider`: chat completion with optional tool schema; returns text, tool calls, token counts.
 - `IEmbeddingProvider`: batch embed; reports model id and dimension.
 - `IVectorStore`: upsert, delete by document, search(schoolId, audience, vector, k). School id is a required argument, not a filter option.
-- Adapters: `Fake` (deterministic, default in dev and CI), `OpenAICompatibleHttp` (covers TEI, TGI, llama.cpp, vLLM, Ollama and most hosted APIs). Selection is configuration per feature and tier.
+- Adapters: `fake` (deterministic, default in dev and CI) and `local` (AI-010: OpenAI-compatible HTTP to a runtime on loopback or the deployment's private network; llama.cpp server, Ollama and similar). Chat and embeddings are selected separately by configuration. No cloud provider and no fallback exist (D55–D57).
 
 ## Cost ladder (router)
 | Tier | Used when | Model cost |

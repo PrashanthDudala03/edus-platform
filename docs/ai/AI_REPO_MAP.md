@@ -103,6 +103,9 @@ Access tokens carry `permission` claims, `data_scope` (`platform`, `school`, `te
 | `services/ai-service/Providers/Contracts.cs` | `IModelProvider`, `IEmbeddingProvider`, request/response records, `ModelCapabilities`, `DataBoundary`, `TokenUsage`, `AiProviderException`, `AiTokens.Estimate`. No vendor types. |
 | `services/ai-service/Providers/Guards.cs` | The wrappers every provider is served through (limits, timeout, latency, usage, error mapping). |
 | `services/ai-service/Providers/AiProviders.cs` | `Ai:Providers` options, start-up validation, and the one switch that maps a provider name to an implementation. A new vendor is added here. |
+| `services/ai-service/Providers/LocalProviders.cs` | `LocalModelProvider`, `LocalEmbeddingProvider` (provider `local`), their options (`Ai:Providers:LocalChat`, `LocalEmbedding`) and `LocalEndpoint` (loopback rule, HTTP client without proxy, redirect or credential). |
+| `services/ai-service.tests/AiLocalProviderTests.cs` | Adapter tests with `StubRuntime` (no socket), and the assistant end to end on the local adapters. |
+| `services/ai-service.tests/AiLocalSmokeTests.cs` | The one test that uses real models. Skipped unless `AI_TEST_LOCAL_*` and `AI_TEST_DB_*` are set. |
 | `services/ai-service/Providers/FakeProviders.cs` | Deterministic chat and embedding providers for development and CI. |
 | `services/ai-service.tests/AiProviderTests.cs` | Guard, fake and configuration tests; stub providers to copy for new adapters. |
 | `services/ai-service/AiMigrations.cs` | Loads and runs `Migrations/*.sql` once each in name order; records them in `ai.schema_migrations`. |
@@ -120,6 +123,13 @@ Never against the core database or the default compose project. Use an isolated 
 2. Start only the database, with a small override file that publishes `127.0.0.1:55432:5432` and adds a normal bridge network to `ai-db` (the project network is internal): `docker compose -f docker-compose.yml -f <override> up -d --wait ai-db`.
 3. Export `AI_TEST_DB_OWNER` (user `eduos_ai_owner`) and `AI_TEST_DB_RUNTIME` (user `ai_app`) as connection strings to that port, then run `dotnet test services/ai-service.tests`.
 4. Stop it with `docker compose --profile ai -f docker-compose.yml -f <override> down` (the profile is needed, or the container is left running).
+
+## Running the real local model smoke test
+Needs approval first (downloads). With a llama.cpp server for chat on `127.0.0.1:8091` and one for embeddings on `127.0.0.1:8092`, and the AI test database running as above, export `AI_TEST_LOCAL_CHAT_ENDPOINT=http://127.0.0.1:8091/v1`, `AI_TEST_LOCAL_CHAT_MODEL`, `AI_TEST_LOCAL_EMBEDDING_ENDPOINT=http://127.0.0.1:8092/v1`, `AI_TEST_LOCAL_EMBEDDING_MODEL`, `AI_TEST_LOCAL_EMBEDDING_DIMENSION` and run `dotnet test services/ai-service.tests --filter AiLocalSmokeTests`. The servers are started from the git-ignored `.tools/`:
+`.tools/llama.cpp/llama-server -m .tools/models/qwen2.5-1.5b-instruct-q4_k_m.gguf --host 127.0.0.1 --port 8091 -c 4096 -np 1 --alias qwen2.5-1.5b-instruct` and
+`.tools/llama.cpp/llama-server -m .tools/models/bge-small-en-v1.5-q8_0.gguf --embedding --host 127.0.0.1 --port 8092 --alias bge-small-en-v1.5` (dimension 384; add `AI_TEST_LOCAL_MIN_SIMILARITY=0.65`).
+The test adopts the local embedding space in the test database and restores the earlier one at the end, so run it alone, not with the other database tests. After stopping the chat server, `AI_TEST_LOCAL_CHAT_DOWN=1` runs the provider-unavailable check instead.
+On this machine `llama-server.exe` needs a newer Visual C++ runtime than Windows has installed: `msvcp140.dll`, `vcruntime140.dll`, `vcruntime140_1.dll` (version 14.4x or later) sit beside it in `.tools/llama.cpp/`; nothing is installed system-wide.
 
 ## Local tooling
 .NET 9: `.tools/dotnet/dotnet.exe`. Node 24: `.tools/node-v24.21.0-win-x64/` (prepend to PATH in Git Bash). System `dotnet` and `node` are too old. No `gh` CLI.
