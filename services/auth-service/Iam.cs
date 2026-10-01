@@ -162,6 +162,7 @@ public static class Iam
             var actor=http.GetTenant();var user=await db.Users.Include(u=>u.Role).SingleAsync(u=>u.Id==actor.UserId && u.SchoolId==actor.SchoolId);
             await Hydrate(db,user);return Results.Ok(new{data=user.ToDto()});
         });
+        GuardianReview.Map(group);
         group.MapGet("/configuration",async(Guid? targetSchool,HttpContext http,AuthDbContext db)=>{
             Permit(http,"roles.view");var school=Scope(http,targetSchool);var platform=http.GetTenant().IsPlatform;
             var templates=await db.Templates.AsNoTracking().Where(t=>platform || (t.DataScope!="platform" && t.Assignable)).OrderBy(t=>t.Name).ToListAsync();
