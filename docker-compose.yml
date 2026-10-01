@@ -50,6 +50,11 @@ services:
       EDUOS_PLATFORM_ADMIN_USERNAME: ${EDUOS_PLATFORM_ADMIN_USERNAME:-}
       EDUOS_PLATFORM_ADMIN_EMAIL: ${EDUOS_PLATFORM_ADMIN_EMAIL:-}
       EDUOS_PLATFORM_ADMIN_PASSWORD: ${EDUOS_PLATFORM_ADMIN_PASSWORD:-}
+      # Optional Razorpay keys. Without them online payment is off; Super Admin grants keep working.
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+      RAZORPAY_API_BASE: ${RAZORPAY_API_BASE:-https://api.razorpay.com}
       SERILOG_LEVEL: ${SERILOG_LEVEL:-Information}
     depends_on:
       postgres:
@@ -59,7 +64,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    networks: [edus-network]
+    # payments-egress is the only outbound route: it lets this service create Razorpay orders.
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    networks: [edus-network, payments-egress]
 
   student-service:
     <<: *service-defaults
@@ -244,6 +251,8 @@ volumes:
 
 networks:
   ingress:
+    driver: bridge
+  payments-egress:
     driver: bridge
   edus-network:
     driver: bridge

@@ -17,6 +17,8 @@ import PrincipalDashboard from './pages/portals/PrincipalDashboard'
 import TeacherDashboard from './pages/portals/TeacherDashboard'
 import FamilyDashboard from './pages/portals/FamilyDashboard'
 import { ForbiddenPage } from './pages/ForbiddenPage'
+import BillingPage from './pages/billing/BillingPage'
+import SubscriptionPage from './pages/billing/SubscriptionPage'
 import { homeFor, roleOf, LEADERSHIP, SCHOOL_ROLES, type Role } from './roles'
 const queryClient = new QueryClient({defaultOptions:{queries:{retry:1,staleTime:15000,refetchOnWindowFocus:false}}})
 useAuthStore.subscribe((state, previous) => {
@@ -44,10 +46,13 @@ export default function App() {
       <Route element={<RoleGate allow={['SuperAdmin']} />}>
         <Route path="super-admin" element={<PlatformDashboard />} />
         <Route path="super-admin/schools" element={<SchoolsPage />} />
+        <Route path="super-admin/billing" element={<BillingPage />} />
+        <Route path="super-admin/billing/:tab" element={<BillingPage />} />
       </Route>
       <Route element={<RoleGate allow={['Administrator']} />}>
         <Route path="admin" element={<DashboardPage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="subscription" element={<SubscriptionPage />} />
       </Route>
       <Route element={<RoleGate allow={['Principal']} />}><Route path="principal" element={<PrincipalDashboard />} /></Route>
       <Route element={<RoleGate allow={['Teacher']} />}><Route path="teacher" element={<TeacherDashboard />} /></Route>

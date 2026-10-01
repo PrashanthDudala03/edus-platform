@@ -728,5 +728,61 @@
     "defaults": [
       "Administrator"
     ]
+  },
+  {
+    "key": "billing.view",
+    "group": "Billing",
+    "defaults": [
+      "SuperAdmin"
+    ]
+  },
+  {
+    "key": "billing.plans.manage",
+    "group": "Billing",
+    "defaults": [
+      "SuperAdmin"
+    ]
+  },
+  {
+    "key": "billing.offers.manage",
+    "group": "Billing",
+    "defaults": [
+      "SuperAdmin"
+    ]
+  },
+  {
+    "key": "billing.subscriptions.manage",
+    "group": "Billing",
+    "defaults": [
+      "SuperAdmin"
+    ]
+  },
+  {
+    "key": "billing.payments.view",
+    "group": "Billing",
+    "defaults": [
+      "SuperAdmin"
+    ]
+  },
+  {
+    "key": "billing.settings.manage",
+    "group": "Billing",
+    "defaults": [
+      "SuperAdmin"
+    ]
+  },
+  {
+    "key": "subscription.view",
+    "group": "Billing",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "subscription.purchase",
+    "group": "Billing",
+    "defaults": [
+      "Administrator"
+    ]
   }
 ]
