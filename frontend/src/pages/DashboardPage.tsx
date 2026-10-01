@@ -5,6 +5,7 @@ import client, { errorMessage } from '../api/client'
 import { useAuthStore } from '../store/auth'
 import { Empty, ErrorBox, Loading, PageHeader, today } from '../components/UI'
 import { FeeSummary, UpcomingExams } from './portals/widgets'
+import { PromoBanner } from './billing/shared'
 type Overview={stats:{students:number,teachers:number,parents:number,classes:number,present:number,marked:number},classes:{name:string,count:number}[]}
 type Notice={id:string,title:string,body:string,priority:string,createdAt:string}
 export default function DashboardPage(){
@@ -15,6 +16,7 @@ export default function DashboardPage(){
  const s=overview.data?.stats
  const hour=new Date().getHours(), greeting=hour<12?'Good morning':hour<17?'Good afternoon':'Good evening'
  return <><PageHeader eyebrow="A LITTLE CLARITY FOR YOUR DAY" title={greeting+', '+(user?.firstName || 'Administrator')+'.'} description="Administrator portal · here is what is happening across your school today."><Link className="button primary" to="/students"><Plus size={17}/>Add a student</Link></PageHeader>
+ <PromoBanner placement="admin-dashboard"/>
  <section className="welcome-banner"><div><span className="banner-label"><span/>YOUR SCHOOL, CONNECTED</span><h2>A great school day<br/>starts with a clear view.</h2><p>People, progress, and everyday moments.<br/>All together at {school.data?.name || 'your school'}.</p><Link to="/attendance">Open today's register <ArrowRight size={17}/></Link></div><div className="banner-art" aria-hidden="true"><div className="banner-circle"/><div className="mini-card"><span className="mini-icon"><CalendarCheck size={25}/></span><span>Today's focus</span><strong>Every student counts.</strong><div className="mini-line"/><div className="mini-check"><CheckCircle2 size={17}/>Take attendance. Stay connected.</div></div><div className="floating-book"><BookOpen size={30}/></div></div></section>
  {overview.isError?<ErrorBox message={errorMessage(overview.error)}/>:overview.isPending?<Loading/>:<><div className="stats-grid">{[
  {label:'Total students',value:s?.students,icon:GraduationCap,tone:'teal',note:'Your student community',path:'/students'},

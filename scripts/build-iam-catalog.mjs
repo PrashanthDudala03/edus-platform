@@ -11,5 +11,8 @@ for(const s of schemas){add(s.kind+'.view',s.read,s.group);if(s.write.length)add
 for(const k of ['students','teachers','parents']){add(k+'.view',lead);for(const a of ['create','update','archive'])add(k+'.'+a,['Administrator'])}
 for(const [k,r] of Object.entries({'overview.view':lead,'school.settings.view':lead,'school.settings.manage':['Administrator'],'attendance.view':all,'attendance.mark':all.slice(0,3),'fees.view':['Administrator','Principal','Parent','Student'],'fees.manage':['Administrator'],'fees.collect':['Administrator'],'reports.view':all,'documents.view':all,'documents.upload':all,'allocations.view':all,'allocations.manage':['Administrator'],'announcements.view':lead,'announcements.manage':lead,'audit.view':lead,'circulars.acknowledge':all}))add(k,r)
 for(const k of ['users.view','users.create','users.update','users.disable','roles.view','roles.manage','roles.assign','permissions.view','signup.review','access-history.view'])add(k,['Administrator'],'Access control')
+// Platform billing stays with the SuperAdmin; a school administrator only sees and pays for the school subscription.
+for(const k of ["billing.view","billing.plans.manage","billing.offers.manage","billing.subscriptions.manage","billing.payments.view","billing.settings.manage"])add(k,["SuperAdmin"],"Billing")
+for(const k of ["subscription.view","subscription.purchase"])add(k,["Administrator"],"Billing")
 if([...entries.values()].some(e=>!e.group))throw Error('Every permission needs a module group.')
 fs.writeFileSync('services/auth-service/PermissionCatalogue.json',JSON.stringify([...entries.values()],null,2)+'\n')

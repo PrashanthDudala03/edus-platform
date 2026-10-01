@@ -158,6 +158,7 @@ using (var scope = app.Services.CreateScope())
         }
         await RoleModel.ProvisionPlatformAdmin(db, builder.Configuration);
         await Iam.Initialize(db);
+        await Billing.Initialize(db);
         Log.Information("Database schema verified");
     }
     catch (Exception ex)
@@ -169,7 +170,7 @@ using (var scope = app.Services.CreateScope())
 
 app.Use(async (context,next)=>{try{await next();}catch(IamError ex){context.Response.StatusCode=ex.Status;await context.Response.WriteAsJsonAsync(new{message=ex.Message});}catch(DbUpdateException){context.Response.StatusCode=409;await context.Response.WriteAsJsonAsync(new{message="A record with these details already exists or the update conflicts with another change."});}});
 app.UseRouting();
-app.UseEduOSAuthorization("/api", "/api/health", "/api/auth/login", "/api/auth/refresh", "/api/auth/reset-password", "/api/auth/signup");
+app.UseEduOSAuthorization("/api", "/api/health", "/api/auth/login", "/api/auth/refresh", "/api/auth/reset-password", "/api/auth/signup", "/api/promotions", "/api/billing/webhooks/razorpay");
 
 // Health endpoint - return Prometheus metrics format
 app.MapGet("/api/health", async (AuthDbContext db) => {try { return await db.Database.CanConnectAsync() ? Results.Ok(new {status="ready"}) : Results.StatusCode(503); } catch { return Results.StatusCode(503); }}).AllowAnonymous();
@@ -432,6 +433,7 @@ userAccounts.MapDelete("/{id}", async (string id, string? schoolId, HttpContext 
 AuthRecovery.Map(app);
 PlatformAdmin.Map(app);
 Iam.Map(app);
+Billing.Map(app);
 app.Run();
 
 // Request/Response models

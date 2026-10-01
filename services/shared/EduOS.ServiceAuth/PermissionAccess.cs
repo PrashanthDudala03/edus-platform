@@ -11,7 +11,9 @@ public static class PermissionAccess
         if (p.Length < 3) return null;
         var read = method is "GET" or "HEAD";
         var resource = p[2];
-        if (resource is "auth" or "internal" or "health" or "platform" or "control") return null;
+        if (resource is "auth" or "internal" or "health" or "platform" or "control" or "billing" or "promotions") return null;
+        // Platform billing is held to the platform policy; a school only reads and pays for its own subscription.
+        if (resource == "subscription") return read || p.ElementAtOrDefault(3) == "quote" ? "subscription.view" : "subscription.purchase";
         if (resource == "roles") return "roles.view";
         if (resource == "users") return read ? "users.view" : method == "DELETE" ? "users.disable" : method == "POST" && p.Length == 3 ? "users.create" : "users.update";
         if (resource is "students" or "teachers" or "parents") return resource + (read ? ".view" : method == "POST" ? ".create" : method == "DELETE" ? ".archive" : ".update");

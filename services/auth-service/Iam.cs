@@ -15,6 +15,8 @@ public record BoundaryEdit(string[] Allowed);
 
 public static class Iam
 {
+    // Platform-level permissions are never delegated to a school or granted through a school template.
+    public static bool PlatformOnly(string key) => key.StartsWith("platform.") || key.StartsWith("billing.");
     public static void Check(bool condition, string message, int status = 400) { if (!condition) throw new IamError(status, message); }
     // Serialize security mutations and token issuance, including changes to global boundaries.
     public static Task Lock(AuthDbContext db) => db.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(610012026)");
@@ -46,7 +48,7 @@ public static class Iam
         await db.Database.ExecuteSqlRawAsync(migration.Replace("{","{{").Replace("}","}}"));
         var seeds = JsonSerializer.Deserialize<CatalogueSeed[]>(await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory,"PermissionCatalogue.json")),new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
         foreach (var p in seeds)
-            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO auth_db.permissions(key,module,delegatable) VALUES({p.Key},{p.Group},{!p.Key.StartsWith("platform.")}) ON CONFLICT(key) DO UPDATE SET module=EXCLUDED.module");
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO auth_db.permissions(key,module,delegatable) VALUES({p.Key},{p.Group},{!PlatformOnly(p.Key)}) ON CONFLICT(key) DO UPDATE SET module=EXCLUDED.module");
         await db.Database.ExecuteSqlRawAsync("UPDATE auth_db.permissions SET delegatable=false WHERE key='platform.manage'");
         foreach (var name in EduOSRoles.All)
         {
@@ -252,7 +254,7 @@ public static class Iam
             var current=await db.Templates.SingleOrDefaultAsync(t=>t.Id==id);var before=current==null?null:JsonSerializer.Serialize(current);
             if(current!=null)Check(current.DataScope==input.DataScope,"Create a new template to change data scope; existing profile links must stay protected.");
             Check(current?.Name!="SuperAdmin" && input.Name!="SuperAdmin","The platform root template is protected.",403);
-            Check(input.DataScope=="platform" || !input.Maximum.Any(p=>p.StartsWith("platform.")),"Platform permissions cannot be granted to school templates.",403);
+            Check(input.DataScope=="platform" || !input.Maximum.Any(PlatformOnly),"Platform permissions cannot be granted to school templates.",403);
             if(input.DataScope=="platform")input.Assignable=false;
             if(current==null){current=new RoleTemplate{Id=id};db.Templates.Add(current);}
             current.Name=input.Name.Trim();current.Description=input.Description;current.DataScope=input.DataScope;current.Enabled=input.Enabled;current.Assignable=input.Assignable;current.Maximum=input.Maximum.Distinct().ToArray();current.Defaults=input.Defaults.Distinct().ToArray();
