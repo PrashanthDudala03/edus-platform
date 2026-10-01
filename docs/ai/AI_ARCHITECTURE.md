@@ -63,6 +63,9 @@ Upload (authorized admin) → type and size checks → text extraction → norma
 Query (AI-008, done) → embed the question → exact cosine search of the school's vectors in the active space, with `school_id` from the token and `audience` from the caller's data scope → at most `TopK` chunks above the similarity threshold and within the context budget, each with document, title, source label, order, section, page and similarity (D46–D48).
 Answer (AI-009, done) → authenticated school user with `ai.assistant.use` → feature state, open model circuit → rate limit → limits on question and output → retrieval as above (school switch included) → nothing relevant: `insufficient-knowledge`, no model call, nothing charged; retrieval failed: `retrieval-unavailable`, never an ungrounded answer → `RagContextBuilder`: constant instruction, reference material as its own message with numbered sources, the question last, whole chunks only, within the model input limit and the request budget → reserve the final input plus the output limit → circuit breaker → `IModelProvider` (guarded) → usage row with the number of chunks, reservation settled → answer plus the service's own source list (D50–D54). Single turn: no history or memory.
 
+## Chat UI (AI-011, done)
+`frontend/src/ai/`: "Ask EduOS AI" in the top bar → panel → `POST /api/v1/ai/assistant/ask` with `{ question }` through the shared API client (session token, refresh) → answer and backend-owned sources as plain text, or a fixed sentence for each reason. Single turn per request; the conversation is in memory only. No operational EduOS data is reachable: tools do not exist yet (AI-012). See D60.
+
 ## Tools (EduOS API calling)
 - Registry of named, read-only tools, each mapped to one existing EduOS endpoint and one required permission.
 - Only tools the caller's token already permits are offered to the model.

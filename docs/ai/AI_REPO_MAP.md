@@ -61,6 +61,10 @@ Access tokens carry `permission` claims, `data_scope` (`platform`, `school`, `te
 | `frontend/src/roles.ts` | Navigation per role. |
 | `frontend/src/components/Shell.tsx`, `components/UI.tsx` | Layout and shared components. |
 | `frontend/src/api/client.ts`, `store/auth.ts` | Axios client with refresh; user, permissions, `dataScope`. |
+| `frontend/src/ai/assistant.ts` | Rules of Ask EduOS AI with no UI in them: who sees it, the request body, the limit, the sentence for each backend reason, which source fields are shown. Unit-tested. |
+| `frontend/src/ai/AskEduOSAI.tsx` | The top-bar button and the chat panel (a modal `<dialog>` drawer). Mounted once in `Shell.tsx`; styles are the `.ai-*` rules at the end of `index.css`. |
+| `frontend/unit/assistant.test.ts` | Unit tests on Node's own runner: `npm run test:unit` in `frontend/`. |
+| `frontend/tests/ai-assistant.spec.ts` | Browser tests of the panel with the whole API mocked. With a local build (`npm run build`) they need no server: `npx playwright test tests/ai-assistant.spec.ts`. |
 | `frontend/src/pages/billing/` | Most recent example of a platform page plus a school page. |
 
 ## Tests and CI
