@@ -1,6 +1,7 @@
 using EduOS.Ai.Gateway;
 using EduOS.Ai.Knowledge;
 using EduOS.Ai.Providers;
+using EduOS.Ai.Tools;
 using EduOS.ServiceAuth;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http.Features;
@@ -69,6 +70,19 @@ public static class AiService
         builder.Services.AddSingleton<KnowledgeRetriever>();
         builder.Services.AddSingleton<KnowledgeEmbedder>();
         builder.Services.AddSingleton<KnowledgeService>();
+
+        // Read-only tools over existing EduOS endpoints. Nothing calls them from a request yet: there is no tool endpoint,
+        // and the assistant does not use them until tool routing exists.
+        builder.Services.AddOptions<AiToolsOptions>().Bind(builder.Configuration.GetSection(AiToolsOptions.Section))
+            .Validate(o => AiToolsOptions.Problem(o) is null, "Ai:Tools is out of range: GatewayUrl must be the EduOS gateway's address inside the deployment (loopback or private network, no credentials, no query), TimeoutSeconds 1 to 60, MaxResponseBytes 1 KB to 16 MB.")
+            .ValidateOnStart();
+        builder.Services.AddSingleton<IAiTool, StudentCountTool>();
+        builder.Services.AddSingleton<IAiTool, AttendanceSummaryTool>();
+        builder.Services.AddSingleton<IAiTool, FeeSummaryTool>();
+        builder.Services.AddSingleton<IAiTool, ExamScheduleTool>();
+        builder.Services.AddSingleton<IEduOsApi>(s => new EduOsApi(EduOsApi.Client(s.GetRequiredService<IOptions<AiToolsOptions>>().Value), s.GetServices<IAiTool>()));
+        builder.Services.AddSingleton<IAiToolAudit, PostgresAiToolAudit>();
+        builder.Services.AddSingleton<AiToolRegistry>();
     }
 
     // Checked against the chunk size, so the best chunk always fits in the context budget.

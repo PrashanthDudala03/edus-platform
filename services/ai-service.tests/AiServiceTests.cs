@@ -34,7 +34,7 @@ public sealed class AiHost : IAsyncDisposable
     /// <param name="database">A stand-in for database preparation. When given, the service is configured as if it had an AI database.</param>
     /// <param name="settings">Extra configuration, as the environment would supply it.</param>
     /// <param name="model">Replaces the configured chat provider.</param>
-    public static async Task<AiHost> Start(bool enabled = false, IAiDatabaseBootstrap? database = null, Dictionary<string, string?>? settings = null, IModelProvider? model = null, TimeProvider? clock = null, IAiUsageStore? usage = null, IKnowledgeStore? knowledge = null, IEmbeddingProvider? embedding = null)
+    public static async Task<AiHost> Start(bool enabled = false, IAiDatabaseBootstrap? database = null, Dictionary<string, string?>? settings = null, IModelProvider? model = null, TimeProvider? clock = null, IAiUsageStore? usage = null, IKnowledgeStore? knowledge = null, IEmbeddingProvider? embedding = null, EduOS.Ai.Tools.IAiToolAudit? toolAudit = null, HttpMessageHandler? eduos = null)
     {
         var host = new AiHost();
         var builder = WebApplication.CreateBuilder();
@@ -62,6 +62,10 @@ public sealed class AiHost : IAsyncDisposable
         builder.Services.AddSingleton(usage ?? new InMemoryUsageStore());
         builder.Services.AddSingleton(knowledge ?? new InMemoryKnowledgeStore());
         if (embedding is not null) builder.Services.AddSingleton(embedding);
+        builder.Services.AddSingleton(toolAudit ?? new InMemoryToolAudit());
+        // Stands where the EduOS gateway would be. Without it the tools have nothing to call, and no test calls them.
+        if (eduos is not null) builder.Services.AddSingleton<EduOS.Ai.Tools.IEduOsApi>(s => new EduOS.Ai.Tools.EduOsApi(
+            EduOS.Ai.Tools.EduOsApi.Client(s.GetRequiredService<Microsoft.Extensions.Options.IOptions<EduOS.Ai.Tools.AiToolsOptions>>().Value, eduos), s.GetServices<EduOS.Ai.Tools.IAiTool>()));
         host.app = builder.Build();
         AiService.Map(host.app);
         await host.app.StartAsync();

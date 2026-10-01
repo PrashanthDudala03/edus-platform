@@ -109,6 +109,10 @@ Access tokens carry `permission` claims, `data_scope` (`platform`, `school`, `te
 | `services/ai-service/Providers/AiProviders.cs` | `Ai:Providers` options, start-up validation, and the one switch that maps a provider name to an implementation. A new vendor is added here. |
 | `services/ai-service/Providers/LocalProviders.cs` | `LocalModelProvider`, `LocalEmbeddingProvider` (provider `local`), their options (`Ai:Providers:LocalChat`, `LocalEmbedding`) and `LocalEndpoint` (loopback rule, HTTP client without proxy, redirect or credential). |
 | `services/ai-service.tests/AiLocalProviderTests.cs` | Adapter tests with `StubRuntime` (no socket), and the assistant end to end on the local adapters. |
+| `services/ai-service/Tools/AiTools.cs` | Tool contracts (`ToolDefinition`, `ToolParameter`, `ToolCaller`, `ToolResult`), `AiToolRegistry.Execute` (the only way to run a tool), `EduOsApi` (the only HTTP path to EduOS: GET, registered paths, caller's token), `PostgresAiToolAudit`, options `Ai:Tools`. |
+| `services/ai-service/Tools/EduOsTools.cs` | The four tools. A new tool is one class here plus one `AddSingleton<IAiTool, …>` in `AiService.Configure`. |
+| `services/ai-service.tests/AiToolTests.cs` | Tool and registry tests with a stand-in gateway (`StubRuntime`). |
+| `services/ai-service.tests/AiToolLiveTests.cs` | The tools against a running local stack with the demo accounts, read-only: set `AI_TEST_STACK_URL=http://localhost:8080` and `AI_TEST_STACK_PASSWORD`, then `--filter AiToolLiveTests`. Also the audit-row test on the AI database. |
 | `services/ai-service.tests/AiLocalSmokeTests.cs` | The one test that uses real models. Skipped unless `AI_TEST_LOCAL_*` and `AI_TEST_DB_*` are set. |
 | `services/ai-service/Providers/FakeProviders.cs` | Deterministic chat and embedding providers for development and CI. |
 | `services/ai-service.tests/AiProviderTests.cs` | Guard, fake and configuration tests; stub providers to copy for new adapters. |

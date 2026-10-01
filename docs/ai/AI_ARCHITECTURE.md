@@ -67,6 +67,7 @@ Answer (AI-009, done) → authenticated school user with `ai.assistant.use` → 
 `frontend/src/ai/`: "Ask EduOS AI" in the top bar → panel → `POST /api/v1/ai/assistant/ask` with `{ question }` through the shared API client (session token, refresh) → answer and backend-owned sources as plain text, or a fixed sentence for each reason. Single turn per request; the conversation is in memory only. No operational EduOS data is reachable: tools do not exist yet (AI-012). See D60.
 
 ## Tools (EduOS API calling)
+- Built in AI-012 (`services/ai-service/Tools/`, D61 to D63): `student_count`, `attendance_summary`, `fee_summary`, `exam_schedule`. Deterministic execution only; the model does not call tools until AI-013.
 - Registry of named, read-only tools, each mapped to one existing EduOS endpoint and one required permission.
 - Only tools the caller's token already permits are offered to the model.
 - Arguments are validated against a schema. School id and user id are never arguments.
