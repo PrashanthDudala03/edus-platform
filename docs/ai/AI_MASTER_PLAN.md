@@ -24,9 +24,9 @@ An optional AI layer for EduOS that starts on free/local models and grows to hun
 |---|---|---|
 | 0 Discovery | These documents | AI-000 (done) |
 | 1 Skeleton and safety | Service, gateway route, permissions, provider interfaces, metering, quotas. Runs with a fake provider; no model needed | AI-001 – AI-005 |
-| 2 RAG | Tenant-aware ingestion, retrieval, cited answers | AI-006 – AI-008 |
-| 3 Tools and routing | Read-only EduOS tools, cost ladder, compression, caching | AI-009 – AI-010 |
-| 4 Product and operations | UI, admin controls, evaluation, local model runtime, billing hook, hosted providers | AI-011 – AI-016 |
+| 2 Knowledge and RAG | Tenant-aware ingestion, embeddings, retrieval, cited answers | AI-006 – AI-009 |
+| 3 Models, tools and routing | First real (local) model provider, read-only EduOS tools, cost ladder, compression | AI-010 – AI-012 |
+| 4 Product and operations | UI, admin controls, evaluation, billing hook, hosted providers | AI-013 – AI-017 (and deferred AI-005B) |
 
 Detail and status: `AI_PROGRESS.md`.
 
@@ -44,4 +44,4 @@ Detail and status: `AI_PROGRESS.md`.
 | 9 | No conflict with billing | Own schema and database; billing tables untouched; entitlement hook is a later read-only integration. D11. |
 | 10 | Low future agent tokens | These documents plus one small task per session in `AI_CURRENT_TASK.md`. |
 
-Not validated here: runtime behaviour, model quality and CPU latency. Those are measured in AI-013 and AI-014.
+Not validated here: runtime behaviour, model quality and CPU latency. Those are measured in AI-010 and AI-015.

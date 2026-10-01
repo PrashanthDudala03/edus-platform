@@ -1,27 +1,23 @@
-# Current Task — AI-005B: Super Admin controls for school AI
+# Current Task — AI-010: real local model provider integration
 
-Do only this task. Read `AI_SECURITY_RULES.md` first, and `AI_REPO_MAP.md` for paths. Do not re-scan the repository.
+Do only this task. Read `AI_SECURITY_RULES.md` first, and `AI_REPO_MAP.md` for paths. Do not re-scan the repository. AI-005B stays deferred. Do not start without an explicit brief: this task pulls images and model files and needs that authorised.
 
 ## Goal
-The platform administrator can switch AI on for a school, set its monthly token budget and highest tier, and see usage across schools. Schools still cannot change their own settings.
-
-## The design question to settle first (D24)
-`ai_app` can only read one school's settings and can never read across schools. The platform path must be explicit and must not loosen that. Recommended: a second restricted database account used only by platform endpoints, with its own entry point that requires `TenantContext.IsPlatform`, write access to `ai.school_settings` only, and read access to usage totals only. The alternative is a small set of `SECURITY DEFINER` functions. Choose one, record it in `AI_DECISIONS.md`, and extend `AiPersistenceTests` so the choice is enforced.
+The assistant and the embedder run against a real model that stays inside the deployment (`DataBoundary.Local`), behind the existing contracts. Nothing above `IModelProvider` and `IEmbeddingProvider` changes.
 
 ## Scope
-1. Migration in `services/ai-service/Migrations/` for the chosen platform path. Additive; row-level security stays forced on every table.
-2. `PUT /api/ai/admin/schools/{id}` (`enabled`, `monthlyTokenBudget`, `maxTier`) and `GET /api/ai/admin/schools` (settings and this month's totals per school). Permission `ai.platform.manage` (already mapped in `PermissionAccess`), platform users only. The school id in the path is the target; it is never taken from a school user.
-3. Every change writes an `ai.audit` row (who, which school, old and new values).
-4. Existing SuperAdmin roles do not hold `ai.platform.manage` yet (new installations get it from the catalogue). Granting it needs a one-time migration in **auth-service**, which touches the core database: ask before doing it, or leave it as a documented manual step.
+1. An OpenAI-compatible HTTP adapter for chat and for embeddings in `Providers/`, selected through `Ai:Providers`, wrapped by the existing guards (timeout, limits, usage, safe failures). Address and any key come from the environment (S20); nothing is logged that carries text or an address with a key.
+2. A local model runtime under compose profile `ai`, reachable by `ai-service` only, with no route out of the deployment.
+3. Chat template: the request has a system message, a reference-material message and a question message (D51). If the model needs alternating roles, the adapter merges the last two in a fixed way that keeps them distinguishable; test it.
+4. Embedding model change: a new embedding space is adopted only with `Ai:Knowledge:AdoptEmbeddingModel` (D44); documents are embedded again; `Ai:Retrieval:MinSimilarity` is calibrated for the new model (D48).
+5. Real limits in the descriptors (input, output, dimension, batch) and `Ai:Assistant:MaxRequestTokens` set to fit the model's context window (D54).
+6. Measurements on the target hardware: latency and answer quality on a small synthetic set; record the chosen default models (Q1).
 
 ## Out of scope
-Billing-plan entitlements (AI-015), UI (AI-012), per-user limits, changes to quota rules, RAG, tools, real providers.
+Hosted providers, tools, routing between models, conversation memory, frontend, Super Admin controls, approximate indexes, billing.
 
 ## Tests
-In process: permission and platform checks, validation, audit row, a school user is refused. Real database (recipe in `AI_REPO_MAP.md`): the platform account cannot read prompts (there are none), cannot touch anything but settings and totals, and `ai_app` still cannot write settings or read across schools. All existing tests still pass (145 without a database, 162 with).
-
-## Acceptance
-- `AI_PROGRESS.md` updated; this file rewritten for the next task.
+Adapter tests against a local stub HTTP server (success, timeout, malformed response, error status, no secret in logs or errors). All existing tests keep passing with the fake providers as the default (296 without a database, 334 with). A manual end-to-end run with the real model on synthetic schools, recorded in `AI_PROGRESS.md`.
 
 ## Constraints for the session
-Do not edit `.env`. Do not push or merge unless asked. Do not run migrations against the core database without explicit approval.
+Do not edit `.env`. Do not commit, push or merge unless asked. Never use the core database or the default compose project for tests. No school data leaves the deployment.

@@ -14,6 +14,12 @@ public class AiPersistenceTests
     static readonly string Compose = File.ReadAllText(Path.Combine(Root, "docker-compose.yml")).Replace("\r\n", "\n");
     static readonly string[] Tables = Regex.Matches(Sql, @"CREATE TABLE IF NOT EXISTS (\S+) \(").Select(m => m.Groups[1].Value).ToArray();
     const string Scope = "USING (school_id = ai.current_school()) WITH CHECK (school_id = ai.current_school())";
+    // Tables that hold no school data and are read-only to the service. Everything else must be school-owned.
+    static readonly string[] Shared = ["ai.embedding_spaces"];
+    static readonly string[] SchoolTables = Tables.Except(Shared).ToArray();
+    // The one change the service may make to a stored row: the embedding outcome of a document.
+    const string StateGrant = "GRANT UPDATE (status, failure, embedding_space_id, embedded_tokens, embedded_at, updated_at) ON ai.knowledge_documents TO ai_app;";
+    static readonly string Plain = Sql.Replace(StateGrant, "");
 
     static string FindRoot()
     {
@@ -29,7 +35,7 @@ public class AiPersistenceTests
     {
         Assert.Contains(Migrations, m => m.Id == "20261003_01_ai_core");
         Assert.Equal(Migrations.Select(m => m.Id).OrderBy(id => id, StringComparer.Ordinal), Migrations.Select(m => m.Id));
-        Assert.Equal(new[] { "ai.school_settings", "ai.usage_events", "ai.audit", "ai.usage_reservations" }, Tables);
+        Assert.Equal(new[] { "ai.school_settings", "ai.usage_events", "ai.audit", "ai.usage_reservations", "ai.knowledge_documents", "ai.knowledge_chunks", "ai.embedding_spaces", "ai.knowledge_embeddings" }, Tables);
     }
 
     [Fact]
@@ -45,15 +51,26 @@ public class AiPersistenceTests
     [Fact]
     public void EveryTableIsOwnedByASchoolAndProtectedByForcedRowLevelSecurity()
     {
-        Assert.NotEmpty(Tables);
-        foreach (var table in Tables)
+        Assert.NotEmpty(SchoolTables);
+        foreach (var table in SchoolTables)
         {
             Assert.Matches(@"school_id uuid (NOT NULL|PRIMARY KEY)", Body(table));
             Assert.Contains($"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY;", Sql);
             Assert.Contains($"ALTER TABLE {table} FORCE ROW LEVEL SECURITY;", Sql);
             Assert.Contains($"CREATE POLICY tenant_isolation ON {table} {Scope};", Sql);
         }
-        Assert.Equal(Tables.Length, Regex.Matches(Sql, "CREATE POLICY").Count);
+        Assert.Equal(SchoolTables.Length, Regex.Matches(Sql, "CREATE POLICY").Count);
+    }
+
+    [Fact]
+    public void SharedTablesHoldNoSchoolDataAndAreReadOnlyToTheService()
+    {
+        foreach (var table in Shared)
+        {
+            Assert.DoesNotMatch(@"(?i)school|user|text text|title|audience", Body(table));
+            Assert.Contains($"GRANT SELECT ON {table} TO ai_app;", Sql);
+            Assert.Single(Regex.Matches(Sql, @"GRANT [^;]* ON " + Regex.Escape(table) + " TO"));
+        }
     }
 
     [Fact]
@@ -77,7 +94,8 @@ public class AiPersistenceTests
     [Fact]
     public void RuntimeGrantsAreLeastPrivilege()
     {
-        var grants = Regex.Matches(Sql, @"GRANT (.+?) ON (.+?) TO (\S+?);").Select(m => (Privileges: m.Groups[1].Value, Target: m.Groups[2].Value, Role: m.Groups[3].Value)).ToList();
+        Assert.Single(Regex.Matches(Sql, Regex.Escape(StateGrant)));
+        var grants = Regex.Matches(Plain, @"GRANT (.+?) ON (.+?) TO (\S+?);").Select(m => (Privileges: m.Groups[1].Value, Target: m.Groups[2].Value, Role: m.Groups[3].Value)).ToList();
         Assert.NotEmpty(grants);
         Assert.All(grants, g => Assert.Equal("ai_app", g.Role));
         Assert.All(grants.SelectMany(g => g.Privileges.Split(',', StringSplitOptions.TrimEntries)), privilege => Assert.Contains(privilege, new[] { "USAGE", "EXECUTE", "SELECT", "INSERT", "DELETE" }));
@@ -86,8 +104,10 @@ public class AiPersistenceTests
         Assert.Equal("SELECT, INSERT", grants.Single(g => g.Target == "ai.usage_events").Privileges);
         Assert.Equal("SELECT, INSERT", grants.Single(g => g.Target == "ai.audit").Privileges);
         // Reservations are the only rows the service may remove, and nothing may be updated in place.
-        Assert.Equal(new[] { "ai.usage_reservations" }, grants.Where(g => g.Privileges.Contains("DELETE")).Select(g => g.Target));
-        Assert.DoesNotMatch(@"(?i)GRANT[^;]*\b(UPDATE|TRUNCATE|REFERENCES|TRIGGER)\b", Sql);
+        Assert.Equal(new[] { "ai.usage_reservations", "ai.knowledge_documents", "ai.knowledge_embeddings" }, grants.Where(g => g.Privileges.Contains("DELETE")).Select(g => g.Target));
+        // Chunks are written with their document and leave with it; they are never changed or removed on their own.
+        Assert.Equal("SELECT, INSERT", grants.Single(g => g.Target == "ai.knowledge_chunks").Privileges);
+        Assert.DoesNotMatch(@"(?i)GRANT[^;]*\b(UPDATE|TRUNCATE|REFERENCES|TRIGGER)\b", Plain);
     }
 
     [Fact]
@@ -99,9 +119,19 @@ public class AiPersistenceTests
     }
 
     [Fact]
-    public void NoColumnCanHoldAQuestionAnAnswerOrDocumentText()
+    public void NoColumnCanHoldAQuestionOrAnAnswerAndDocumentTextLivesOnlyInChunks()
     {
         Assert.DoesNotMatch(@"(?i)\b(prompt|question|answer|response|content|message|body)\w* (text|varchar|jsonb|bytea)", Sql);
+        // The only free-text column for document content is knowledge_chunks.text; nothing stores a raw file.
+        Assert.Single(Regex.Matches(Sql, @" text text NOT NULL"));
+        Assert.DoesNotMatch(@"(?i)\bbytea\b|\bvector\s*\(|file_path|storage_path", Sql);
+        Assert.Contains("FOREIGN KEY (school_id, document_id) REFERENCES ai.knowledge_documents (school_id, id) ON DELETE CASCADE", Sql);
+        var knowledge = File.ReadAllText(Path.Combine(Root, "services", "ai-service", "Knowledge", "KnowledgeStore.cs"));
+        Assert.DoesNotMatch(@"new NpgsqlConnection|NpgsqlDataSource|GetConnectionString", knowledge);
+        Assert.Equal(7, Regex.Matches(knowledge, @"database\.InSchool(<[^(]+>)?\(tenant,").Count);
+        // The pipeline never touches the file system or the network.
+        foreach (var file in Directory.GetFiles(Path.Combine(Root, "services", "ai-service", "Knowledge"), "*.cs"))
+            Assert.DoesNotMatch(@"File\.(Write|Open|Create|Move|Copy)|FileStream|HttpClient|Process\.Start", File.ReadAllText(file));
         // Usage goes through the tenant-scoped entry point only; the store opens no connection of its own.
         var store = File.ReadAllText(Path.Combine(Root, "services", "ai-service", "Gateway", "AiUsage.cs"));
         Assert.DoesNotMatch(@"new NpgsqlConnection|NpgsqlDataSource|GetConnectionString", store);
@@ -109,10 +139,59 @@ public class AiPersistenceTests
     }
 
     [Fact]
-    public void VectorSupportIsReadyButNoDimensionIsFixedYet()
+    public void TheAssistantReachesKnowledgeOnlyThroughRetrievalAndTheContextCarriesNoIdentity()
+    {
+        var gateway = File.ReadAllText(Path.Combine(Root, "services", "ai-service", "Gateway", "AiGateway.cs"));
+        Assert.DoesNotMatch(@"IKnowledgeStore|IEmbeddingProvider|Npgsql|AiDatabase\b|\.Search\(", gateway);
+        // One retrieval per question, for the school and the audience of the token, with nothing a caller chose.
+        Assert.Single(Regex.Matches(gateway, @"retriever\.Retrieve\("));
+        Assert.Contains("retriever.Retrieve(tenant, audience, question, null, cancellation)", gateway);
+        Assert.Equal(new[] { "MaxOutputTokens", "Question" }, typeof(EduOS.Ai.Gateway.AssistantAsk).GetProperties().Select(p => p.Name).Order());
+        // The builder has no school, user, chunk identifier, score, log or database to put in a prompt.
+        var builder = File.ReadAllText(Path.Combine(Root, "services", "ai-service", "Gateway", "AiRagContext.cs"));
+        Assert.DoesNotMatch(@"TenantContext|SchoolId|UserId|ChunkId|Similarity|ILogger|Npgsql|DateTime|Random|Guid\.NewGuid", builder);
+        Assert.Equal(new[] { "DocumentId", "Number", "Page", "Section", "Source", "Title" }, typeof(EduOS.Ai.Gateway.AssistantSource).GetProperties().Select(p => p.Name).Order());
+        // The endpoint takes the audience from the token and nowhere else.
+        var service = File.ReadAllText(Path.Combine(Root, "services", "ai-service", "AiService.cs"));
+        Assert.Contains("gateway.Ask(tenant, http.User.FindFirst(\"data_scope\")?.Value ?? \"\", ask, cancellation)", service);
+    }
+
+    [Fact]
+    public void TheSearchIsExactAndBoundedBySchoolSpaceReadinessAndAudience()
+    {
+        var store = Regex.Replace(File.ReadAllText(Path.Combine(Root, "services", "ai-service", "Knowledge", "KnowledgeStore.cs")), @"\s+", " ");
+        var search = Regex.Match(store, @"SELECT k\.id, k\.document_id.*?LIMIT @limit").Value;
+        Assert.NotEmpty(search);
+        foreach (var condition in new[]
+        {
+            "e.school_id = @school", "e.space_id = @space", "e.dimension = @dimension", "d.status = 'ready'", "d.embedding_space_id = @space", "@audience = ANY(d.audience)",
+            "k.school_id = e.school_id", "d.school_id = k.school_id", "ORDER BY e.embedding <=> @query::vector, k.document_id, k.ordinal",
+        }) Assert.Contains(condition, search);
+        // Cosine distance only, every value a parameter, and the vector itself is never selected.
+        Assert.DoesNotMatch(@"<->|<#>|\{|e\.embedding,|SELECT \*", search);
+        // No approximate index exists yet, so the result does not depend on one.
+        Assert.DoesNotMatch(@"(?i)\bhnsw\b|\bivfflat\b", Sql);
+        // Retrieval calls the embedding provider and the store. It has no model and no connection of its own.
+        var retrieval = File.ReadAllText(Path.Combine(Root, "services", "ai-service", "Knowledge", "KnowledgeRetrieval.cs"));
+        Assert.DoesNotMatch(@"IModelProvider|Npgsql|AiDatabase\b|SchoolId", retrieval);
+    }
+
+    [Fact]
+    public void VectorsAreStoredOnceWithADimensionTiedToTheirSpace()
     {
         Assert.Contains("CREATE EXTENSION IF NOT EXISTS vector;", Sql);
-        Assert.DoesNotMatch(@"(?i)\bvector\s*\(|\bembedding\b|\bhnsw\b|\bivfflat\b", Sql);
+        // One vector column in the whole schema. It has no fixed size in the type: its size is the dimension of its space.
+        Assert.Single(Regex.Matches(Sql, @"\bvector NOT NULL"));
+        Assert.Contains("embedding vector NOT NULL CHECK (vector_dims(embedding) = dimension)", Body("ai.knowledge_embeddings"));
+        Assert.Contains("FOREIGN KEY (space_id, dimension) REFERENCES ai.embedding_spaces (id, dimension)", Sql);
+        Assert.Contains("FOREIGN KEY (school_id, chunk_id) REFERENCES ai.knowledge_chunks (school_id, id) ON DELETE CASCADE", Sql);
+        Assert.Contains("PRIMARY KEY (chunk_id, space_id)", Body("ai.knowledge_embeddings"));
+        Assert.Contains("CREATE UNIQUE INDEX IF NOT EXISTS embedding_spaces_one_active ON ai.embedding_spaces (active) WHERE active;", Sql);
+        Assert.Contains("CHECK (status <> 'ready' OR embedding_space_id IS NOT NULL)", Sql);
+        // No dimension is written in a migration or in application code, and there is no approximate index yet.
+        Assert.DoesNotMatch(@"(?i)\bvector\s*\(\s*\d|\bhnsw\b|\bivfflat\b", Sql);
+        foreach (var file in Directory.GetFiles(Path.Combine(Root, "services", "ai-service"), "*.cs", SearchOption.AllDirectories).Where(f => !f.Contains("FakeProviders") && !Regex.IsMatch(f, @"[\\/](bin|obj)[\\/]")))
+            Assert.DoesNotMatch(@"(?i)vector\s*\(\s*\d|dimension\s*(=|==)\s*\d", File.ReadAllText(file));
     }
 
     [Fact]

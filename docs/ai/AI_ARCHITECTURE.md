@@ -51,14 +51,17 @@ Token controls: top-k ≤ 4 chunks of ≤ ~350 tokens, hard context budget per t
 - `usage_events(id, school_id, user_id, feature, provider, model, tier, input_tokens, output_tokens, retrieved_chunks, latency_ms, estimated_cost_minor, currency, success, error_code, cache_hit, usage_estimated, created_at)`
 - `usage_reservations(id, school_id, user_id, tokens, created_at, expires_at)` — worst-case tokens of calls in progress; see D33.
 - `audit(id, school_id, user_id, action, target_id, detail jsonb, created_at)` — metadata only; prompt text is not stored by default.
-- `documents(id, school_id, title, audience text[], status, content_hash, version, uploaded_by, created_at)`
-- `chunks(id, school_id, document_id, ordinal, text, token_count, embedding vector(n), embedding_model)` — index on `school_id`, HNSW on `embedding`; row-level security on `school_id`.
+- `knowledge_documents(id, school_id, title, file_name, media_type, audience text[], status, failure, byte_count, char_count, chunk_count, text_sha256, uploaded_by, created_at, updated_at)` — see D37.
+- `knowledge_chunks(id, school_id, document_id, ordinal, text, char_start, char_end, section, page, token_estimate)` — row-level security on `school_id`. See D37.
+- `embedding_spaces(id, provider, model, dimension, active)` — shared, no school data; exactly one active (D41).
+- `knowledge_embeddings(school_id, chunk_id, space_id, dimension, embedding vector, created_at)` — one vector per chunk and space, row-level security on `school_id` (D42). Documents also carry `embedding_space_id`, `embedded_tokens`, `embedded_at`.
 - `ingestion_jobs(id, school_id, document_id, status, attempts, error, locked_until)` — worker uses `FOR UPDATE SKIP LOCKED`.
 - `response_cache(key, school_id, answer, citations, expires_at)`
 
 ## RAG flow
-Upload (authorized admin) → type and size checks → text extraction → chunk → embed → store with `school_id` and `audience`.
-Query → embed question → vector search with `school_id` from the token and `audience` matching the caller's data scope → build prompt with delimited excerpts → answer with citations (document title and chunk reference) → if nothing relevant is retrieved, say so instead of guessing.
+Upload (authorized admin) → type and size checks → text extraction → normalise → chunk → store (`processing`) → embed the chunk texts in batches → store all vectors and mark `ready` in one transaction. A failure leaves the document `failed` with no vectors; it can be embedded again (D43).
+Query (AI-008, done) → embed the question → exact cosine search of the school's vectors in the active space, with `school_id` from the token and `audience` from the caller's data scope → at most `TopK` chunks above the similarity threshold and within the context budget, each with document, title, source label, order, section, page and similarity (D46–D48).
+Answer (AI-009, done) → authenticated school user with `ai.assistant.use` → feature state, open model circuit → rate limit → limits on question and output → retrieval as above (school switch included) → nothing relevant: `insufficient-knowledge`, no model call, nothing charged; retrieval failed: `retrieval-unavailable`, never an ungrounded answer → `RagContextBuilder`: constant instruction, reference material as its own message with numbered sources, the question last, whole chunks only, within the model input limit and the request budget → reserve the final input plus the output limit → circuit breaker → `IModelProvider` (guarded) → usage row with the number of chunks, reservation settled → answer plus the service's own source list (D50–D54). Single turn: no history or memory.
 
 ## Tools (EduOS API calling)
 - Registry of named, read-only tools, each mapped to one existing EduOS endpoint and one required permission.

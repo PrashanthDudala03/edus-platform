@@ -55,7 +55,7 @@ public class AiUsageTests
 {
     const string Ask = "/api/ai/assistant/ask", Use = "ai.assistant.use", Question = "When does the term start, zebra-quartz?";
     static readonly string Valid = JsonSerializer.Serialize(new { question = Question });
-    static readonly int Input = AiTokens.Estimate(AiGateway.SystemPrompt) + AiTokens.Estimate(Question);
+    static readonly int Input = AiGatewayTests.Sent(Question).InputTokens;
     static readonly int WorstCase = Input + 256;
     static async Task<JsonElement> Call(AiHost host, string? token = null) => await AiGatewayTests.Data(await host.Post(Ask, token ?? host.Token(permissions: Use), Valid));
     static async Task<JsonElement> Status(AiHost host) => await AiGatewayTests.Data(await host.Get("/api/ai/status", host.Token(permissions: Use)));
@@ -68,7 +68,7 @@ public class AiUsageTests
         Assert.True((await Call(host)).GetProperty("available").GetBoolean());
         var (school, _, record) = Assert.Single(store.Records);
         Assert.Equal(host.School, school);
-        Assert.Equal(new AiUsageRecord("assistant.ask", "recording", "recording-1", 11, 3, false, record.LatencyMs, true), record);
+        Assert.Equal(new AiUsageRecord("assistant.ask", "recording", "recording-1", 11, 3, false, record.LatencyMs, true, RetrievedChunks: 1), record);
         Assert.Empty(store.Reservations);
         Assert.True((await Status(host)).GetProperty("enabled").GetBoolean());
     }
@@ -113,7 +113,7 @@ public class AiUsageTests
         await using var host = await AiGatewayTests.On(model, usage: store, timeout: TimeSpan.FromMilliseconds(50));
         Assert.Equal(reason, (await Call(host)).GetProperty("reason").GetString());
         var record = Assert.Single(store.Records).Record;
-        Assert.Equal(new AiUsageRecord("assistant.ask", "recording", "recording-1", Input, 0, true, record.LatencyMs, false, code), record);
+        Assert.Equal(new AiUsageRecord("assistant.ask", "recording", "recording-1", Input, 0, true, record.LatencyMs, false, code, RetrievedChunks: 1), record);
         Assert.Empty(store.Reservations);
         var usage = await AiGatewayTests.Data(await host.Get("/api/ai/usage", host.Token(permissions: "ai.usage.view")));
         Assert.Equal((0, 0, 1), (usage.GetProperty("tokensUsed").GetInt64(), usage.GetProperty("calls").GetInt64(), usage.GetProperty("failedCalls").GetInt64()));
@@ -204,7 +204,7 @@ public class AiUsageTests
         var model = new RecordingModel(async (_, token) => { await Task.Delay(Timeout.Infinite, token); throw new InvalidOperationException(); });
         await using var host = await AiGatewayTests.On(model, usage: store);
         using var caller = new CancellationTokenSource();
-        var call = host.Services.GetRequiredService<AiGateway>().Ask(new TenantContext(host.School, Guid.NewGuid(), "Teacher"), new AssistantAsk(Question), caller.Token);
+        var call = host.Services.GetRequiredService<AiGateway>().Ask(new TenantContext(host.School, Guid.NewGuid(), "Teacher"), "teacher", new AssistantAsk(Question), caller.Token);
         while (store.Reservations.Count == 0) await Task.Delay(5);
         caller.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => call);
@@ -230,6 +230,6 @@ public class AiUsageTests
         await Call(host);
         var stored = JsonSerializer.Serialize(store.Records.Select(r => r.Record));
         Assert.DoesNotContain("zebra-quartz", stored); Assert.DoesNotContain("[fake]", stored);
-        Assert.Equal(new[] { "ErrorCode", "Estimated", "Feature", "InputTokens", "LatencyMs", "Model", "OutputTokens", "Provider", "Success", "Tier" }, typeof(AiUsageRecord).GetProperties().Select(p => p.Name).Order());
+        Assert.Equal(new[] { "ErrorCode", "Estimated", "Feature", "InputTokens", "LatencyMs", "Model", "OutputTokens", "Provider", "RetrievedChunks", "Success", "Tier" }, typeof(AiUsageRecord).GetProperties().Select(p => p.Name).Order());
     }
 }

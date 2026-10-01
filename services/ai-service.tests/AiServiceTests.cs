@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using System.Collections.Concurrent;
 using EduOS.Ai.Gateway;
+using EduOS.Ai.Knowledge;
 using EduOS.Ai.Providers;
 using EduOS.ServiceAuth;
 using Microsoft.AspNetCore.Builder;
@@ -33,7 +34,7 @@ public sealed class AiHost : IAsyncDisposable
     /// <param name="database">A stand-in for database preparation. When given, the service is configured as if it had an AI database.</param>
     /// <param name="settings">Extra configuration, as the environment would supply it.</param>
     /// <param name="model">Replaces the configured chat provider.</param>
-    public static async Task<AiHost> Start(bool enabled = false, IAiDatabaseBootstrap? database = null, Dictionary<string, string?>? settings = null, IModelProvider? model = null, TimeProvider? clock = null, IAiUsageStore? usage = null)
+    public static async Task<AiHost> Start(bool enabled = false, IAiDatabaseBootstrap? database = null, Dictionary<string, string?>? settings = null, IModelProvider? model = null, TimeProvider? clock = null, IAiUsageStore? usage = null, IKnowledgeStore? knowledge = null, IEmbeddingProvider? embedding = null)
     {
         var host = new AiHost();
         var builder = WebApplication.CreateBuilder();
@@ -59,6 +60,8 @@ public sealed class AiHost : IAsyncDisposable
         if (clock is not null) builder.Services.AddSingleton(clock);
         // No test in this project reaches a real database unless it asks for one: schools are switched on with a large allowance.
         builder.Services.AddSingleton(usage ?? new InMemoryUsageStore());
+        builder.Services.AddSingleton(knowledge ?? new InMemoryKnowledgeStore());
+        if (embedding is not null) builder.Services.AddSingleton(embedding);
         host.app = builder.Build();
         AiService.Map(host.app);
         await host.app.StartAsync();
@@ -83,6 +86,30 @@ public sealed class AiHost : IAsyncDisposable
     public Task<HttpResponseMessage> Post(string url, string? token, string json)
     {
         var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
+        if (token is not null) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        return Client.SendAsync(request);
+    }
+
+    public const string Knowledge = "/api/ai/knowledge/documents";
+
+    /// <summary>A multipart upload as a browser would send it. Null arguments leave the part out.</summary>
+    public Task<HttpResponseMessage> Upload(string? token, string fileName, byte[] bytes, string? mediaType = "text/plain", string? audience = "school,teacher", string? title = null, string url = Knowledge, (string Name, string Value)[]? extra = null)
+    {
+        var form = new MultipartFormDataContent();
+        var file = new ByteArrayContent(bytes);
+        if (mediaType is not null) file.Headers.ContentType = MediaTypeHeaderValue.Parse(mediaType);
+        form.Add(file, "file", fileName);
+        if (audience is not null) form.Add(new StringContent(audience), "audience");
+        if (title is not null) form.Add(new StringContent(title), "title");
+        foreach (var (name, value) in extra ?? []) form.Add(new StringContent(value), name);
+        var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = form };
+        if (token is not null) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        return Client.SendAsync(request);
+    }
+
+    public Task<HttpResponseMessage> Delete(string url, string? token)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Delete, url);
         if (token is not null) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         return Client.SendAsync(request);
     }
@@ -113,10 +140,16 @@ public sealed class CapturingLogs(ConcurrentQueue<string> lines) : ILoggerProvid
     }
 }
 
-public sealed class StubBootstrap(bool works) : IAiDatabaseBootstrap
+/// <param name="embedding">What the prepared database reports as its embedding space. By default the space of the fake provider.</param>
+public sealed class StubBootstrap(bool works, EmbeddingSpaceStatus? embedding = null) : IAiDatabaseBootstrap
 {
+    public static readonly EmbeddingSpace FakeSpace = new(Guid.Parse("5b6a1c1e-0000-4000-8000-00000000fa4e"), "fake", "fake-embed-1", 16);
     public int Runs;
-    public Task Run(CancellationToken cancellation) { Runs++; return works ? Task.CompletedTask : Task.FromException(new InvalidOperationException("no database")); }
+    public Task<EmbeddingSpaceStatus> Run(CancellationToken cancellation)
+    {
+        Runs++;
+        return works ? Task.FromResult(embedding ?? new EmbeddingSpaceStatus(FakeSpace, null)) : Task.FromException<EmbeddingSpaceStatus>(new InvalidOperationException("no database"));
+    }
 }
 
 public class AiServiceTests

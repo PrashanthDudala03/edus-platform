@@ -1,3 +1,5 @@
+using EduOS.Ai.Knowledge;
+using EduOS.Ai.Providers;
 using EduOS.ServiceAuth;
 using Npgsql;
 using Xunit;
@@ -19,13 +21,18 @@ public sealed class AiDatabaseFixture : IAsyncLifetime
     public static bool Available => Owner.Length > 0 && Runtime.Length > 0;
     public static string Migrations => Path.Combine(AppContext.BaseDirectory, "Migrations");
     public AiDatabase Database { get; private set; } = null!;
+    /// <summary>The active embedding space of the test database: that of the fake provider.</summary>
+    public EmbeddingSpace Space { get; private set; } = null!;
+    public static NpgsqlAiDatabaseBootstrap Bootstrap(EmbeddingDescriptor? descriptor = null, bool adopt = false) => new(Owner, Runtime, Migrations, descriptor ?? new FakeEmbeddingProvider().Descriptor, adopt);
 
     public async Task InitializeAsync()
     {
         if (!Available) return;
         // The service's own start-up path, twice: the second run must find nothing to do.
-        var bootstrap = new NpgsqlAiDatabaseBootstrap(Owner, Runtime, Migrations);
-        await bootstrap.Run(default); await bootstrap.Run(default);
+        var bootstrap = Bootstrap();
+        var first = await bootstrap.Run(default); var second = await bootstrap.Run(default);
+        Space = second.Active ?? throw new InvalidOperationException("The test database has another active embedding space: " + second.Problem);
+        if (first.Active?.Id != Space.Id) throw new InvalidOperationException("The embedding space changed between two starts.");
         Database = new AiDatabase(Runtime);
     }
     public async Task DisposeAsync() { if (Database is not null) await Database.DisposeAsync(); }
@@ -53,7 +60,7 @@ public sealed class AiDatabaseFixture : IAsyncLifetime
 public class AiDatabaseSecurityTests(AiDatabaseFixture fixture) : IClassFixture<AiDatabaseFixture>
 {
     const string InsertUsage = "INSERT INTO ai.usage_events (school_id, user_id, feature, provider, model, tier, success) VALUES (@school, gen_random_uuid(), 'test', 'fake', 'fake-chat-1', 1, true)";
-    static readonly string[] SchoolTables = ["school_settings", "usage_events", "audit", "usage_reservations"];
+    static readonly string[] SchoolTables = ["school_settings", "usage_events", "audit", "usage_reservations", "knowledge_documents", "knowledge_chunks", "knowledge_embeddings"];
 
     Task<long> CountAs(Guid school, string table = "usage_events") =>
         fixture.Database.InSchool(AiDatabaseFixture.Tenant(school), (c, t, _) => AiDatabaseFixture.Scalar<long>(c, $"SELECT count(*) FROM ai.{table}", t));
@@ -106,7 +113,7 @@ public class AiDatabaseSecurityTests(AiDatabaseFixture fixture) : IClassFixture<
     {
         var unprotected = await AiDatabaseFixture.AsOwner<long>("""
             SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE n.nspname = 'ai' AND c.relkind = 'r' AND c.relname <> 'schema_migrations'
+            WHERE n.nspname = 'ai' AND c.relkind = 'r' AND c.relname NOT IN ('schema_migrations', 'embedding_spaces')
             AND (NOT c.relrowsecurity OR NOT c.relforcerowsecurity OR NOT EXISTS (SELECT 1 FROM pg_policies p WHERE p.schemaname = 'ai' AND p.tablename = c.relname))
             """);
         Assert.Equal(0, unprotected);

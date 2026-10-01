@@ -1,3 +1,5 @@
+using EduOS.Ai.Knowledge;
+using EduOS.Ai.Providers;
 using EduOS.ServiceAuth;
 using Npgsql;
 
@@ -7,14 +9,19 @@ public sealed class AiDatabaseState(bool configured)
     volatile bool ready;
     public bool Configured => configured;
     public bool Ready { get => ready; set => ready = value; }
+    /// <summary>The embedding space the vector storage holds, decided when the database was prepared. Null until then.</summary>
+    public EmbeddingSpaceStatus? Embedding { get; set; }
     /// <summary>Completes after the first preparation attempt, successful or not.</summary>
     public TaskCompletionSource FirstAttempt { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 }
 
 public interface IAiDatabaseBootstrap
 {
-    /// <summary>Applies pending migrations and sets the runtime account's password. Uses the owner connection only here.</summary>
-    Task Run(CancellationToken cancellation);
+    /// <summary>
+    /// Applies pending migrations, sets the runtime account's password and settles the active embedding space.
+    /// Uses the owner connection only here.
+    /// </summary>
+    Task<EmbeddingSpaceStatus> Run(CancellationToken cancellation);
 }
 
 /// <summary>
@@ -49,9 +56,9 @@ public sealed class AiDatabase(string? runtimeConnection) : IAsyncDisposable
     public ValueTask DisposeAsync() => source.IsValueCreated ? source.Value.DisposeAsync() : ValueTask.CompletedTask;
 }
 
-public sealed class NpgsqlAiDatabaseBootstrap(string ownerConnection, string runtimeConnection, string migrationsDirectory) : IAiDatabaseBootstrap
+public sealed class NpgsqlAiDatabaseBootstrap(string ownerConnection, string runtimeConnection, string migrationsDirectory, EmbeddingDescriptor embedding, bool adoptEmbeddingModel) : IAiDatabaseBootstrap
 {
-    public async Task Run(CancellationToken cancellation)
+    public async Task<EmbeddingSpaceStatus> Run(CancellationToken cancellation)
     {
         var runtime = new NpgsqlConnectionStringBuilder(runtimeConnection);
         if (runtime.Username != AiDatabase.RuntimeRole || string.IsNullOrEmpty(runtime.Password))
@@ -70,7 +77,10 @@ public sealed class NpgsqlAiDatabaseBootstrap(string ownerConnection, string run
         }
         await using (var apply = new NpgsqlCommand("DO $$ BEGIN EXECUTE format('ALTER ROLE ai_app PASSWORD %L', current_setting('ai.app_password')); END $$", connection, transaction))
             await apply.ExecuteNonQueryAsync(cancellation);
+        // The dimension of the vector storage comes from the configured embedding provider and is settled here, once.
+        var space = await EmbeddingSpaces.Ensure(connection, transaction, embedding, adoptEmbeddingModel, cancellation);
         await transaction.CommitAsync(cancellation);
+        return space;
     }
 }
 
@@ -84,9 +94,11 @@ public sealed class AiDatabaseInitializer(AiDatabaseState state, IServiceProvide
         {
             try
             {
-                await services.GetRequiredService<IAiDatabaseBootstrap>().Run(stoppingToken);
+                state.Embedding = await services.GetRequiredService<IAiDatabaseBootstrap>().Run(stoppingToken);
                 state.Ready = true;
                 logger.LogInformation("AI database is ready");
+                if (state.Embedding.Active is { } space) logger.LogInformation("Active embedding space: {Provider} {Model}, {Dimension} dimensions", space.Provider, space.Model, space.Dimension);
+                else logger.LogError("The configured embedding model does not match the active embedding space ({Problem}); knowledge is stored but not embedded", state.Embedding.Problem);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

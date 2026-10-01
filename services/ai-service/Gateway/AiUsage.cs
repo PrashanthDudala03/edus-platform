@@ -7,8 +7,8 @@ public enum AiAdmission { Granted, SchoolDisabled, QuotaExceeded }
 
 public sealed record AiReservation(AiAdmission Admission, Guid Id = default);
 
-/// <summary>What is kept about one provider call. Counts and identifiers only: never the question, the answer or any school data.</summary>
-public sealed record AiUsageRecord(string Feature, string Provider, string Model, int InputTokens, int OutputTokens, bool Estimated, int LatencyMs, bool Success, string? ErrorCode = null, int Tier = 1);
+/// <summary>What is kept about one provider call. Counts and identifiers only: never the question, the answer, the retrieved text or any school data.</summary>
+public sealed record AiUsageRecord(string Feature, string Provider, string Model, int InputTokens, int OutputTokens, bool Estimated, int LatencyMs, bool Success, string? ErrorCode = null, int Tier = 1, int RetrievedChunks = 0);
 
 public sealed record AiUsageSummary(bool Enabled, long MonthlyTokenBudget, long TokensUsed, long TokensReserved, long Calls, long FailedCalls, DateTimeOffset MonthStart)
 {
@@ -86,11 +86,11 @@ public sealed class PostgresAiUsageStore(AiDatabase database, TimeProvider clock
                 await release.ExecuteNonQueryAsync(token);
             if (record is null) return 0;
             await using var insert = Command(connection, transaction, """
-                INSERT INTO ai.usage_events (school_id, user_id, feature, provider, model, tier, input_tokens, output_tokens, usage_estimated, latency_ms, success, error_code, created_at)
-                VALUES (@school, @user, @feature, @provider, @model, @tier, @input, @output, @estimated, @latency, @success, @error, @now)
+                INSERT INTO ai.usage_events (school_id, user_id, feature, provider, model, tier, input_tokens, output_tokens, usage_estimated, retrieved_chunks, latency_ms, success, error_code, created_at)
+                VALUES (@school, @user, @feature, @provider, @model, @tier, @input, @output, @estimated, @chunks, @latency, @success, @error, @now)
                 """,
                 ("school", tenant.SchoolId), ("user", tenant.UserId), ("feature", record.Feature), ("provider", record.Provider), ("model", record.Model), ("tier", (short)record.Tier),
-                ("input", record.InputTokens), ("output", record.OutputTokens), ("estimated", record.Estimated), ("latency", record.LatencyMs), ("success", record.Success),
+                ("input", record.InputTokens), ("output", record.OutputTokens), ("estimated", record.Estimated), ("chunks", record.RetrievedChunks), ("latency", record.LatencyMs), ("success", record.Success),
                 ("error", record.ErrorCode), ("now", clock.GetUtcNow()));
             return await insert.ExecuteNonQueryAsync(token);
         }, cancellation);

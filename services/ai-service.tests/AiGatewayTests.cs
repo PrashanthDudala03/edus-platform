@@ -26,8 +26,15 @@ public class AiGatewayTests
     static readonly string Valid = Body(new { question = Question });
 
     /// <summary>A service that is switched on with a prepared database, as an enabled deployment would be.</summary>
-    internal static Task<AiHost> On(RecordingModel? model = null, Dictionary<string, string?>? settings = null, TimeSpan? timeout = null, TimeProvider? clock = null, IAiUsageStore? usage = null) =>
-        AiHost.Start(true, new StubBootstrap(true), settings, model is null ? null : new GuardedModelProvider(model, timeout ?? TimeSpan.FromSeconds(30)), clock, usage);
+    internal static Task<AiHost> On(RecordingModel? model = null, Dictionary<string, string?>? settings = null, TimeSpan? timeout = null, TimeProvider? clock = null, IAiUsageStore? usage = null, EduOS.Ai.Knowledge.IKnowledgeStore? knowledge = null,
+        IEmbeddingProvider? embedding = null, EduOS.Ai.Knowledge.EmbeddingSpaceStatus? space = null) =>
+        AiHost.Start(true, new StubBootstrap(true, space), settings, model is null ? null : new GuardedModelProvider(model, timeout ?? TimeSpan.FromSeconds(30)), clock, usage, knowledge ?? InMemoryKnowledgeStore.WithEvidence(), embedding);
+    /// <summary>What the model is sent for a question when the knowledge found is the sample chunk, as in every test that brings no knowledge of its own.</summary>
+    internal static RagContext Sent(string question)
+    {
+        var sample = InMemoryKnowledgeStore.Sample;
+        return RagContextBuilder.Build(question, [new(sample.DocumentId, sample.Title, sample.FileName, sample.ChunkId, sample.Ordinal, sample.Text, sample.Section, sample.Page, sample.Similarity)], int.MaxValue)!;
+    }
     internal static async Task<JsonElement> Data(HttpResponseMessage response)
     {
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -43,14 +50,14 @@ public class AiGatewayTests
         Assert.Equal("[fake] " + Question, data.GetProperty("answer").GetString());
         Assert.Equal(("fake-chat-1", "completed"), (data.GetProperty("model").GetString(), data.GetProperty("finish").GetString()));
         var usage = data.GetProperty("usage");
-        Assert.Equal(AiTokens.Estimate(AiGateway.SystemPrompt) + AiTokens.Estimate(Question), usage.GetProperty("inputTokens").GetInt32());
+        Assert.Equal(Sent(Question).InputTokens, usage.GetProperty("inputTokens").GetInt32());
         Assert.Equal(AiTokens.Estimate("[fake] " + Question), usage.GetProperty("outputTokens").GetInt32());
         Assert.False(usage.GetProperty("estimated").GetBoolean());
-        Assert.Equal(new[] { "answer", "available", "finish", "model", "usage" }, data.EnumerateObject().Select(p => p.Name).Order());
+        Assert.Equal(new[] { "answer", "available", "finish", "model", "sources", "usage" }, data.EnumerateObject().Select(p => p.Name).Order());
     }
 
     [Fact]
-    public async Task TheProviderReceivesOnlyTheInstructionTheQuestionAndAnOutputLimit()
+    public async Task TheProviderReceivesOnlyTheInstructionTheMaterialTheQuestionAndAnOutputLimit()
     {
         var model = new RecordingModel();
         await using var host = await On(model);
@@ -59,7 +66,8 @@ public class AiGatewayTests
         var data = await Data(await host.Post(Ask, host.Token(permissions: Use), body));
         Assert.Equal("The answer.", data.GetProperty("answer").GetString());
         var request = Assert.Single(model.Requests);
-        Assert.Equal(new[] { new ChatMessage(ChatRole.System, AiGateway.SystemPrompt), new ChatMessage(ChatRole.User, Question) }, request.Messages);
+        Assert.Equal(Sent(Question).Messages, request.Messages);
+        Assert.Equal((new ChatMessage(ChatRole.System, AiGateway.SystemPrompt), new ChatMessage(ChatRole.User, Question), 3), (request.Messages[0], request.Messages[^1], request.Messages.Count));
         Assert.Equal(256, request.MaxOutputTokens);
     }
 
@@ -137,8 +145,8 @@ public class AiGatewayTests
         var model = new RecordingModel();
         await using var host = await On(model);
         var token = host.Token(permissions: Use);
-        Assert.Equal(HttpStatusCode.OK, (await host.Post(Ask, token, Body(new { question = new string('q', 2000) }))).StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, (await host.Post(Ask, token, Body(new { question = new string('q', 2001) }))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await host.Post(Ask, token, Body(new { question = new string('q', 1000) }))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await host.Post(Ask, token, Body(new { question = new string('q', 1001) }))).StatusCode);
         Assert.Equal(HttpStatusCode.RequestEntityTooLarge, (await host.Post(Ask, token, Body(new { question = new string('q', AiService.MaxBodyBytes) }))).StatusCode);
         Assert.Single(model.Requests);
     }
@@ -224,6 +232,7 @@ public class AiGatewayTests
 
     [Theory]
     [InlineData("Ai:Assistant:MaxOutputTokens", "0")] [InlineData("Ai:Assistant:MaxOutputTokens", "5000")] [InlineData("Ai:Assistant:MaxQuestionChars", "0")] [InlineData("Ai:Assistant:MaxQuestionChars", "9000")]
+    [InlineData("Ai:Assistant:MaxRequestTokens", "256")] [InlineData("Ai:Assistant:MaxRequestTokens", "200001")]
     public async Task InvalidAssistantLimitsStopTheServiceAtStart(string key, string value) =>
         await Assert.ThrowsAsync<OptionsValidationException>(() => On(settings: new() { [key] = value }));
 }

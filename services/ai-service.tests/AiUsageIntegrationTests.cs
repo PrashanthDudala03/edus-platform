@@ -108,7 +108,7 @@ public class AiUsageStoreIntegrationTests(AiDatabaseFixture fixture) : IClassFix
     {
         Guid on = Guid.NewGuid(), off = Guid.NewGuid(); const string question = "When does the term start, zebra-quartz?";
         await Settings(on, 100_000); await Settings(off, 100_000, false);
-        await using var host = await AiHost.Start(true, new StubBootstrap(true), usage: new PostgresAiUsageStore(fixture.Database, TimeProvider.System));
+        await using var host = await AiHost.Start(true, new StubBootstrap(true), usage: new PostgresAiUsageStore(fixture.Database, TimeProvider.System), knowledge: InMemoryKnowledgeStore.WithEvidence());
         var body = System.Text.Json.JsonSerializer.Serialize(new { question });
         var answered = await AiGatewayTests.Data(await host.Post("/api/ai/assistant/ask", host.Token(school: on, permissions: "ai.assistant.use"), body));
         var refused = await AiGatewayTests.Data(await host.Post("/api/ai/assistant/ask", host.Token(school: off, permissions: "ai.assistant.use"), body));
@@ -116,8 +116,8 @@ public class AiUsageStoreIntegrationTests(AiDatabaseFixture fixture) : IClassFix
         Assert.True(answered.GetProperty("available").GetBoolean());
         Assert.Equal(("school-disabled", "school-disabled"), (refused.GetProperty("reason").GetString(), unknown.GetProperty("reason").GetString()));
         var tokens = answered.GetProperty("usage").GetProperty("inputTokens").GetInt32() + answered.GetProperty("usage").GetProperty("outputTokens").GetInt32();
-        Assert.Equal($"assistant.ask|fake|fake-chat-1|{tokens}|f|t", await AiDatabaseFixture.AsOwner<string>(
-            "SELECT concat_ws('|', feature, provider, model, input_tokens + output_tokens, usage_estimated, success) FROM ai.usage_events WHERE school_id = @s", ("s", on)));
+        Assert.Equal($"assistant.ask|fake|fake-chat-1|{tokens}|f|t|1", await AiDatabaseFixture.AsOwner<string>(
+            "SELECT concat_ws('|', feature, provider, model, input_tokens + output_tokens, usage_estimated, success, retrieved_chunks) FROM ai.usage_events WHERE school_id = @s", ("s", on)));
         Assert.Equal((0L, 0L, 0L), (await Count("usage_events", off), await Count("usage_reservations", on), await Count("usage_reservations", off)));
         var usage = await AiGatewayTests.Data(await host.Get("/api/ai/usage", host.Token(school: on, permissions: "ai.usage.view")));
         Assert.Equal((tokens, 100_000 - tokens, 1), (usage.GetProperty("tokensUsed").GetInt64(), usage.GetProperty("tokensRemaining").GetInt64(), usage.GetProperty("calls").GetInt64()));
@@ -126,10 +126,12 @@ public class AiUsageStoreIntegrationTests(AiDatabaseFixture fixture) : IClassFix
     }
 
     [DatabaseFact]
-    public async Task NoColumnInTheAiSchemaCanHoldAQuestionOrAnAnswer()
+    public async Task NoColumnCanHoldAQuestionOrAnAnswerAndTheOnlyDocumentTextIsInChunks()
     {
         Assert.Equal(0, await AiDatabaseFixture.AsOwner<long>("SELECT count(*) FROM information_schema.columns WHERE table_schema = 'ai' AND column_name ~* '(prompt|question|answer|response|content|message|body)'"));
-        Assert.Equal("action,error_code,feature,id,model,provider", await AiDatabaseFixture.AsOwner<string>(
+        Assert.Equal(0, await AiDatabaseFixture.AsOwner<long>("SELECT count(*) FROM information_schema.columns WHERE table_schema = 'ai' AND data_type = 'bytea'"));
+        Assert.Equal("knowledge_embeddings.embedding", await AiDatabaseFixture.AsOwner<string>("SELECT string_agg(table_name || '.' || column_name, ',') FROM information_schema.columns WHERE table_schema = 'ai' AND udt_name = 'vector'"));
+        Assert.Equal("action,error_code,failure,feature,file_name,id,media_type,model,provider,section,status,text,text_sha256,title", await AiDatabaseFixture.AsOwner<string>(
             "SELECT string_agg(DISTINCT column_name, ',' ORDER BY column_name) FROM information_schema.columns WHERE table_schema = 'ai' AND data_type IN ('text', 'character varying') AND column_name <> 'currency'"));
     }
 }
