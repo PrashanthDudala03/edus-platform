@@ -48,7 +48,8 @@ Token controls: top-k ≤ 4 chunks of ≤ ~350 tokens, hard context budget per t
 
 ## Data model (schema `ai` in ai-db; created in AI-002 and later)
 - `school_settings(school_id, enabled, monthly_token_budget, max_tier, updated_by, updated_at)`
-- `usage_events(id, school_id, user_id, feature, provider, model, tier, input_tokens, output_tokens, retrieved_chunks, latency_ms, estimated_cost_minor, currency, success, error_code, cache_hit, created_at)`
+- `usage_events(id, school_id, user_id, feature, provider, model, tier, input_tokens, output_tokens, retrieved_chunks, latency_ms, estimated_cost_minor, currency, success, error_code, cache_hit, usage_estimated, created_at)`
+- `usage_reservations(id, school_id, user_id, tokens, created_at, expires_at)` — worst-case tokens of calls in progress; see D33.
 - `audit(id, school_id, user_id, action, target_id, detail jsonb, created_at)` — metadata only; prompt text is not stored by default.
 - `documents(id, school_id, title, audience text[], status, content_hash, version, uploaded_by, created_at)`
 - `chunks(id, school_id, document_id, ordinal, text, token_count, embedding vector(n), embedding_model)` — index on `school_id`, HNSW on `embedding`; row-level security on `school_id`.

@@ -5,6 +5,9 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Collections.Concurrent;
+using EduOS.Ai.Gateway;
+using EduOS.Ai.Providers;
 using EduOS.ServiceAuth;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -21,16 +24,23 @@ public sealed class AiHost : IAsyncDisposable
     public RSA SigningKey { get; } = RSA.Create(2048);
     public Guid School { get; } = Guid.NewGuid();
     public HttpClient Client { get; private set; } = null!;
-    public AiDatabaseState Database => app!.Services.GetRequiredService<AiDatabaseState>();
+    public IServiceProvider Services => app!.Services;
+    /// <summary>Every log line the service wrote, at any level.</summary>
+    public ConcurrentQueue<string> Logs { get; } = new();
+    public AiDatabaseState Database => Services.GetRequiredService<AiDatabaseState>();
     WebApplication? app;
 
     /// <param name="database">A stand-in for database preparation. When given, the service is configured as if it had an AI database.</param>
-    public static async Task<AiHost> Start(bool enabled = false, IAiDatabaseBootstrap? database = null)
+    /// <param name="settings">Extra configuration, as the environment would supply it.</param>
+    /// <param name="model">Replaces the configured chat provider.</param>
+    public static async Task<AiHost> Start(bool enabled = false, IAiDatabaseBootstrap? database = null, Dictionary<string, string?>? settings = null, IModelProvider? model = null, TimeProvider? clock = null, IAiUsageStore? usage = null)
     {
         var host = new AiHost();
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
         builder.Logging.ClearProviders();
+        builder.Logging.SetMinimumLevel(LogLevel.Trace);
+        builder.Logging.AddProvider(new CapturingLogs(host.Logs));
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["JWT_PUBLIC_KEY"] = Convert.ToBase64String(Encoding.UTF8.GetBytes(host.SigningKey.ExportSubjectPublicKeyInfoPem())),
@@ -41,9 +51,14 @@ public sealed class AiHost : IAsyncDisposable
             ["ConnectionStrings:AiDb"] = database is null ? null : "Host=unused.invalid;Username=ai_app;Password=unused",
             ["ConnectionStrings:AiDbMigrations"] = database is null ? null : "Host=unused.invalid;Username=owner;Password=unused",
         });
+        if (settings is not null) builder.Configuration.AddInMemoryCollection(settings);
         // The live session check needs auth-service; revocation is covered by the IAM integration tests.
         AiService.Configure(builder, events => events.OnTokenValidated = _ => Task.CompletedTask);
         if (database is not null) builder.Services.AddSingleton(database);
+        if (model is not null) builder.Services.AddSingleton(model);
+        if (clock is not null) builder.Services.AddSingleton(clock);
+        // No test in this project reaches a real database unless it asks for one: schools are switched on with a large allowance.
+        builder.Services.AddSingleton(usage ?? new InMemoryUsageStore());
         host.app = builder.Build();
         AiService.Map(host.app);
         await host.app.StartAsync();
@@ -65,6 +80,13 @@ public sealed class AiHost : IAsyncDisposable
             new SigningCredentials(new RsaSecurityKey(signer ?? SigningKey), SecurityAlgorithms.RsaSha256)));
     }
 
+    public Task<HttpResponseMessage> Post(string url, string? token, string json)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
+        if (token is not null) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        return Client.SendAsync(request);
+    }
+
     public Task<HttpResponseMessage> Get(string url, string? token)
     {
         var request = new HttpRequestMessage(HttpMethod.Get, url);
@@ -76,6 +98,18 @@ public sealed class AiHost : IAsyncDisposable
     {
         if (app is not null) await app.DisposeAsync();
         SigningKey.Dispose();
+    }
+}
+
+public sealed class CapturingLogs(ConcurrentQueue<string> lines) : ILoggerProvider
+{
+    public ILogger CreateLogger(string category) => new Writer(lines);
+    public void Dispose() { }
+    sealed class Writer(ConcurrentQueue<string> lines) : ILogger
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel level) => true;
+        public void Log<TState>(LogLevel level, EventId id, TState state, Exception? exception, Func<TState, Exception?, string> formatter) => lines.Enqueue(formatter(state, exception) + " " + exception);
     }
 }
 
@@ -132,8 +166,8 @@ public class AiServiceTests
 
     [Theory]
     [InlineData(false, null, "not-configured")] [InlineData(true, null, "not-configured")] [InlineData(false, true, "not-configured")]
-    [InlineData(true, false, "database-unavailable")] [InlineData(true, true, "no-capabilities")]
-    public async Task StatusReportsUnavailableAndNoSchoolData(bool configured, bool? databaseWorks, string reason)
+    [InlineData(true, false, "database-unavailable")] [InlineData(true, true, null)]
+    public async Task StatusReportsAvailabilityAndNoSchoolData(bool configured, bool? databaseWorks, string? reason)
     {
         await using var host = await AiHost.Start(configured, databaseWorks is bool works ? new StubBootstrap(works) : null);
         Assert.Equal(databaseWorks == true, host.Database.Ready);
@@ -141,7 +175,7 @@ public class AiServiceTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
         var data = JsonSerializer.Deserialize<JsonElement>(body).GetProperty("data");
-        Assert.False(data.GetProperty("enabled").GetBoolean());
+        Assert.Equal(reason is null, data.GetProperty("enabled").GetBoolean());
         Assert.Equal(reason, data.GetProperty("reason").GetString());
         Assert.DoesNotContain(host.School.ToString(), body);
     }

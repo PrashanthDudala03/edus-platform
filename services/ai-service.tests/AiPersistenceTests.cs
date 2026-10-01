@@ -29,7 +29,7 @@ public class AiPersistenceTests
     {
         Assert.Contains(Migrations, m => m.Id == "20261003_01_ai_core");
         Assert.Equal(Migrations.Select(m => m.Id).OrderBy(id => id, StringComparer.Ordinal), Migrations.Select(m => m.Id));
-        Assert.Equal(new[] { "ai.school_settings", "ai.usage_events", "ai.audit" }, Tables);
+        Assert.Equal(new[] { "ai.school_settings", "ai.usage_events", "ai.audit", "ai.usage_reservations" }, Tables);
     }
 
     [Fact]
@@ -80,11 +80,14 @@ public class AiPersistenceTests
         var grants = Regex.Matches(Sql, @"GRANT (.+?) ON (.+?) TO (\S+?);").Select(m => (Privileges: m.Groups[1].Value, Target: m.Groups[2].Value, Role: m.Groups[3].Value)).ToList();
         Assert.NotEmpty(grants);
         Assert.All(grants, g => Assert.Equal("ai_app", g.Role));
-        Assert.All(grants.SelectMany(g => g.Privileges.Split(',', StringSplitOptions.TrimEntries)), privilege => Assert.Contains(privilege, new[] { "USAGE", "EXECUTE", "SELECT", "INSERT" }));
+        Assert.All(grants.SelectMany(g => g.Privileges.Split(',', StringSplitOptions.TrimEntries)), privilege => Assert.Contains(privilege, new[] { "USAGE", "EXECUTE", "SELECT", "INSERT", "DELETE" }));
         // A school can read its settings but never raise its own budget; usage and audit are append-only.
         Assert.Equal("SELECT", grants.Single(g => g.Target == "ai.school_settings").Privileges);
         Assert.Equal("SELECT, INSERT", grants.Single(g => g.Target == "ai.usage_events").Privileges);
         Assert.Equal("SELECT, INSERT", grants.Single(g => g.Target == "ai.audit").Privileges);
+        // Reservations are the only rows the service may remove, and nothing may be updated in place.
+        Assert.Equal(new[] { "ai.usage_reservations" }, grants.Where(g => g.Privileges.Contains("DELETE")).Select(g => g.Target));
+        Assert.DoesNotMatch(@"(?i)GRANT[^;]*\b(UPDATE|TRUNCATE|REFERENCES|TRIGGER)\b", Sql);
     }
 
     [Fact]
@@ -93,6 +96,16 @@ public class AiPersistenceTests
         Assert.DoesNotMatch(@"(?i)\bDROP\b|\bTRUNCATE\b|\bDELETE FROM\b|\bRENAME\b", Sql);
         foreach (var schema in new[] { "auth_db.", "school_db.", "student_db.", "teacher_db.", "parent_db.", "suite.", "billing." })
             Assert.DoesNotContain(schema, Sql);
+    }
+
+    [Fact]
+    public void NoColumnCanHoldAQuestionAnAnswerOrDocumentText()
+    {
+        Assert.DoesNotMatch(@"(?i)\b(prompt|question|answer|response|content|message|body)\w* (text|varchar|jsonb|bytea)", Sql);
+        // Usage goes through the tenant-scoped entry point only; the store opens no connection of its own.
+        var store = File.ReadAllText(Path.Combine(Root, "services", "ai-service", "Gateway", "AiUsage.cs"));
+        Assert.DoesNotMatch(@"new NpgsqlConnection|NpgsqlDataSource|GetConnectionString", store);
+        Assert.Equal(3, Regex.Matches(store, @"database\.InSchool\(tenant,").Count);
     }
 
     [Fact]

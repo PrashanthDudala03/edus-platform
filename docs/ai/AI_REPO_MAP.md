@@ -74,11 +74,24 @@ Access tokens carry `permission` claims, `data_scope` (`platform`, `school`, `te
 ## AI service (added in AI-001)
 | Path | What it is |
 |---|---|
-| `services/ai-service/AiService.cs` | Whole composition: `AiOptions` (section `Ai`), `Configure`, `Map`. Endpoints: `GET /api/ai/health` (anonymous), `GET /api/ai/status` (`ai.assistant.use`, never platform). Add new endpoints here. |
+| `services/ai-service/AiService.cs` | Whole composition: `AiOptions` (section `Ai`), `Configure`, `Map`. Endpoints: `GET /api/ai/health` (anonymous), `GET /api/ai/status` and `POST /api/ai/assistant/ask` (`ai.assistant.use`, never platform), `GET /api/ai/usage` (`ai.usage.view`, own school only). Request bodies over 16 KB are refused. Add new endpoints here. |
 | `services/ai-service/Program.cs` | Serilog and startup only. |
 | `services/ai-service.tests/AiServiceTests.cs` | In-process boundary tests (`AiHost` builds the real app on TestServer and mints tokens). Copy this pattern for every new AI endpoint. |
 | `services/shared/EduOS.ServiceAuth.Tests/PermissionTests.cs` | Route → permission tests, including the `ai` cases. |
 | `services/ai-service/AiDatabase.cs` | `AiDatabase.InSchool(tenant, work)`: the only database entry point for request code (connects as `ai_app`, sets the school for the transaction). Also the bootstrap (owner connection, migrations, `ai_app` password) and the retrying background initializer. |
+| `services/ai-service/Gateway/AiGateway.cs` | The request pipeline: `Unavailable()` (feature state, open circuit) and `Ask` (rate limit, bounds, circuit breaker, provider call, safe outcome). Comments mark where AI-005 adds the school switch, quota and metering, and where routing, retrieval and tools go later. Also `AiAssistantOptions` (`Ai:Assistant`). |
+| `services/ai-service/Gateway/AiUsage.cs` | `IAiUsageStore` (reserve, settle, summary) and `PostgresAiUsageStore`. All database work goes through `AiDatabase.InSchool`. Quota rules are in the class comment and D33. |
+| `services/ai-service/Migrations/20261004_01_ai_quota.sql` | `usage_events.usage_estimated`, table `usage_reservations` with the same row-level security pattern. |
+| `services/ai-service.tests/AiUsageTests.cs` | Endpoint tests for the switch, quota and metering; `InMemoryUsageStore` is the default store in `AiHost`. |
+| `services/ai-service.tests/AiDatabaseIntegrationTests.cs`, `AiUsageIntegrationTests.cs` | Real-database tests (`[DatabaseFact]`): security gate and usage store. Skipped unless `AI_TEST_DB_OWNER` and `AI_TEST_DB_RUNTIME` are set. |
+| `services/ai-service/Gateway/AiProtection.cs` | `AiLimitsOptions` (`Ai:Limits`), `AiRateLimiter` and `AiCircuitBreaker`. In memory and per process; time comes from `TimeProvider`. |
+| `services/ai-service.tests/AiProtectionTests.cs` | Limiter and breaker tests; `ManualClock` for anything time-dependent. |
+| `services/ai-service.tests/AiGatewayTests.cs` | Endpoint tests for `POST /api/ai/assistant/ask`; `RecordingModel` proves a rejected request never reached the provider. |
+| `services/ai-service/Providers/Contracts.cs` | `IModelProvider`, `IEmbeddingProvider`, request/response records, `ModelCapabilities`, `DataBoundary`, `TokenUsage`, `AiProviderException`, `AiTokens.Estimate`. No vendor types. |
+| `services/ai-service/Providers/Guards.cs` | The wrappers every provider is served through (limits, timeout, latency, usage, error mapping). |
+| `services/ai-service/Providers/AiProviders.cs` | `Ai:Providers` options, start-up validation, and the one switch that maps a provider name to an implementation. A new vendor is added here. |
+| `services/ai-service/Providers/FakeProviders.cs` | Deterministic chat and embedding providers for development and CI. |
+| `services/ai-service.tests/AiProviderTests.cs` | Guard, fake and configuration tests; stub providers to copy for new adapters. |
 | `services/ai-service/AiMigrations.cs` | Loads and runs `Migrations/*.sql` once each in name order; records them in `ai.schema_migrations`. |
 | `services/ai-service/Migrations/20261003_01_ai_core.sql` | Schema `ai`: `school_settings`, `usage_events`, `audit`; role `ai_app`; forced row-level security; grants. New tables must follow the same pattern or `AiPersistenceTests` fails. |
 | `services/ai-service.tests/AiPersistenceTests.cs` | File-based checks of schema, grants, compose and the migration runner. No database involved. |
@@ -87,6 +100,13 @@ Access tokens carry `permission` claims, `data_scope` (`platform`, `school`, `te
 
 Every new AI route must also be added to `PermissionAccess.Required` (resource `ai`), or it returns 403.
 Restore without network: `.tools/dotnet/dotnet.exe restore <project> --source C:/Users/hp/.nuget/packages`, then `test --no-restore`.
+
+## Running the real-database tests
+Never against the core database or the default compose project. Use an isolated project and throwaway credentials from the shell, not `.env`:
+1. Export `COMPOSE_PROJECT_NAME=eduos-ai-validation`, `AI_DB_PASSWORD` and `AI_DB_APP_PASSWORD` (random values).
+2. Start only the database, with a small override file that publishes `127.0.0.1:55432:5432` and adds a normal bridge network to `ai-db` (the project network is internal): `docker compose -f docker-compose.yml -f <override> up -d --wait ai-db`.
+3. Export `AI_TEST_DB_OWNER` (user `eduos_ai_owner`) and `AI_TEST_DB_RUNTIME` (user `ai_app`) as connection strings to that port, then run `dotnet test services/ai-service.tests`.
+4. Stop it with `docker compose --profile ai -f docker-compose.yml -f <override> down` (the profile is needed, or the container is left running).
 
 ## Local tooling
 .NET 9: `.tools/dotnet/dotnet.exe`. Node 24: `.tools/node-v24.21.0-win-x64/` (prepend to PATH in Git Bash). System `dotnet` and `node` are too old. No `gh` CLI.
