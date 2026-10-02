@@ -10,6 +10,21 @@ public static partial class Suite
         if(write){Require(new[]{"admissions","homework","submissions","circulars","school-config"}.Contains(kind),"Attachments are not supported for this record.");Writable(kind,d,a,d);if(kind=="submissions"&&!a.SchoolWide&&a.Role!="Teacher"){var homework=await Get(c,a.School,"homework",Id(d,"homeworkId"));Require(Day(homework,"dueDate")>=DateOnly.FromDateTime(DateTime.UtcNow),"This assignment is past its submission deadline.",409);}}
         return(kind,d);
     }
+    // The type comes from the file's leading bytes, never from the name or the browser's content type.
+    static async Task<(Guid,string)> StoreDocument(NpgsqlConnection c,SchoolAccess a,Guid recordId,IFormFile file,byte[] bytes,bool imagesOnly){
+        var mime=bytes.Length>=5&&System.Text.Encoding.ASCII.GetString(bytes,0,5)=="%PDF-"?"application/pdf":
+            bytes.Length>=8&&bytes.Take(8).SequenceEqual(new byte[]{137,80,78,71,13,10,26,10})?"image/png":
+            bytes.Length>=3&&bytes[0]==255&&bytes[1]==216&&bytes[2]==255?"image/jpeg":null;
+        if(imagesOnly)Require(mime is "image/png" or "image/jpeg","Only valid PNG or JPEG images are accepted.");
+        Require(mime is not null,"Only valid PDF, PNG, or JPEG documents are accepted.");
+        var name=Path.GetFileName(file.FileName).Replace("\r","").Replace("\n","");Require(name.Length is >0 and <=150,"File name must be at most 150 characters.");
+        var extension=Path.GetExtension(name).ToLowerInvariant();Require(mime=="application/pdf"?extension==".pdf":mime=="image/png"?extension==".png":extension is ".jpg" or ".jpeg","The file extension must match its document type.");
+        var id=Guid.NewGuid();Directory.CreateDirectory(DocumentRoot);var target=Path.Combine(DocumentRoot,id.ToString("N")+".bin");
+        await File.WriteAllBytesAsync(target,bytes);
+        try{await E(c,"INSERT INTO suite.documents(id,school_id,record_id,file_name,content_type,length,uploaded_by) VALUES(@id,@s,@r,@name,@type,@length,@user)",("id",id),("s",a.School),("r",recordId),("name",name),("type",mime),("length",file.Length),("user",a.User));}
+        catch{File.Delete(target);throw;}
+        return(id,name);
+    }
     static void MapDocuments(RouteGroupBuilder group){
         group.MapGet("/documents",async(Guid recordId,HttpContext http)=>{
             await using var c=await Open();var a=await Access(http,c);await DocumentRecord(c,a,recordId,false);
@@ -22,16 +37,7 @@ public static partial class Suite
             var file=form.Files[0];Require(file.Length>0&&file.Length<=8*1024*1024,"Documents must be between 1 byte and 8 MB.");
             var existing=await Q(c,"SELECT count(*) AS n FROM suite.documents WHERE record_id=@r AND school_id=@s",("r",recordId),("s",a.School));Require(Number(existing[0],"n")<20,"This record already has 20 attachments.",409);
             await using var buffer=new MemoryStream();await file.CopyToAsync(buffer);var bytes=buffer.ToArray();
-            var mime=bytes.Length>=5&&System.Text.Encoding.ASCII.GetString(bytes,0,5)=="%PDF-"?"application/pdf":
-                bytes.Length>=8&&bytes.Take(8).SequenceEqual(new byte[]{137,80,78,71,13,10,26,10})?"image/png":
-                bytes.Length>=3&&bytes[0]==255&&bytes[1]==216&&bytes[2]==255?"image/jpeg":null;
-            Require(mime is not null,"Only valid PDF, PNG, or JPEG documents are accepted.");
-            var name=Path.GetFileName(file.FileName).Replace("\r","").Replace("\n","");Require(name.Length is >0 and <=150,"File name must be at most 150 characters.");
-            var extension=Path.GetExtension(name).ToLowerInvariant();Require(mime=="application/pdf"?extension==".pdf":mime=="image/png"?extension==".png":extension is ".jpg" or ".jpeg","The file extension must match its document type.");
-            var id=Guid.NewGuid();Directory.CreateDirectory(DocumentRoot);var target=Path.Combine(DocumentRoot,id.ToString("N")+".bin");
-            await File.WriteAllBytesAsync(target,bytes);
-            try{await E(c,"INSERT INTO suite.documents(id,school_id,record_id,file_name,content_type,length,uploaded_by) VALUES(@id,@s,@r,@name,@type,@length,@user)",("id",id),("s",a.School),("r",recordId),("name",name),("type",mime),("length",file.Length),("user",a.User));}
-            catch{File.Delete(target);throw;}
+            var(id,name)=await StoreDocument(c,a,recordId,file,bytes,false);
             return Results.Json(new{data=new{id,name}},statusCode:201);
         });
         group.MapGet("/documents/{id:guid}",async(Guid id,HttpContext http)=>{

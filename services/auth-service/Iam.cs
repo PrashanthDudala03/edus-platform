@@ -61,6 +61,8 @@ public static class Iam
         }
         // Templates only bind unconfigured roles; subsequent starts never restore removed permissions.
         await EnsureSchools(db);
+        var schoolHome=await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory,"Migrations/20261002_02_school_home.sql"));
+        await db.Database.ExecuteSqlRawAsync(schoolHome.Replace("{","{{").Replace("}","}}"));
         await tx.CommitAsync();
     }
 

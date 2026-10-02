@@ -30,6 +30,8 @@ public static class PermissionAccess
         var action = p.ElementAtOrDefault(3);
         return action switch {
             "school" or "catalog" or "options" => null,
+            // Every school user reads the published School Home and its images; the editor, preview and uploads need the permission.
+            "home" => read && p.ElementAtOrDefault(4) is null or "images" ? null : "school-home.manage",
             "records" => p.ElementAtOrDefault(4) + (read ? ".view" : method == "DELETE" ? ".archive" : ".manage"),
             "student-attendance" => read ? "attendance.view" : "attendance.mark",
             "fees" => read ? "fees.view" : p.ElementAtOrDefault(4) == "payments" ? "fees.collect" : "fees.manage",
