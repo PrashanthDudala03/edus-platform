@@ -310,6 +310,37 @@ test.describe('Ask EduOS AI', () => {
     expect(await scan()).toEqual([])
   })
 
+  for (const [name, width, height] of [['tablet', 768, 1024], ['phone', 390, 844], ['small phone', 360, 740]] as const) test('on a ' + name + ' the navigation is off-canvas, opens over a dimmed page and nothing scrolls sideways', async ({ page }) => {
+    await page.setViewportSize({ width, height })
+    await open(page)
+    const sidebar = page.locator('.sidebar'), menu = page.getByRole('button', { name: 'Open navigation' })
+    await expect(menu).toBeVisible()
+    // Closed: off the screen and out of the keyboard's way.
+    await expect(sidebar).toBeHidden()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    await menu.click()
+    await expect(sidebar).toBeVisible()
+    await expect(page.locator('.nav-overlay')).toBeVisible()
+    // It slides in; once it has arrived it sits at the left edge and leaves part of the page visible.
+    await expect.poll(async () => Math.round((await sidebar.boundingBox())!.x)).toBe(0)
+    expect((await sidebar.boundingBox())!.width).toBeLessThanOrEqual(width * 0.87)
+    expect(await page.locator('.nav-overlay').evaluate(element => getComputedStyle(element).position)).toBe('fixed')
+    // The dimmed page closes it again.
+    await page.mouse.click(width - 10, 300)
+    await expect(sidebar).toBeHidden()
+    await expect(entry(page)).toBeVisible()
+  })
+
+  test('on a laptop the navigation stays in place beside the page', async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 768 })
+    await open(page)
+    await expect(page.locator('.sidebar')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Open navigation' })).toBeHidden()
+    const [side, main] = [(await page.locator('.sidebar').boundingBox())!, (await page.getByRole('main').boundingBox())!]
+    expect(main.x).toBeGreaterThanOrEqual(side.x + side.width - 1)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  })
+
   test('works at phone width: the panel fills the screen and stays usable', async ({ page }) => {
     await page.setViewportSize({ width: 380, height: 720 })
     await open(page)
