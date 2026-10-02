@@ -19,6 +19,8 @@ import FamilyDashboard from './pages/portals/FamilyDashboard'
 import { ForbiddenPage } from './pages/ForbiddenPage'
 import BillingPage from './pages/billing/BillingPage'
 import SubscriptionPage from './pages/billing/SubscriptionPage'
+import SchoolHomePage, { SchoolHomePreviewPage } from './pages/home/SchoolHomePage'
+import SchoolHomeManagePage from './pages/home/SchoolHomeManagePage'
 import { homeFor, roleOf, LEADERSHIP, SCHOOL_ROLES, type Role } from './roles'
 const queryClient = new QueryClient({defaultOptions:{queries:{retry:1,staleTime:15000,refetchOnWindowFocus:false}}})
 useAuthStore.subscribe((state, previous) => {
@@ -28,7 +30,9 @@ function Protected() {
   const {isAuthenticated,user}=useAuthStore()
   const me=useQuery({queryKey:["effective-session",user?.id],enabled:isAuthenticated&&!!user,refetchInterval:15000,queryFn:async()=>(await client.get("/control/me")).data.data})
   useEffect(()=>{if(me.data)useAuthStore.setState({user:me.data})},[me.data])
-  return isAuthenticated && user ? <Shell><Outlet /></Shell> : <Navigate to="/login" replace />
+  // The School Welcome page and its preview are standalone; every other page, including School Home management, lives inside the workspace shell.
+  const here=useLocation().pathname,path=here.length>1&&here.endsWith("/")?here.slice(0,-1):here,welcome=(path==="/home"||path==="/home/preview")&&canVisit(user,path)
+  return isAuthenticated && user ? (welcome ? <Outlet /> : <Shell><Outlet /></Shell>) : <Navigate to="/login" replace />
 }
 // Hides pages from roles that cannot use them. The API refuses those roles independently.
 function RoleGate(_props:{allow:Role[]}) {
@@ -67,6 +71,9 @@ export default function App() {
         <Route path="audit" element={<AuditPage />} />
       </Route>
       <Route element={<RoleGate allow={SCHOOL_ROLES} />}>
+        <Route path="home" element={<SchoolHomePage />} />
+        <Route path="home/manage" element={<SchoolHomeManagePage />} />
+        <Route path="home/preview" element={<SchoolHomePreviewPage />} />
         <Route path="suite" element={<SchoolModules />} />
         <Route path="suite/:kind" element={<SuiteRouter />} />
       </Route>

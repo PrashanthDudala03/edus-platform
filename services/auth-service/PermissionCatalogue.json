@@ -530,6 +530,13 @@
     ]
   },
   {
+    "key": "school-home.manage",
+    "group": "Settings",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
     "key": "attendance.view",
     "group": "Attendance",
     "defaults": [

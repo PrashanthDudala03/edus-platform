@@ -32,3 +32,11 @@ Run step 3 only after the old auth-service is running; the new one re-applies th
 **Applied by** ai-service on start, with the owner connection (`ConnectionStrings__AiDbMigrations`): `services/ai-service/Migrations/20261003_01_ai_core.sql`. Recorded in `ai.schema_migrations`. If the database is missing the service keeps running and reports AI as unavailable.
 
 **Rollback.** Stop ai-service, then in the AI database: `DROP SCHEMA ai CASCADE; DROP ROLE ai_app;`. Nothing outside the AI database depends on it.
+
+## School Home (2026-10-02)
+
+**What it does.** Adds no tables. School Home content is one `suite.records` row per school (kind `school-home`) and its images are `suite.documents` rows, both created on first use. Once only, the migration grants the new `school-home.manage` permission to the Administrator role of existing schools; those accounts get `token_version + 1` and sign in again. New installations receive it from the Administrator template defaults.
+
+**Applied by** auth-service on start (idempotent): `services/auth-service/Migrations/20261002_02_school_home.sql`. Recorded in `auth_db.schema_migrations`. The gateway and school-service must be rebuilt with it, because the endpoint-to-permission map is shared.
+
+**Rollback.** Deploy the previous commit. Optionally `DELETE FROM auth_db.role_permissions WHERE permission_key='school-home.manage'; DELETE FROM auth_db.schema_migrations WHERE id='20261002_02_school_home';`. School Home records and images are ignored by older code.

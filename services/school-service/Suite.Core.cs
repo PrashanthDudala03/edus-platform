@@ -154,7 +154,7 @@ public static partial class Suite
             }else result["users"]=Array.Empty<object>();
             return Results.Ok(new{data=result});
         });
-        MapAcademic(group);MapFinance(group);MapDocuments(group);MapReports(group);
+        MapAcademic(group);MapFinance(group);MapDocuments(group);MapReports(group);MapHome(group);
     }
     static string Label(string kind,JsonObject d)=>kind switch{
         "classes"=>Text(d,"name")+" - "+Text(d,"section"),

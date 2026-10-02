@@ -49,6 +49,22 @@ public class PermissionTests
     public void UnlistedAiRoutesFailClosed(string path)=>Assert.False(PermissionAccess.Allows(Context("Administrator","school",path,"GET","ai.assistant.use","ai.knowledge.manage","ai.usage.view","ai.platform.manage")));
     [Fact]
     public void AiHealthNeedsNoPermission()=>Assert.Null(PermissionAccess.Required("/api/ai/health","GET"));
+    [Theory]
+    [InlineData("/api/suite/home","GET")][InlineData("/api/v1/suite/home/images/7c1d0000-0000-4000-8000-0000000000d1","GET")]
+    public void EverySchoolUserReadsSchoolHome(string path,string method)
+    {
+        Assert.Null(PermissionAccess.Required(path,method));
+        foreach(var scope in new[]{"school","teacher","parent","student"})Assert.True(PermissionAccess.Allows(Context("Custom",scope,path,method)));
+    }
+    [Theory]
+    [InlineData("/api/suite/home","PUT")][InlineData("/api/suite/home/manage","GET")][InlineData("/api/suite/home/preview","GET")]
+    [InlineData("/api/v1/suite/home/images","POST")][InlineData("/api/suite/home/images/7c1d0000-0000-4000-8000-0000000000d1","DELETE")]
+    public void SchoolHomeChangesNeedTheManagePermission(string path,string method)
+    {
+        Assert.Equal("school-home.manage",PermissionAccess.Required(path,method));
+        Assert.True(PermissionAccess.Allows(Context("Custom","school",path,method,"school-home.manage")));
+        Assert.False(PermissionAccess.Allows(Context("Administrator","school",path,method,"school.settings.manage","school-config.manage")));
+    }
     [Fact]
     public void UnknownEndpointsFailClosed()=>Assert.False(PermissionAccess.Allows(Context("Administrator","school","/api/future-module","GET")));
     [Fact]
