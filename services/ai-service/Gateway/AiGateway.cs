@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using EduOS.Ai.Knowledge;
+using System.Text.Json;
 using EduOS.Ai.Providers;
+using EduOS.Ai.Tools;
 using EduOS.ServiceAuth;
 using Microsoft.Extensions.Options;
 
@@ -26,12 +28,16 @@ public sealed class AiAssistantOptions
 public sealed record AssistantAsk(string? Question, int? MaxOutputTokens = null);
 
 /// <summary>Exactly one of Invalid, Unavailable and Response is set. Sources accompany a response and are the service's own record of the evidence.</summary>
-public sealed record AssistantOutcome(string? Invalid, string? Unavailable, ModelResponse? Response, int? RetryAfterSeconds = null, IReadOnlyList<AssistantSource>? Sources = null)
+/// <param name="Kind">What a response is based on: the school's documents, live EduOS data, general knowledge, or the assistant's own fixed words.</param>
+public sealed record AssistantOutcome(string? Invalid, string? Unavailable, ModelResponse? Response, int? RetryAfterSeconds = null, IReadOnlyList<AssistantSource>? Sources = null, string Kind = AssistantRouter.School)
 {
     public static AssistantOutcome Rejected(string message) => new(message, null, null);
     public static AssistantOutcome Off(string reason) => new(null, reason, null);
     public static AssistantOutcome Limited(int retryAfterSeconds) => new(null, "rate-limited", null, retryAfterSeconds);
-    public static AssistantOutcome Answered(ModelResponse response, IReadOnlyList<AssistantSource> sources) => new(null, null, response, null, sources);
+    public static AssistantOutcome Answered(ModelResponse response, IReadOnlyList<AssistantSource> sources, string kind = AssistantRouter.School) => new(null, null, response, null, sources, kind);
+    /// <summary>Words of the service itself: no model was called and nothing is metered.</summary>
+    public static AssistantOutcome Said(string text, string kind = AssistantRouter.Assistant, params AssistantSource[] sources) =>
+        new(null, null, new ModelResponse("eduos", "", text, FinishReason.Completed, new TokenUsage(0, 0, false)), null, sources, kind);
 }
 
 /// <summary>
@@ -41,7 +47,7 @@ public sealed record AssistantOutcome(string? Invalid, string? Unavailable, Mode
 /// handles is the knowledge retrieval returns, and it neither logs nor stores the question, the context or the answer.
 /// </summary>
 public sealed class AiGateway(IOptions<AiOptions> ai, IOptions<AiAssistantOptions> assistant, IOptions<AiRetrievalOptions> retrieval, IOptions<AiProviderOptions> providers, AiDatabaseState database,
-    IModelProvider model, KnowledgeRetriever retriever, AiRateLimiter limiter, AiCircuitBreaker breaker, IAiUsageStore usage, ILogger<AiGateway> logger)
+    IModelProvider model, KnowledgeRetriever retriever, AiToolRegistry tools, AiRateLimiter limiter, AiCircuitBreaker breaker, IAiUsageStore usage, TimeProvider clock, ILogger<AiGateway> logger)
 {
     public const string SystemPrompt = RagContextBuilder.Instruction;
     const string Feature = "assistant.ask";
@@ -74,9 +80,12 @@ public sealed class AiGateway(IOptions<AiOptions> ai, IOptions<AiAssistantOption
 
     /// <param name="tenant">From the verified token. The user and school it names are the only identities used for limits, retrieval, quota and usage.</param>
     /// <param name="audience">The caller's data scope from the verified token. It decides which of the school's documents may be used.</param>
-    public async Task<AssistantOutcome> Ask(TenantContext tenant, string audience, AssistantAsk ask, CancellationToken cancellation)
+    /// <param name="caller">The caller with the token to forward, for live EduOS data. Without it no tool is run.</param>
+    public async Task<AssistantOutcome> Ask(TenantContext tenant, string audience, AssistantAsk ask, CancellationToken cancellation, ToolCaller? caller = null)
     {
-        if (Unavailable() is string reason) return AssistantOutcome.Off(reason);
+        if (!ai.Value.Enabled || !database.Configured) return AssistantOutcome.Off("not-configured");
+        if (!database.Ready) return AssistantOutcome.Off("database-unavailable");
+        // Every kind of question counts towards the same limit, whatever answers it.
         if (limiter.Admit(tenant) is > 0 and var wait) return AssistantOutcome.Limited(wait);
 
         var limits = model.Descriptor.Capabilities;
@@ -92,6 +101,12 @@ public sealed class AiGateway(IOptions<AiOptions> ai, IOptions<AiAssistantOption
         if (AiTokens.Estimate(SystemPrompt) + AiTokens.Estimate(question) > budget)
             return AssistantOutcome.Rejected("The question is too long for the assistant.");
 
+        // What kind of question this is, by fixed rules. Greetings, questions about the assistant and live figures
+        // need no model; everything else goes to the school's documents first.
+        var route = AssistantRouter.Route(question, DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime));
+        if (route.Kind != AssistantRouteKind.Knowledge) return await Direct(tenant, audience, route, caller, cancellation);
+        if (breaker.IsOpen(model.Descriptor.Provider)) return AssistantOutcome.Off("provider-unavailable");
+
         // The school's knowledge for this reader, found before any allowance is held. Nothing in the request can
         // change the school or the audience. Finding nothing is an answer in itself; a failure is reported as one.
         // In neither case is the model asked: it is never left to answer about the school without evidence.
@@ -100,19 +115,30 @@ public sealed class AiGateway(IOptions<AiOptions> ai, IOptions<AiAssistantOption
         if (retrieved.Unavailable is string off)
             // The embedding provider is not the model: its failures are reported as retrieval, and they leave the model's circuit alone.
             return AssistantOutcome.Off(off is "provider-timeout" or "provider-unavailable" or "embedding-unavailable" ? "retrieval-unavailable" : off);
+        ModelRequest request; int input, chunks = 0; IReadOnlyList<AssistantSource> sources = []; var kind = AssistantRouter.School;
         if (retrieved.Chunks.Count == 0)
         {
-            logger.LogInformation("AI {Feature}: no relevant knowledge, so no model call", Feature);
-            return AssistantOutcome.Off("insufficient-knowledge");
+            // Nothing in the school's documents. Only a request to explain or produce study material that names
+            // nothing of a school is answered from general knowledge, and it is labelled as such. Anything else
+            // about the school is never left to a model without evidence.
+            if (!AssistantRouter.LooksGeneral(question))
+            {
+                logger.LogInformation("AI {Feature}: no relevant knowledge, so no model call", Feature);
+                return AssistantOutcome.Off("insufficient-knowledge");
+            }
+            input = AiTokens.Estimate(AssistantReplies.GeneralInstruction) + AiTokens.Estimate(question);
+            if (input > budget) return AssistantOutcome.Rejected("The question is too long for the assistant.");
+            request = new ModelRequest([new ChatMessage(ChatRole.System, AssistantReplies.GeneralInstruction), new ChatMessage(ChatRole.User, question)], output);
+            kind = AssistantRouter.General;
         }
-
-        // One instruction, the evidence and one question: no history is accepted or kept, so a conversation cannot
-        // grow the context. Chunks that do not fit the budget are left out whole. Later tasks choose the model here
-        // (routing) and add tool results within the same budget.
-        if (RagContextBuilder.Build(question, retrieved.Chunks, budget) is not { } context)
-            return AssistantOutcome.Rejected("The question is too long for the assistant.");
-        var input = context.InputTokens;
-        var request = new ModelRequest(context.Messages, output);
+        else
+        {
+            // One instruction, the evidence and one question: no history is accepted or kept, so a conversation cannot
+            // grow the context. Chunks that do not fit the budget are left out whole.
+            if (RagContextBuilder.Build(question, retrieved.Chunks, budget) is not { } context)
+                return AssistantOutcome.Rejected("The question is too long for the assistant.");
+            (request, input, chunks, sources) = (new ModelRequest(context.Messages, output), context.InputTokens, context.Chunks, context.Sources);
+        }
 
         // School switch and allowance, decided before any model work. The worst case of this call (the final input
         // plus the whole output limit) is held, so simultaneous requests cannot spend the same allowance twice. If
@@ -134,7 +160,7 @@ public sealed class AiGateway(IOptions<AiOptions> ai, IOptions<AiAssistantOption
             await Settle(tenant, reservation.Id, null);
             return AssistantOutcome.Off("provider-unavailable");
         }
-        var clock = Stopwatch.StartNew();
+        var timer = Stopwatch.StartNew();
         try
         {
             var response = await model.Complete(request, cancellation);
@@ -142,21 +168,21 @@ public sealed class AiGateway(IOptions<AiOptions> ai, IOptions<AiAssistantOption
             var used = response.Usage!;
             // The call has happened, so it is recorded even if the caller has gone away. An answer whose usage
             // cannot be recorded is not returned: the school is never served outside its accounted allowance.
-            if (!await Settle(tenant, reservation.Id, new AiUsageRecord(Feature, response.Provider, response.Model, used.InputTokens, used.OutputTokens, used.Estimated, (int)response.Latency.TotalMilliseconds, true, RetrievedChunks: context.Chunks)))
+            if (!await Settle(tenant, reservation.Id, new AiUsageRecord(Feature, response.Provider, response.Model, used.InputTokens, used.OutputTokens, used.Estimated, (int)response.Latency.TotalMilliseconds, true, RetrievedChunks: chunks)))
             {
                 logger.LogError("AI usage was not recorded for school {School}: {Provider} {Model}, {Input} input and {Output} output tokens", tenant.SchoolId, response.Provider, response.Model, used.InputTokens, used.OutputTokens);
                 return AssistantOutcome.Off("database-unavailable");
             }
             logger.LogInformation("AI {Feature}: answered from {Chunks} chunks of {Sources} sources, {Input} input and {Output} output tokens, {Milliseconds} ms, {Provider} {Model}",
-                Feature, context.Chunks, context.Sources.Count, used.InputTokens, used.OutputTokens, (int)response.Latency.TotalMilliseconds, response.Provider, response.Model);
+                Feature, chunks, sources.Count, used.InputTokens, used.OutputTokens, (int)response.Latency.TotalMilliseconds, response.Provider, response.Model);
             // The sources are the ones the reference material held, whatever the model wrote.
-            return AssistantOutcome.Answered(response, context.Sources);
+            return AssistantOutcome.Answered(response, sources, kind);
         }
         catch (AiProviderException ex)
         {
             breaker.Failed(provider);
             // A failed attempt is recorded with what was sent, but it is not charged against the allowance.
-            await Settle(tenant, reservation.Id, new AiUsageRecord(Feature, provider, model.Descriptor.Model, input, 0, true, (int)clock.ElapsedMilliseconds, false, ex.Error.ToString(), RetrievedChunks: context.Chunks));
+            await Settle(tenant, reservation.Id, new AiUsageRecord(Feature, provider, model.Descriptor.Model, input, 0, true, (int)timer.ElapsedMilliseconds, false, ex.Error.ToString(), RetrievedChunks: chunks));
             logger.LogWarning("AI provider {Provider} failed for {Feature}: {Error}", ex.Provider, Feature, ex.Error);
             return AssistantOutcome.Off(ex.Error == AiProviderError.Timeout ? "provider-timeout" : "provider-unavailable");
         }
@@ -165,6 +191,34 @@ public sealed class AiGateway(IOptions<AiOptions> ai, IOptions<AiAssistantOption
             await Settle(tenant, reservation.Id, null);
             throw;
         }
+    }
+
+    // Answers that need no model. Live figures come from one registered tool, run once through the registry, which
+    // checks the caller's permission, the arguments and the school itself and forwards the caller's own token.
+    // The figures are put into fixed words here; they are never given to a model.
+    async Task<AssistantOutcome> Direct(TenantContext tenant, string audience, AssistantRoute route, ToolCaller? caller, CancellationToken cancellation)
+    {
+        if (route.Kind == AssistantRouteKind.Tool && caller is not null)
+        {
+            var result = await tools.Execute(caller, route.Tool, route.Arguments is null ? null : JsonSerializer.SerializeToElement(route.Arguments), cancellation);
+            if (result.Status is ToolResult.NotConfigured or ToolResult.DatabaseUnavailable or ToolResult.SchoolDisabled) return AssistantOutcome.Off(result.Status);
+            return result.Status == ToolResult.Ok
+                ? AssistantOutcome.Said(AssistantReplies.ForTool(result.Tool, result.Data!, audience is "parent" or "student", route), AssistantRouter.Live, AssistantReplies.Source(result.Tool))
+                : AssistantOutcome.Said(AssistantReplies.ForFailure(result.Status));
+        }
+        // Fixed words still follow the school's own switch.
+        try { if (!(await usage.Summary(tenant, cancellation)).Enabled) return AssistantOutcome.Off("school-disabled"); }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning("AI usage state could not be read ({Error}); the request was refused", ex.GetType().Name);
+            return AssistantOutcome.Off("database-unavailable");
+        }
+        var offered = caller is null ? [] : tools.Offered(caller);
+        return AssistantOutcome.Said(route.Kind switch
+        {
+            AssistantRouteKind.Greeting => AssistantReplies.Greeting(offered), AssistantRouteKind.Thanks => AssistantReplies.Thanks, AssistantRouteKind.Farewell => AssistantReplies.Farewell,
+            AssistantRouteKind.Identity => AssistantReplies.Identity(offered), AssistantRouteKind.Personal => AssistantReplies.Personal, _ => AssistantReplies.NoAccess,
+        });
     }
 
     // Never cancelled with the request, and never throws: a reservation that cannot be removed simply expires.

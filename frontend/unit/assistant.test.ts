@@ -1,7 +1,7 @@
 // Run with `npm run test:unit` (Node's own test runner; no browser, no server, nothing to install).
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { MAX_QUESTION_CHARS, askBody, canSend, canUseAssistant, limitHint, messages, noticeFor, replyFor, replyForFailure, sourcesOf, statusNotice } from '../src/ai/assistant.ts'
+import { MAX_QUESTION_CHARS, SHOW_AI_DEMO_ENTRY, askBody, canSeeAssistantEntry, canSend, canUseAssistant, limitHint, messages, noticeFor, replyFor, replyForFailure, sourcesOf, statusNotice } from '../src/ai/assistant.ts'
 
 const answer = {
   available: true, answer: '  Students must maintain at least 75% attendance.  ', model: 'some-model-name', finish: 'completed',
@@ -16,6 +16,17 @@ test('only school users holding the permission see the assistant', () => {
   assert.equal(canUseAssistant({ dataScope: 'platform', permissions: ['ai.assistant.use'] }), false)
   assert.equal(canUseAssistant(null), false)
   assert.equal(canUseAssistant(undefined), false)
+})
+
+test('the demo flag shows the button to every signed-in user but never changes who may ask', () => {
+  const teacher = { dataScope: 'teacher', permissions: ['timetable.view'] }, pilot = { dataScope: 'school', permissions: ['ai.assistant.use'] }, platform = { dataScope: 'platform', permissions: ['platform.manage'] }
+  // Demo visibility: everyone signed in sees the button; nobody signed out does.
+  assert.deepEqual([teacher, pilot, platform, null, undefined].map(user => canSeeAssistantEntry(user, true)), [true, true, true, false, false])
+  // With the flag off the button is back to the permission.
+  assert.deepEqual([teacher, pilot, platform, null].map(user => canSeeAssistantEntry(user, false)), [false, true, false, false])
+  assert.deepEqual([teacher, pilot, platform].map(canUseAssistant), [false, true, false])
+  assert.equal(typeof SHOW_AI_DEMO_ENTRY, 'boolean')
+  assert.equal(messages.notEnabledForAccount, 'EduOS AI is not enabled for your account yet.')
 })
 
 test('the request is the question and nothing else', () => {
@@ -43,10 +54,18 @@ test('the remaining length is shown only near the limit', () => {
 
 test('an answer keeps its text and only the reader-facing parts of its sources', () => {
   const reply = replyFor(answer)
-  assert.deepEqual(reply, { kind: 'answer', text: 'Students must maintain at least 75% attendance.', shortened: false, sources: [{ number: 1, title: 'Attendance Policy', label: 'attendance-policy.md', section: 'Attendance', page: null }] })
+  assert.deepEqual(reply, { kind: 'answer', text: 'Students must maintain at least 75% attendance.', shortened: false, note: null, sources: [{ number: 1, title: 'Attendance Policy', label: 'attendance-policy.md', section: 'Attendance', page: null }] })
   // No identifier, model name or usage figure is carried into what is displayed.
   assert.doesNotMatch(JSON.stringify(reply), /7c1d0000|documentId|some-model-name|inputTokens|239/)
   assert.equal((replyFor({ ...answer, finish: 'length' }) as { shortened: boolean }).shortened, true)
+})
+
+test('a general-knowledge answer is pointed out, and live figures show where they came from', () => {
+  const general = replyFor({ available: true, kind: 'general', answer: 'Photosynthesis is how plants make food from light.', sources: [] }) as { note: string | null, sources: unknown[] }
+  assert.deepEqual([general.note, general.sources.length], ['General knowledge, not specific to your school.', 0])
+  for (const kind of ['documents', 'live', 'assistant', undefined, 'general-ish']) assert.equal((replyFor({ available: true, kind, answer: 'x', sources: [] }) as { note: string | null }).note, null)
+  const live = replyFor({ available: true, kind: 'live', answer: 'There are 40 students enrolled in your school.', model: null, sources: [{ number: 1, documentId: null, title: 'Student records', source: 'Live EduOS data', section: null, page: null }] })
+  assert.deepEqual(live, { kind: 'answer', text: 'There are 40 students enrolled in your school.', shortened: false, note: null, sources: [{ number: 1, title: 'Student records', label: 'Live EduOS data', section: null, page: null }] })
 })
 
 test('sources come only from the list the backend sent', () => {

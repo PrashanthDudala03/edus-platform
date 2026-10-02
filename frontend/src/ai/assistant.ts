@@ -4,6 +4,13 @@ import type { User } from '../store/auth'
 // and which documents are used, what the sources are. Nothing here is sent except the question.
 
 export const ASSISTANT_PERMISSION = 'ai.assistant.use'
+/**
+ * DEMO / DEVELOPMENT ONLY. While true, the Ask EduOS AI button is shown to every signed-in user so the feature
+ * can be demonstrated; a user without the permission can open the panel but only sees that it is not enabled
+ * for them, and no assistant request is made. Production should set this to false, which returns the button to
+ * permission-based visibility (canUseAssistant). The backend enforces ai.assistant.use either way.
+ */
+export const SHOW_AI_DEMO_ENTRY = true
 /** The backend's limit on a question. */
 export const MAX_QUESTION_CHARS = 1000
 /** From this length on, the remaining characters are shown. */
@@ -13,7 +20,7 @@ export const ASK_TIMEOUT_MS = 130_000
 
 export type Source = { number: number; title: string; label: string | null; section: string | null; page: number | null }
 export type Reply =
-  | { kind: 'answer'; text: string; sources: Source[]; shortened: boolean }
+  | { kind: 'answer'; text: string; sources: Source[]; shortened: boolean; note: string | null }
   | { kind: 'notice'; text: string }
 
 export const messages = {
@@ -23,14 +30,20 @@ export const messages = {
   allowance: "Your school has used its EduOS AI allowance for this month. Your school administrator can tell you more.",
   notSetUp: 'EduOS AI is not available in this workspace yet.',
   notForAccount: 'EduOS AI is not available for your account.',
+  notEnabledForAccount: 'EduOS AI is not enabled for your account yet.',
   tooLong: 'That question could not be processed. Try asking it in fewer words.',
   slow: 'EduOS AI took too long to answer. Please try again.',
   generic: 'EduOS AI could not answer just now. Please try again.',
+  generalNote: 'General knowledge, not specific to your school.',
 }
 
 /** School users who hold the permission. The platform administrator has no school to ask about. */
 export const canUseAssistant = (user: Pick<User, 'dataScope' | 'permissions'> | null | undefined): boolean =>
   !!user && user.dataScope !== 'platform' && Array.isArray(user.permissions) && user.permissions.includes(ASSISTANT_PERMISSION)
+
+/** Who sees the button. With the demo flag off this is exactly who may use the assistant. */
+export const canSeeAssistantEntry = (user: Pick<User, 'dataScope' | 'permissions'> | null | undefined, demo: boolean = SHOW_AI_DEMO_ENTRY): boolean =>
+  demo ? !!user : canUseAssistant(user)
 
 /** The whole request. No school, audience, role, document or earlier message is ever sent. */
 export const askBody = (question: string): { question: string } => ({ question: question.trim() })
@@ -82,7 +95,8 @@ export function replyFor(data: unknown): Reply {
   const body = (data ?? {}) as Record<string, unknown>
   if (body.available === true) {
     const answer = typeof body.answer === 'string' ? body.answer.trim() : ''
-    return answer ? { kind: 'answer', text: answer, sources: sourcesOf(body.sources), shortened: body.finish === 'length' } : { kind: 'notice', text: messages.generic }
+    // The backend says what an answer is based on. Only the general-knowledge case is pointed out to the reader.
+    return answer ? { kind: 'answer', text: answer, sources: sourcesOf(body.sources), shortened: body.finish === 'length', note: body.kind === 'general' ? messages.generalNote : null } : { kind: 'notice', text: messages.generic }
   }
   return { kind: 'notice', text: noticeFor(body.reason, body.retryAfterSeconds) }
 }

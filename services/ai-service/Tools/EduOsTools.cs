@@ -124,3 +124,24 @@ public sealed class ExamScheduleTool : IAiTool
         return new JsonObject { ["period"] = period, ["exams"] = new JsonArray(ordered.Take(limit).Select(e => (JsonNode)e.Exam).ToArray()), ["more"] = more || ordered.Count > limit };
     }
 }
+
+/// <summary>
+/// The signed-in user's own name, role and account email. The endpoint takes no argument and returns the user of
+/// the token it is called with, so there is no way to ask about anyone else. Endpoint: GET /api/v1/control/me.
+/// </summary>
+public sealed class CurrentUserProfileTool : IAiTool
+{
+    const string Path = "/api/v1/control/me";
+    // The endpoint needs only a signed-in user; the tool is for anyone who may use the assistant.
+    public ToolDefinition Definition { get; } = new("current_user_profile", "The signed-in user's own name, role and account email. Never anyone else's.", "ai.assistant.use", [], ["name", "role", "email"]);
+    public IReadOnlyList<string> Paths { get; } = [Path];
+
+    public async Task<JsonObject> Run(ToolCaller caller, ToolArguments arguments, IEduOsApi api, DateOnly today, CancellationToken cancellation)
+    {
+        var user = ToolJson.Property(await api.Get(Path, null, caller, cancellation), "data", JsonValueKind.Object);
+        // EduOS must have answered for this very user; anything else is not passed on.
+        if (!Guid.TryParse(ToolJson.Text(user, "id"), out var id) || id != caller.Tenant.UserId) throw new ToolFailure(ToolResult.Unavailable);
+        var role = user.TryGetProperty("roles", out var roles) && roles.ValueKind == JsonValueKind.Array && roles.GetArrayLength() > 0 && roles[0].ValueKind == JsonValueKind.String ? roles[0].GetString() : null;
+        return new JsonObject { ["name"] = ToolJson.Label((ToolJson.Text(user, "firstName") + " " + ToolJson.Text(user, "lastName")).Trim()), ["role"] = ToolJson.Label(role, 60), ["email"] = ToolJson.Label(ToolJson.Text(user, "email")) };
+    }
+}

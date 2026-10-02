@@ -154,7 +154,7 @@ public class AiRagTests
         var document = s.Store.Documents[0].Id;
         var (data, body) = await s.Ask("  " + Fees + "  ");
         Assert.Equal((true, "The answer.", "recording-1", "completed"), (Available(data), data.GetProperty("answer").GetString(), data.GetProperty("model").GetString(), data.GetProperty("finish").GetString()));
-        Assert.Equal(new[] { "answer", "available", "finish", "model", "sources", "usage" }, data.EnumerateObject().Select(p => p.Name).Order());
+        Assert.Equal(new[] { "answer", "available", "finish", "kind", "model", "sources", "usage" }, data.EnumerateObject().Select(p => p.Name).Order());
 
         var request = Assert.Single(s.Model.Requests);
         Assert.Equal(new[] { ChatRole.System, ChatRole.User, ChatRole.User }, request.Messages.Select(m => m.Role));

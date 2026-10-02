@@ -153,7 +153,7 @@ public class AiPersistenceTests
         Assert.Equal(new[] { "DocumentId", "Number", "Page", "Section", "Source", "Title" }, typeof(EduOS.Ai.Gateway.AssistantSource).GetProperties().Select(p => p.Name).Order());
         // The endpoint takes the audience from the token and nowhere else.
         var service = File.ReadAllText(Path.Combine(Root, "services", "ai-service", "AiService.cs"));
-        Assert.Contains("gateway.Ask(tenant, http.User.FindFirst(\"data_scope\")?.Value ?? \"\", ask, cancellation)", service);
+        Assert.Contains("gateway.Ask(tenant, http.User.FindFirst(\"data_scope\")?.Value ?? \"\", ask, cancellation, ToolCaller.From(http, tenant))", service);
     }
 
     [Fact]

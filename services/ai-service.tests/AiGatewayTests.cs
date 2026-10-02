@@ -53,7 +53,7 @@ public class AiGatewayTests
         Assert.Equal(Sent(Question).InputTokens, usage.GetProperty("inputTokens").GetInt32());
         Assert.Equal(AiTokens.Estimate("[fake] " + Question), usage.GetProperty("outputTokens").GetInt32());
         Assert.False(usage.GetProperty("estimated").GetBoolean());
-        Assert.Equal(new[] { "answer", "available", "finish", "model", "sources", "usage" }, data.EnumerateObject().Select(p => p.Name).Order());
+        Assert.Equal(new[] { "answer", "available", "finish", "kind", "model", "sources", "usage" }, data.EnumerateObject().Select(p => p.Name).Order());
     }
 
     [Fact]

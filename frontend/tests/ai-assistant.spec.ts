@@ -16,7 +16,7 @@ const answered = {
   usage: { inputTokens: 239, outputTokens: 23, estimated: false },
 }
 type Asked = { url: string, body: Record<string, unknown>, authorization: string | undefined }
-type Options = { user?: typeof teacher, status?: unknown, reply?: (asked: Asked, count: number) => Promise<{ status?: number, data?: unknown }> | { status?: number, data?: unknown } }
+type Options = { user?: typeof teacher, status?: unknown, onStatus?: () => void, reply?: (asked: Asked, count: number) => Promise<{ status?: number, data?: unknown }> | { status?: number, data?: unknown } }
 
 async function open(page: Page, options: Options = {}) {
   const user = options.user ?? teacher, asked: Asked[] = []
@@ -30,7 +30,7 @@ async function open(page: Page, options: Options = {}) {
       const result = await (options.reply?.(call, asked.length) ?? { data: answered })
       return result.status && result.status !== 200 ? route.fulfill({ status: result.status, contentType: 'application/json', body: JSON.stringify(result.data ?? { message: 'Unhandled exception: Npgsql.PostgresException at db.internal:5432' }) }) : json(route, result.data)
     }
-    if (url.pathname === '/api/v1/ai/status') return json(route, options.status ?? { enabled: true, reason: null })
+    if (url.pathname === '/api/v1/ai/status') { options.onStatus?.(); return json(route, options.status ?? { enabled: true, reason: null }) }
     if (url.pathname === '/api/v1/control/me') return json(route, user)
     if (url.pathname.startsWith('/api/')) return json(route, url.pathname.endsWith('/school') ? { name: 'Green Valley School' } : [])
     if (!existsSync(dist)) return route.continue()
@@ -49,15 +49,40 @@ const send = (page: Page) => panel(page).getByRole('button', { name: 'Send quest
 async function ask(page: Page, question: string) { await input(page).fill(question); await send(page).click() }
 
 test.describe('Ask EduOS AI', () => {
-  test('is offered only to school users who hold the permission', async ({ page, browser }) => {
-    await open(page, { user: { ...teacher, permissions: ['timetable.view', 'ai.knowledge.manage'] } })
-    await expect(page.getByRole('main')).toBeVisible()
-    await expect(entry(page)).toHaveCount(0)
-    const platform = await browser.newPage()
-    await open(platform, { user: { ...teacher, roles: ['SuperAdmin'], dataScope: 'platform', permissions: ['platform.manage', 'ai.assistant.use'] } })
-    await expect(platform.getByRole('main')).toBeVisible()
-    await expect(entry(platform)).toHaveCount(0)
-    await platform.close()
+  // Demo visibility (SHOW_AI_DEMO_ENTRY): the button is shown to everyone signed in. Using it still needs the permission.
+  for (const [name, user] of [
+    ['a school user without the permission', { ...teacher, permissions: ['timetable.view', 'ai.knowledge.manage'] }],
+    ['the platform administrator', { ...teacher, roles: ['SuperAdmin'], dataScope: 'platform', permissions: ['platform.manage', 'ai.assistant.use'] }],
+  ] as const) test(`${name} can open the panel but is told it is not enabled, and nothing is asked`, async ({ page }) => {
+    let statusCalls = 0
+    const asked = await open(page, { user: user as typeof teacher, onStatus: () => { statusCalls++ } })
+    await expect(entry(page)).toBeVisible()
+    await entry(page).click()
+    await expect(panel(page).locator('.ai-banner')).toHaveText('EduOS AI is not enabled for your account yet.')
+    await expect(input(page)).toBeDisabled()
+    await expect(send(page)).toBeDisabled()
+    await expect(panel(page).getByRole('button', { name: 'Summarize the leave policy.' })).toBeDisabled()
+    // No assistant request and no status request is made for a user known to lack the permission.
+    await page.waitForTimeout(300)
+    expect(asked).toHaveLength(0)
+    expect(statusCalls).toBe(0)
+    await page.keyboard.press('Escape')
+    await expect(panel(page)).toHaveCount(0)
+  })
+
+  test('floats at the bottom right, clear of the page content and the footer text', async ({ page }) => {
+    await open(page)
+    const size = page.viewportSize()!, box = (await entry(page).boundingBox())!
+    await expect(entry(page)).toHaveText('Ask EduOS AI')
+    expect(Math.round(size.width - (box.x + box.width))).toBe(24)
+    expect(Math.round(size.height - (box.y + box.height))).toBe(24)
+    expect(await entry(page).evaluate(element => getComputedStyle(element).position)).toBe('fixed')
+    // It is not in the top bar any more, and it does not sit on the footer's text or the page's main action.
+    await expect(page.locator('.topbar .ai-entry')).toHaveCount(0)
+    for (const other of [page.locator('.workspace-footer span').last(), page.getByRole('link', { name: /Go to my/ })]) {
+      const b = (await other.boundingBox())!
+      expect(b.x + b.width <= box.x || b.y + b.height <= box.y || b.y >= box.y + box.height).toBe(true)
+    }
   })
 
   test('opens from the top bar with a welcome that claims only what exists', async ({ page }) => {
@@ -66,8 +91,9 @@ test.describe('Ask EduOS AI', () => {
     await entry(page).click()
     await expect(panel(page)).toBeVisible()
     await expect(panel(page).getByRole('heading', { name: 'EduOS AI', exact: true })).toBeVisible()
-    await expect(panel(page)).toContainText("Ask questions about your school's policies and documents.")
-    await expect(panel(page)).toContainText('EduOS AI cannot see attendance, fees, marks or other records, only documents your school has added.')
+    await expect(panel(page)).toContainText("Ask about your school's documents and policies, school information your account can see, or general study topics.")
+    await expect(panel(page)).toContainText('General answers are not specific to your school. It cannot look up individual people yet.')
+    await expect(panel(page)).toContainText('this conversation is not saved')
     await expect(input(page)).toBeFocused()
     await expect(send(page)).toBeDisabled()
     // Nothing about the machinery behind it.
@@ -97,6 +123,30 @@ test.describe('Ask EduOS AI', () => {
     await expect(panel(page)).not.toContainText(/7c1d0000|internal-model-name|239|documentId|estimated/)
     await expect(input(page)).toHaveValue('')
     await expect(input(page)).toBeFocused()
+  })
+
+  test('shows what an answer is based on without naming anything internal', async ({ page }) => {
+    const replies = [
+      { available: true, kind: 'general', answer: 'Photosynthesis is how plants make food from light.', sources: [], model: 'internal-model-name', finish: 'completed' },
+      { available: true, kind: 'live', answer: 'There are 40 students enrolled in your school.', sources: [{ number: 1, documentId: null, title: 'Student records', source: 'Live EduOS data', section: null, page: null }], model: null, finish: 'completed' },
+      { available: true, kind: 'assistant', answer: "I can't look up personal details about you or about individual students, parents or staff yet.", sources: [], model: null, finish: 'completed' },
+    ]
+    const asked = await open(page, { reply: (_, count) => ({ data: replies[count - 1] }) })
+    await entry(page).click()
+    await ask(page, 'Explain photosynthesis')
+    const answers = panel(page).locator('.from-assistant.answer')
+    await expect(answers.nth(0).locator('.ai-note')).toHaveText('General knowledge, not specific to your school.')
+    await expect(answers.nth(0).locator('.ai-sources')).toHaveCount(0)
+    await ask(page, 'How many students are there?')
+    await expect(answers.nth(1).locator('p')).toHaveText('There are 40 students enrolled in your school.')
+    await expect(answers.nth(1).locator('.ai-sources li')).toContainText('Student records')
+    await expect(answers.nth(1).locator('.ai-sources li')).toContainText('Live EduOS data')
+    await expect(answers.nth(1).locator('.ai-note')).toHaveCount(0)
+    await ask(page, 'tell me about myself')
+    await expect(answers.nth(2).locator('p')).toContainText("I can't look up personal details")
+    // The same request for every kind of question, and no route, tool or model name on screen.
+    expect(asked.map(a => Object.keys(a.body))).toEqual([['question'], ['question'], ['question']])
+    await expect(panel(page)).not.toContainText(/student_count|attendance_summary|fee_summary|exam_schedule|internal-model-name|\blive\b|documents"|"kind"|\bgeneral"|tool/i)
   })
 
   test('Enter sends and Shift+Enter starts a new line', async ({ page }) => {
@@ -186,7 +236,7 @@ test.describe('Ask EduOS AI', () => {
     await entry(page).click()
     await input(page).fill('What attendance is required?')
     await input(page).press('Enter')
-    await expect(panel(page).locator('.thinking')).toContainText("Looking through your school's knowledge")
+    await expect(panel(page).locator('.thinking')).toContainText('Working on your question')
     await expect(send(page)).toBeDisabled()
     // More presses and another question while it is working change nothing.
     await input(page).fill('Another question?')
@@ -245,7 +295,7 @@ test.describe('Ask EduOS AI', () => {
     await page.reload()
     await entry(page).click()
     await expect(panel(page).locator('.ai-message')).toHaveCount(0)
-    await expect(panel(page)).toContainText("Ask about your school's knowledge")
+    await expect(panel(page)).toContainText('How can I help?')
   })
 
   test('the panel has no WCAG A or AA violations, empty or in conversation', async ({ page }) => {
@@ -264,6 +314,10 @@ test.describe('Ask EduOS AI', () => {
     await page.setViewportSize({ width: 380, height: 720 })
     await open(page)
     await expect(entry(page)).toBeVisible()
+    // A compact round button in the corner; its name stays for assistive technology.
+    const button = (await entry(page).boundingBox())!
+    expect([Math.round(button.width), Math.round(button.height), Math.round(380 - button.x - button.width), Math.round(720 - button.y - button.height)]).toEqual([52, 52, 16, 16])
+    await expect(entry(page).locator('span')).toBeHidden()
     await entry(page).click()
     const box = await panel(page).boundingBox()
     expect(box && Math.round(box.width)).toBe(380)

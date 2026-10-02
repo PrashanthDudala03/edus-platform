@@ -80,6 +80,7 @@ public static class AiService
         builder.Services.AddSingleton<IAiTool, AttendanceSummaryTool>();
         builder.Services.AddSingleton<IAiTool, FeeSummaryTool>();
         builder.Services.AddSingleton<IAiTool, ExamScheduleTool>();
+        builder.Services.AddSingleton<IAiTool, CurrentUserProfileTool>();
         builder.Services.AddSingleton<IEduOsApi>(s => new EduOsApi(EduOsApi.Client(s.GetRequiredService<IOptions<AiToolsOptions>>().Value), s.GetServices<IAiTool>()));
         builder.Services.AddSingleton<IAiToolAudit, PostgresAiToolAudit>();
         builder.Services.AddSingleton<AiToolRegistry>();
@@ -228,15 +229,16 @@ public static class AiService
         app.MapPost("/api/ai/assistant/ask", async (AssistantAsk ask, TenantContext tenant, HttpContext http, AiGateway gateway, CancellationToken cancellation) =>
         {
             if (Denied(tenant, http)) return Forbidden();
-            var outcome = await gateway.Ask(tenant, http.User.FindFirst("data_scope")?.Value ?? "", ask, cancellation);
+            // The caller's token is forwarded only to EduOS itself, for live figures the caller is permitted to read.
+            var outcome = await gateway.Ask(tenant, http.User.FindFirst("data_scope")?.Value ?? "", ask, cancellation, ToolCaller.From(http, tenant));
             if (outcome.Invalid is string message) return Results.BadRequest(new { message });
             if (outcome.RetryAfterSeconds is int wait) return Results.Ok(new { data = new { available = false, reason = outcome.Unavailable, retryAfterSeconds = wait } });
             if (outcome.Response is not ModelResponse answer) return Results.Ok(new { data = new { available = false, reason = outcome.Unavailable } });
             return Results.Ok(new { data = new
             {
-                available = true, answer = answer.Text,
+                available = true, kind = outcome.Kind, answer = answer.Text,
                 sources = outcome.Sources!.Select(s => new { number = s.Number, documentId = s.DocumentId, title = s.Title, source = s.Source, section = s.Section, page = s.Page }),
-                model = answer.Model, finish = answer.Finish == FinishReason.Length ? "length" : "completed",
+                model = answer.Model.Length == 0 ? null : answer.Model, finish = answer.Finish == FinishReason.Length ? "length" : "completed",
                 usage = new { inputTokens = answer.Usage!.InputTokens, outputTokens = answer.Usage.OutputTokens, estimated = answer.Usage.Estimated },
             } });
         }).RequireAuthorization(EduOSPolicies.AnyRole);

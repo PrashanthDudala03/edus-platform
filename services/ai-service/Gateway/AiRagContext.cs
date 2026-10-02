@@ -9,8 +9,9 @@ namespace EduOS.Ai.Gateway;
 /// model; the model's text is never read for it. No chunk, vector, school or path.
 /// </summary>
 /// <param name="Number">The number the reference material carries for this source.</param>
-/// <param name="Source">The file label the document was uploaded with.</param>
-public sealed record AssistantSource(int Number, Guid DocumentId, string Title, string Source, string? Section, int? Page);
+/// <param name="DocumentId">The knowledge document. Null when the figures came from live EduOS data.</param>
+/// <param name="Source">The file label the document was uploaded with, or a plain description of where live figures came from.</param>
+public sealed record AssistantSource(int Number, Guid? DocumentId, string Title, string Source, string? Section, int? Page);
 
 /// <param name="Messages">Three messages: the fixed instruction, the reference material, the question.</param>
 /// <param name="Chunks">How many retrieved chunks the reference material holds.</param>
