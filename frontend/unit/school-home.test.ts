@@ -1,7 +1,32 @@
 // Run with `npm run test:unit` (Node's own test runner; no browser, no server, nothing to install).
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { SECTION_HINTS, SECTION_LABELS, afterSignIn, eventDates, figure, move, setSkipSchoolHome, skipsSchoolHome } from '../src/pages/home/schoolHome.ts'
+import { DEFAULT_BRAND, SECTION_HINTS, SECTION_LABELS, afterSignIn, brandTheme, contrast, eventDates, figure, greeting, move, setSkipSchoolHome, skipsSchoolHome } from '../src/pages/home/schoolHome.ts'
+
+test('any school colour yields a readable page', () => {
+  // Blue and gold, green and cream, maroon and gold, then colours that are far too light or too dark to use as they are.
+  for (const [primary, accent] of [['#1a5fb4', '#f5c211'], ['#2e7d32', '#f4ecd8'], ['#7a1f2b', '#d4a53a'], ['#ffe600', '#ffffff'], ['#f8f8f8', '#000000'], ['#000000', '#888888']]) {
+    const theme = brandTheme({ primary, accent }), on = (text: string, surface: string) => contrast(text, surface)
+    assert.ok(on('#ffffff', theme['--sw-primary']) >= 4.5, primary + ': white text on the primary band')
+    assert.ok(on('#ffffff', theme['--sw-deep']) >= 7, primary + ': white text on the deep band')
+    assert.ok(on(theme['--sw-primary'], '#ffffff') >= 4.5, primary + ': primary text on white')
+    assert.ok(on(theme['--sw-primary'], theme['--sw-tint']) >= 4.5, primary + ': primary text on the tinted section')
+    assert.ok(on(theme['--sw-deep'], theme['--sw-soft']) >= 4.5, primary + ': deep text on a soft chip')
+    assert.ok(on(theme['--sw-on-accent'], theme['--sw-accent']) >= 4.5, accent + ': button text on the accent')
+    assert.equal(theme['--sw-accent'], accent)
+  }
+})
+
+test('missing or malformed colours fall back to the EduOS palette', () => {
+  const fallback = brandTheme(null)
+  for (const brand of [undefined, {}, { primary: '', accent: '' }, { primary: 'red', accent: '#12' }, { primary: 'url(x)', accent: '#gggggg' }]) assert.deepEqual(brandTheme(brand), fallback)
+  assert.equal(fallback['--sw-accent'], DEFAULT_BRAND.accent)
+  assert.ok(contrast('#ffffff', fallback['--sw-primary']) >= 4.5)
+})
+
+test('the greeting follows the time of day', () => {
+  assert.deepEqual([0, 11, 12, 16, 17, 23].map(greeting), ['Good morning', 'Good morning', 'Good afternoon', 'Good afternoon', 'Good evening', 'Good evening'])
+})
 
 function storage() {
   const values = new Map<string, string>()

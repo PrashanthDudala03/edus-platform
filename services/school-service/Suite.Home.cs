@@ -44,8 +44,12 @@ public static partial class Suite
         }
         foreach(var key in HomeSections)if(!order.Contains(key)){order.Add(key);if(input["sections"] is not null)hidden.Add(key);}
         var hero=Part(input["hero"],"Hero");var identity=Part(input["identity"],"Motto, vision and mission");var principal=Part(input["principal"],"Principal message");var results=Part(input["results"],"Results");
+        // The school's two brand colours. Blank means the EduOS palette; readable shades are derived when the page is drawn.
+        string Colour(JsonNode? n,string label){var v=Clip(n,7,label).ToLowerInvariant();Require(v==""||(v.Length==7&&v[0]=='#'&&v.Skip(1).All(Uri.IsHexDigit)),label+" must be a colour such as #1a5fb4.");return v;}
+        var brand=Part(input["brand"],"School colours");
         return new JsonObject{
             ["sections"]=List(order.Select(k=>new JsonObject{["key"]=k,["visible"]=!hidden.Contains(k)})),
+            ["brand"]=new JsonObject{["primary"]=Colour(brand["primary"],"Primary colour"),["accent"]=Colour(brand["accent"],"Accent colour")},
             ["hero"]=new JsonObject{["tagline"]=Clip(hero["tagline"],160,"Tagline"),["bannerId"]=Image(hero["bannerId"],"Banner image"),["bannerPosition"]=Position(hero["bannerPosition"]),["logoId"]=Image(hero["logoId"],"Logo")},
             ["identity"]=new JsonObject{["motto"]=Clip(identity["motto"],200,"Motto"),["vision"]=Clip(identity["vision"],1000,"Vision"),["mission"]=Clip(identity["mission"],1000,"Mission")},
             ["principal"]=new JsonObject{["name"]=Clip(principal["name"],120,"Principal name"),["designation"]=Clip(principal["designation"],120,"Principal designation"),["message"]=Clip(principal["message"],2000,"Principal message"),["photoId"]=Image(principal["photoId"],"Principal photo"),["photoPosition"]=Position(principal["photoPosition"])},
@@ -105,7 +109,8 @@ public static partial class Suite
             var key=Text(s.AsObject(),"key");var part=(config[key] as JsonObject??new JsonObject()).DeepClone().AsObject();
             var items=(part["items"] as JsonArray??new JsonArray()).Select(x=>x!.AsObject()).ToList();
             JsonObject? content=null;
-            if(key=="hero")content=part;
+            // The motto belongs to the school's identity on the banner, whether or not the vision and mission section is shown.
+            if(key=="hero"){part["motto"]=Text(config["identity"] as JsonObject??new JsonObject(),"motto");content=part;}
             else if(key=="identity"){if(new[]{"motto","vision","mission"}.Any(k=>Text(part,k)!=""))content=part;}
             else if(key=="principal"){
                 if(Text(part,"name")=="")part["name"]=Text(school,"principalName");
@@ -136,7 +141,7 @@ public static partial class Suite
             }
             if(content is not null)sections.Add(new JsonObject{["key"]=key,["content"]=content});
         }
-        return new JsonObject{["schoolName"]=Text(school,"name"),["sections"]=sections};
+        return new JsonObject{["schoolName"]=Text(school,"name"),["brand"]=config["brand"]?.DeepClone(),["sections"]=sections};
     }
 
     static void MapHome(RouteGroupBuilder group){
