@@ -83,6 +83,19 @@ test.describe.serial('IAM lifecycle and security',()=>{
   await renewAdmin();teacher=await login(applicant)
   expect(teacher.user.permissions).not.toContain('homework.manage');await denied(teacher,'POST','/suite/records/homework',{})
  })
+ test('a permission added to an existing role is saved and reaches the next JWT',async()=>{
+  test.setTimeout(90000);const r=role('Teacher')
+  // The previous test took homework.manage away from this role. Saving the role with it again must store the grant.
+  expect(r.permissions).toContain('homework.manage')
+  await ok(admin,'PUT','/control/roles/'+r.id,{...r,permissions:r.permissions})
+  await renewAdmin();const saved=(await ok(admin,'GET','/control/configuration')).roles.find((x:any)=>x.id===r.id)
+  expect(saved.permissions).toContain('homework.manage');expect([...saved.permissions].sort()).toEqual([...r.permissions].sort())
+  teacher=await login(applicant);expect(teacher.user.permissions).toContain('homework.manage')
+  // Saving it once more changes nothing and adds no duplicate.
+  await ok(admin,'PUT','/control/roles/'+r.id,{...r,permissions:r.permissions})
+  await renewAdmin();expect((await ok(admin,'GET','/control/configuration')).roles.find((x:any)=>x.id===r.id).permissions.length).toBe(r.permissions.length)
+  teacher=await login(applicant)
+ })
  test('custom Accountant template and role work without authentication changes',async()=>{
   test.setTimeout(90000)
   await ok(platform,'PUT','/control/templates/'+customTemplate,{id:customTemplate,name:'Accountant '+tag,description:'Finance scope',dataScope:'school',enabled:true,assignable:true,maximum:['fees.view','fees.collect'],defaults:['fees.view']})

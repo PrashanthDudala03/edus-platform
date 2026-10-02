@@ -166,6 +166,56 @@ services:
       retries: 5
     networks: [edus-network]
 
+  # Optional AI database: a separate PostgreSQL with pgvector and its own volume. The core database is not involved.
+  # Without AI_DB_PASSWORD the image refuses to initialise, so nothing runs on a blank password.
+  ai-db:
+    <<: *service-defaults
+    profiles: ["ai"]
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${AI_DB_USER:-eduos_ai_owner}
+      POSTGRES_PASSWORD: ${AI_DB_PASSWORD:-}
+      POSTGRES_DB: ${AI_DB_NAME:-eduos_ai}
+    volumes:
+      - ai_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AI_DB_USER:-eduos_ai_owner} -d ${AI_DB_NAME:-eduos_ai}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [edus-network]
+
+  # Optional AI service. It starts only with --profile ai; the default stack does not include it.
+  ai-service:
+    <<: *service-defaults
+    profiles: ["ai"]
+    image: edus-ai-service:${EDUOS_VERSION:-1.0.0-rc.1}
+    build:
+      context: .
+      dockerfile: services/Dockerfile.ai
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      ASPNETCORE_URLS: http://+:6006
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?Set JWT_PUBLIC_KEY in .env}
+      JWT_ISSUER: ${JWT_ISSUER:-edus-auth-service}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-edus-api}
+      Ai__Enabled: ${AI_ENABLED:-false}
+      # Requests use the restricted ai_app account; the owner account only prepares the schema at start.
+      ConnectionStrings__AiDb: "Host=ai-db;Port=5432;Database=${AI_DB_NAME:-eduos_ai};Username=ai_app;Password=${AI_DB_APP_PASSWORD:-};"
+      ConnectionStrings__AiDbMigrations: "Host=ai-db;Port=5432;Database=${AI_DB_NAME:-eduos_ai};Username=${AI_DB_USER:-eduos_ai_owner};Password=${AI_DB_PASSWORD:-};"
+      SERILOG_LEVEL: ${SERILOG_LEVEL:-Information}
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      ai-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6006/api/ai/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [edus-network]
+
   api-gateway:
     <<: *service-defaults
     image: edus-api-gateway:${EDUOS_VERSION:-1.0.0-rc.1}
@@ -248,6 +298,7 @@ services:
 volumes:
   school_documents:
   postgres_data:
+  ai_db_data:
 
 networks:
   ingress:

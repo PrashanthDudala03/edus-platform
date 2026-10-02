@@ -16,7 +16,7 @@ public record BoundaryEdit(string[] Allowed);
 public static class Iam
 {
     // Platform-level permissions are never delegated to a school or granted through a school template.
-    public static bool PlatformOnly(string key) => key.StartsWith("platform.") || key.StartsWith("billing.");
+    public static bool PlatformOnly(string key) => key.StartsWith("platform.") || key.StartsWith("billing.") || key == "ai.platform.manage";
     public static void Check(bool condition, string message, int status = 400) { if (!condition) throw new IamError(status, message); }
     // Serialize security mutations and token issuance, including changes to global boundaries.
     public static Task Lock(AuthDbContext db) => db.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(610012026)");
@@ -290,7 +290,12 @@ public static class Iam
         db.RolePermissions.RemoveRange(removed);
         foreach(var item in removed)role.Permissions.Remove(item);
         foreach(var key in input.Permissions.Distinct().Where(key=>!role.Permissions.Any(p=>p.PermissionKey==key)))
-            role.Permissions.Add(new RolePermission{Id=Guid.NewGuid(),RoleId=role.Id,PermissionKey=key});
+        {
+            // Added through the set, so it is inserted. A row with its key already set that is only put into the
+            // loaded role's collection is taken for an existing row and updated, which changes nothing and fails.
+            var grant=new RolePermission{Id=Guid.NewGuid(),RoleId=role.Id,PermissionKey=key};
+            db.RolePermissions.Add(grant);role.Permissions.Add(grant);
+        }
         await db.SaveChangesAsync();await Revoke(db,school);await Audit(db,http.GetTenant(),school,id.HasValue?"role.changed":"role.created",role.Id,old,input);await tx.CommitAsync();return Results.Ok(new{data=new{role.Id},message="Role saved; school sessions revoked."});
     }
 

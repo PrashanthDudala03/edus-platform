@@ -24,3 +24,11 @@ Run step 3 only after the old auth-service is running; the new one re-applies th
 **Configuration.** Online payment is optional. Set `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` and `RAZORPAY_WEBHOOK_SECRET` in `.env` (test keys start with `rzp_test_`) and point the Razorpay webhook at `https://<host>/api/v1/billing/webhooks/razorpay` for `payment.captured`, `order.paid` and `payment.failed`. auth-service joins the `payments-egress` network so it can reach Razorpay; no other service has outbound access.
 
 **Rollback.** Deploy the previous commit, then `DROP SCHEMA billing CASCADE;` and `DELETE FROM auth_db.schema_migrations WHERE id = '20261002_01_billing';`. The extra permissions are ignored by older code.
+
+## AI core storage (2026-10-03)
+
+**What it does.** In the separate AI database only (compose service `ai-db`, profile `ai`, volume `ai_db_data`): enables the `vector` extension, creates schema `ai` with `school_settings`, `usage_events`, `audit` and `schema_migrations`, the restricted account `ai_app`, and forced row-level security keyed on the school of the current transaction. The EduOS core database, its image and its volume are not touched.
+
+**Applied by** ai-service on start, with the owner connection (`ConnectionStrings__AiDbMigrations`): `services/ai-service/Migrations/20261003_01_ai_core.sql`. Recorded in `ai.schema_migrations`. If the database is missing the service keeps running and reports AI as unavailable.
+
+**Rollback.** Stop ai-service, then in the AI database: `DROP SCHEMA ai CASCADE; DROP ROLE ai_app;`. Nothing outside the AI database depends on it.
