@@ -63,6 +63,8 @@ public static class Iam
         await EnsureSchools(db);
         var schoolHome=await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory,"Migrations/20261002_02_school_home.sql"));
         await db.Database.ExecuteSqlRawAsync(schoolHome.Replace("{","{{").Replace("}","}}"));
+        var notificationTemplates=await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory,"Migrations/20261002_03_notification_templates.sql"));
+        await db.Database.ExecuteSqlRawAsync(notificationTemplates.Replace("{","{{").Replace("}","}}"));
         await tx.CommitAsync();
     }
 
@@ -165,6 +167,14 @@ public static class Iam
         group.MapGet("/me",async(HttpContext http,AuthDbContext db)=>{
             var actor=http.GetTenant();var user=await db.Users.Include(u=>u.Role).SingleAsync(u=>u.Id==actor.UserId && u.SchoolId==actor.SchoolId);
             await Hydrate(db,user);return Results.Ok(new{data=user.ToDto()});
+        });
+        // Which product modules this school has and this account may use. A view over the school's boundary and the
+        // account's effective permissions; it stores nothing and takes nothing from the request.
+        group.MapGet("/features",async(HttpContext http,AuthDbContext db)=>{
+            var actor=http.GetTenant();var user=await db.Users.Include(u=>u.Role).SingleAsync(u=>u.Id==actor.UserId && u.SchoolId==actor.SchoolId);
+            await Hydrate(db,user);
+            var boundary=actor.IsPlatform?[]:await db.Database.SqlQuery<string>($"SELECT unnest(allowed) AS \"Value\" FROM auth_db.school_access WHERE school_id={actor.SchoolId}").ToListAsync();
+            return Results.Ok(new{data=FeatureCatalogue.Evaluate(boundary,user.EffectivePermissions)});
         });
         GuardianReview.Map(group);
         group.MapGet("/configuration",async(Guid? targetSchool,HttpContext http,AuthDbContext db)=>{

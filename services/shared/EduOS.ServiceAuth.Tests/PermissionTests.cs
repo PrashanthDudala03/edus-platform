@@ -65,6 +65,33 @@ public class PermissionTests
         Assert.True(PermissionAccess.Allows(Context("Custom","school",path,method,"school-home.manage")));
         Assert.False(PermissionAccess.Allows(Context("Administrator","school",path,method,"school.settings.manage","school-config.manage")));
     }
+    [Theory]
+    [InlineData("/api/notifications","GET")][InlineData("/api/v1/notifications/unread-count","GET")][InlineData("/api/notifications/7c1d0000-0000-4000-8000-0000000000d1/read","POST")]
+    [InlineData("/api/notifications/read-all","POST")][InlineData("/api/v1/notifications/preferences","PUT")]
+    [InlineData("/api/notifications/devices","GET")][InlineData("/api/v1/notifications/devices","PUT")][InlineData("/api/notifications/devices/3f2b8c1e-9d4a-4f6b","DELETE")]
+    public void EverySchoolUserReachesTheirOwnNotifications(string path,string method)
+    {
+        Assert.Null(PermissionAccess.Required(path,method));
+        foreach(var scope in new[]{"school","teacher","parent","student"})Assert.True(PermissionAccess.Allows(Context("Custom",scope,path,method)));
+    }
+    [Theory]
+    [InlineData("/api/notifications/templates","GET")][InlineData("/api/v1/notifications/templates/leave.approved","GET")][InlineData("/api/notifications/templates/leave.approved/preview","POST")]
+    [InlineData("/api/v1/notifications/templates/leave.approved","PUT")][InlineData("/api/notifications/templates/leave.approved/enabled","PUT")][InlineData("/api/notifications/templates/leave.approved","DELETE")]
+    [InlineData("/api/notifications/history","GET")][InlineData("/api/v1/notifications/history/7c1d0000-0000-4000-8000-0000000000d1","GET")]
+    public void NotificationWordingAndHistoryNeedTheManagePermission(string path,string method)
+    {
+        Assert.Equal("notifications.manage",PermissionAccess.Required(path,method));
+        Assert.True(PermissionAccess.Allows(Context("Custom","school",path,method,"notifications.manage")));
+        Assert.False(PermissionAccess.Allows(Context("Administrator","school",path,method,"school.settings.manage","school-home.manage","circulars.manage")));
+        foreach(var scope in new[]{"teacher","parent","student"})Assert.False(PermissionAccess.Allows(Context("Custom",scope,path,method,"circulars.view","leave-requests.view")));
+    }
+    [Theory]
+    [InlineData("school")][InlineData("teacher")][InlineData("parent")][InlineData("student")][InlineData("platform")]
+    public void EveryAccountMayAskWhichModulesItHas(string scope)
+    {
+        Assert.Null(PermissionAccess.Required("/api/v1/control/features","GET"));
+        Assert.True(PermissionAccess.Allows(Context("Custom",scope,"/api/control/features","GET")));
+    }
     [Fact]
     public void UnknownEndpointsFailClosed()=>Assert.False(PermissionAccess.Allows(Context("Administrator","school","/api/future-module","GET")));
     [Fact]
