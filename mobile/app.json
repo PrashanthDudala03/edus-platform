@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "EduOS",
+    "slug": "eduos-mobile",
+    "scheme": "eduos",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "android": {
+      "package": "com.eduos.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#167865"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.eduos.mobile",
+      "supportsTablet": false
+    },
+    "plugins": [
+      "expo-router",
+      "expo-status-bar",
+      "expo-secure-store",
+      "expo-image",
+      "expo-font"
+    ]
+  }
+}
