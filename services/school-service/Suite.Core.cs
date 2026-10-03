@@ -18,6 +18,8 @@ public sealed class SchoolAccess
     public bool SchoolWide => Role is "Administrator" or "Principal";
     public HashSet<string> Students {get;}=[]; public HashSet<string> Teachers {get;}=[]; public HashSet<string> Classes {get;}=[];
     public HashSet<string> Exams {get;}=[]; public HashSet<string> Homework {get;}=[];
+    /// <summary>Exams whose results families may read: published (or closed). Teachers read marks for every exam of their classes.</summary>
+    public HashSet<string> Published {get;}=[];
 }
 public static partial class Suite
 {
@@ -27,6 +29,8 @@ public static partial class Suite
         File.ReadAllText(Path.Combine(AppContext.BaseDirectory,"SuiteSchemas.json")),JsonOptions)!.ToDictionary(s=>s.Kind);
     private static readonly string[] KnownRoles=["Administrator","Principal","Teacher","Parent","Student"];
     static string Text(JsonObject o,string key)=>o[key]?.ToString().Trim()??"";
+    /// <summary>The permission a module's action needs. Assessment schemes are part of the exams module, not a module of their own.</summary>
+    static string Perm(string kind,string action)=>(kind=="assessment-schemes"?"exams":kind)+"."+action;
     static decimal Number(JsonObject o,string key)=>decimal.TryParse(Text(o,key),System.Globalization.NumberStyles.Number,System.Globalization.CultureInfo.InvariantCulture,out var n)?n:throw new SuiteError(400,key+" must be a number.");
     static Guid Id(JsonObject o,string key)=>Guid.TryParse(Text(o,key),out var id)?id:throw new SuiteError(400,key+" must be a valid record.");
     static DateOnly Day(JsonObject o,string key)=>DateOnly.TryParse(Text(o,key),out var d)?d:throw new SuiteError(400,key+" must be a valid date.");
@@ -69,19 +73,20 @@ public static partial class Suite
         var enrollment=await Q(c,"SELECT student_id::text AS student,class_id::text AS class FROM suite.student_classes WHERE school_id=@s",("s",school));
         foreach(var en in enrollment)if(a.Students.Contains(Text(en,"student")))a.Classes.Add(Text(en,"class"));
         if(role=="Teacher")foreach(var en in enrollment)if(a.Classes.Contains(Text(en,"class")))a.Students.Add(Text(en,"student"));
-        foreach(var exam in await Records(c,school,"exams"))if(a.Classes.Contains(Text(exam,"classId"))&&(role=="Teacher"||Text(exam,"status")=="Published"))a.Exams.Add(Text(exam,"id"));
+        // Families see an exam once it is on the timetable and its results only once published; teachers see every exam of their classes.
+        foreach(var exam in await Records(c,school,"exams"))if(a.Classes.Contains(Text(exam,"classId"))){var status=Text(exam,"status");if(role=="Teacher"||ExamRules.FamilyVisible(status))a.Exams.Add(Text(exam,"id"));if(ExamRules.ResultsVisible(status))a.Published.Add(Text(exam,"id"));}
         foreach(var homework in await Records(c,school,"homework"))if(a.Classes.Contains(Text(homework,"classId")))a.Homework.Add(Text(homework,"id"));
         return a;
     }
     static bool Readable(string kind,JsonObject d,SchoolAccess a){
-        if(!a.Can(kind+".view"))return false;
+        if(!a.Can(Perm(kind,"view")))return false;
         if(a.SchoolWide)return true;
         return kind switch{
-            "academic-years" or "subjects" or "calendar" or "school-config"=>true,
+            "academic-years" or "subjects" or "calendar" or "school-config" or "assessment-schemes"=>true,
             "classes"=>a.Classes.Contains(Text(d,"id")),
             "teaching-assignments" or "staff-attendance" or "leave-requests"=>a.Teachers.Contains(Text(d,"teacherId")),
             "exams"=>a.Exams.Contains(Text(d,"id")),
-            "marks"=>a.Students.Contains(Text(d,"studentId"))&&a.Exams.Contains(Text(d,"examId")),
+            "marks"=>a.Students.Contains(Text(d,"studentId"))&&a.Exams.Contains(Text(d,"examId"))&&(a.Role=="Teacher"||a.Published.Contains(Text(d,"examId"))),
             "homework"=>a.Homework.Contains(Text(d,"id"))&&(a.Role=="Teacher"||HomeworkRules.Status(Text(d,"status"))!="Draft"),
             "submissions"=>a.Students.Contains(Text(d,"studentId"))&&a.Homework.Contains(Text(d,"homeworkId")),
             "certificates"=>a.Students.Contains(Text(d,"studentId")),
@@ -92,7 +97,7 @@ public static partial class Suite
         };
     }
     static void Writable(string kind,JsonObject d,SchoolAccess a,JsonObject? old){
-        Require(a.Can(kind+".manage"),"Your role cannot change this module.",403);
+        Require(a.Can(Perm(kind,"manage")),"Your role cannot change this module.",403);
         if(a.SchoolWide)return;
         if(a.Role=="Teacher"){
             if(kind=="leave-requests"){Require(a.Teachers.Contains(Text(d,"teacherId")),"Leave must belong to your staff profile.",403);Require(Text(d,"status")=="Pending"&&Text(d,"approvalRemark")=="","Only school leadership can approve leave.",403);Require(old is null||Text(old,"status")=="Pending","Reviewed leave cannot be changed.",409);}
@@ -120,18 +125,18 @@ public static partial class Suite
             catch(PostgresException ex) when(ex.SqlState is "23505" or "23503" or "23514" or "40001"){return Results.Conflict(new{message="This change conflicts with an existing record or another update. Refresh and try again."});}
         });
         group.MapGet("/school",async(HttpContext http)=>{await using var c=await Open();var a=await Access(http,c);return Results.Ok(new{data=(await Q(c,"SELECT name FROM school_db.schools WHERE id=@s",("s",a.School))).First()});});
-        group.MapGet("/catalog",async(HttpContext http)=>{await using var c=await Open();var a=await Access(http,c);return Results.Ok(new{data=Schemas.Values.Where(s=>a.Can(s.Kind+".view")).Select(s=>new{s.Kind,s.Title,s.Group,s.Fields,canWrite=a.Can(s.Kind+".manage")})});});
+        group.MapGet("/catalog",async(HttpContext http)=>{await using var c=await Open();var a=await Access(http,c);return Results.Ok(new{data=Schemas.Values.Where(s=>a.Can(Perm(s.Kind,"view"))).Select(s=>new{s.Kind,s.Title,s.Group,s.Fields,canWrite=a.Can(Perm(s.Kind,"manage"))})});});
         group.MapGet("/records/{kind}",async(string kind,HttpContext http,int page=1,string? search=null)=>{
             Require(Schemas.ContainsKey(kind),"Module not found.",404);Require(page>0&&page<100000,"Invalid page.");
-            await using var c=await Open();var a=await Access(http,c);Require(a.Can(kind+".view"),"Access denied.",403);
+            await using var c=await Open();var a=await Access(http,c);Require(a.Can(Perm(kind,"view")),"Access denied.",403);
             var rows=(await Records(c,a.School,kind)).Where(d=>Readable(kind,d,a)&& (string.IsNullOrEmpty(search)||d.ToJsonString().Contains(search,StringComparison.OrdinalIgnoreCase))).ToList();
             return Results.Ok(new{data=new{data=rows.Skip((page-1)*20).Take(20),totalCount=rows.Count,page,pageSize=20}});
         });
         group.MapPost("/records/{kind}",async(string kind,JsonObject data,HttpContext http)=>await Save(kind,null,data,http));
         group.MapPut("/records/{kind}/{id:guid}",async(string kind,Guid id,JsonObject data,HttpContext http)=>await Save(kind,id,data,http));
         group.MapDelete("/records/{kind}/{id:guid}",async(string kind,Guid id,HttpContext http)=>{
-            Require(Schemas.ContainsKey(kind),"Module not found.",404);await using var c=await Open();var a=await Access(http,c);Require(a.Can(kind+".archive"),"Archive permission required.",403);
-            Require(!new[]{"academic-years","classes","subjects","fee-structures","exams","marks","school-config","certificates","admissions"}.Contains(kind),"This record is retained for academic or financial history. Change its status instead.",409);
+            Require(Schemas.ContainsKey(kind),"Module not found.",404);await using var c=await Open();var a=await Access(http,c);Require(a.Can(Perm(kind,"archive")),"Archive permission required.",403);
+            Require(!new[]{"academic-years","classes","subjects","fee-structures","exams","marks","assessment-schemes","school-config","certificates","admissions"}.Contains(kind),"This record is retained for academic or financial history. Change its status instead.",409);
             Require(kind!="account-links","Profile links are retained. Contact platform support to correct a relationship.",409);
             var old=await Get(c,a.School,kind,id);
             await E(c,"UPDATE suite.records SET archived_at=now(),updated_by=@u,version=version+1 WHERE id=@id AND school_id=@s",("u",a.User),("id",id),("s",a.School));
@@ -144,7 +149,7 @@ public static partial class Suite
             foreach(var schema in Schemas.Values){var records=await Records(c,a.School,schema.Kind);result[schema.Kind]=records.Where(d=>Readable(schema.Kind,d,a)).Select(d=>new{id=Text(d,"id"),label=OptionLabel(schema.Kind,d)}).ToList();}
             foreach(var(kind,table)in new[]{("students","student_db.students"),("teachers","teacher_db.teachers"),("parents","parent_db.parents")}){
                 var rows=await Q(c,$"SELECT id::text AS id,first_name || ' ' || last_name AS label FROM {table} WHERE school_id=@s AND deleted_at IS NULL ORDER BY first_name",("s",a.School));
-                result[kind]=rows.Where(d=>(a.SchoolWide && (a.Can(kind+".view")||Schemas.Values.Any(s=>a.Can(s.Kind+".manage")&&s.Fields.Any(f=>f.Source==kind))))||(kind=="students"&&a.Students.Contains(Text(d,"id")))||(kind=="teachers"&&a.Teachers.Contains(Text(d,"id")))).ToList();
+                result[kind]=rows.Where(d=>(a.SchoolWide && (a.Can(Perm(kind,"view"))||Schemas.Values.Any(s=>a.Can(Perm(s.Kind,"manage"))&&s.Fields.Any(f=>f.Source==kind))))||(kind=="students"&&a.Students.Contains(Text(d,"id")))||(kind=="teachers"&&a.Teachers.Contains(Text(d,"id")))).ToList();
             }
             var users=await Q(c,"SELECT id::text AS id,first_name || ' ' || last_name || ' (' || username || ')' AS label FROM auth_db.users WHERE school_id=@s AND deleted_at IS NULL AND is_active",("s",a.School));
             if(a.Can("users.view")||a.Can("account-links.manage")||a.Can("messages.manage"))result["users"]=a.SchoolWide?users:users.Where(u=>Text(u,"id")==a.User.ToString()).ToList();
@@ -165,7 +170,7 @@ public static partial class Suite
     static async Task<IResult> Save(string kind,Guid? id,JsonObject input,HttpContext http){
         Require(Schemas.ContainsKey(kind),"Module not found.",404);await using var c=await Open();var a=await Access(http,c);
         // Authorize before validating: a role that cannot write this module learns nothing from field or reference checks.
-        Require(a.Can(kind+".manage"),"Your role cannot change this module.",403);
+        Require(a.Can(Perm(kind,"manage")),"Your role cannot change this module.",403);
         await using var tx=await c.BeginTransactionAsync();
         await E(c,"SELECT pg_advisory_xact_lock(hashtextextended(@s,0))",("s",a.School.ToString()));
         var old=id.HasValue?await Get(c,a.School,kind,id.Value):null;

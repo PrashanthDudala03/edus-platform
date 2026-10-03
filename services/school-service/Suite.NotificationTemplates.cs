@@ -40,6 +40,7 @@ public static class NotificationTemplates
         new("dueDate", "The date it is due", "15 Oct 2026"), new("subjectName", "The subject", "Mathematics"),
         new("homeworkTitle", "The homework's title", "Fractions worksheet"), new("examName", "The exam or term", "Half-yearly examination"),
         new("status", "The attendance status", "Present"), new("circularTitle", "The circular's title", "Parent-teacher meeting"), new("circularMessage", "The circular's text", "The parent-teacher meeting is on Saturday at 9 am."),
+        new("time", "The start and end time, when set", "09:00-11:00"), new("room", "The room or location, when set", "Hall B"),
     ];
 
     static IReadOnlyDictionary<string, TemplateText> InApp(string title, string body) => new Dictionary<string, TemplateText> { ["in-app"] = new(title, body) };
@@ -67,6 +68,10 @@ public static class NotificationTemplates
             ["homeworkTitle", "subjectName", "className", "dueDate", "schoolName"], InApp("Homework due soon: {{homeworkTitle}}", "{{subjectName}} is due on {{dueDate}}.")),
         new("result.published", "An exam that has marks is published", "Results published", "For the students who have marks in an exam, and their families, when the exam is published.", "results", Implemented,
             ["examName", "subjectName", "className", "schoolName"], InApp("Results published: {{examName}}", "{{subjectName}} results for {{className}} are available.")),
+        new("exam.scheduled", "An exam is put on the timetable", "Exam scheduled", "For the students of a class and their families when an exam is scheduled.", "timetable", Implemented,
+            ["examName", "subjectName", "className", "date", "time", "room", "schoolName"], InApp("Exam scheduled: {{examName}}", "{{subjectName}} for {{className}} on {{date}} {{time}} {{room}}")),
+        new("exam.rescheduled", "An exam's date, time or room changes", "Exam timetable changed", "For the students of a class and their families when a scheduled exam moves.", "timetable", Implemented,
+            ["examName", "subjectName", "className", "date", "time", "room", "schoolName"], InApp("Exam timetable changed: {{examName}}", "{{subjectName}} for {{className}} is now on {{date}} {{time}} {{room}}")),
         new("fee.due", "A fee is charged", "Fee due", "For a student's family when a fee is charged.", "fees", Implemented,
             ["studentName", "amount", "dueDate", "schoolName"], InApp("Fee due: {{amount}}", "{{amount}} for {{studentName}} is due on {{dueDate}}.")),
         new("fee.overdue", "A fee is past its due date", "Fee overdue", "For a student's family when a fee is not paid by its due date.", "fees", Blocked,

@@ -35,9 +35,12 @@ public static class PermissionAccess
             "school" or "catalog" or "options" => null,
             // Every school user reads the published School Home and its images; the editor, preview and uploads need the permission.
             "home" => read && p.ElementAtOrDefault(4) is null or "images" ? null : "school-home.manage",
-            "records" => p.ElementAtOrDefault(4) + (read ? ".view" : method == "DELETE" ? ".archive" : ".manage"),
+            // Assessment schemes are configuration of the exams module and share its permission.
+            "records" => (p.ElementAtOrDefault(4) == "assessment-schemes" ? "exams" : p.ElementAtOrDefault(4)) + (read ? ".view" : method == "DELETE" ? ".archive" : ".manage"),
             "student-attendance" => read ? "attendance.view" : "attendance.mark",
             "homework" => read ? "homework.view" : "homework.manage",
+            // Timetable, overview and marksheets are read with exams.view; marks entry needs marks.manage and the lifecycle call is checked per role by the service.
+            "exams" => read ? "exams.view" : p.ElementAtOrDefault(5) == "marksheet" ? "marks.manage" : "exams.view",
             "fees" => read ? "fees.view" : p.ElementAtOrDefault(4) == "payments" ? "fees.collect" : "fees.manage",
             "reports" => p.ElementAtOrDefault(4) == "audit" ? "audit.view" : "reports.view",
             "report-cards" => "reports.view", "certificates" => "certificates.view",

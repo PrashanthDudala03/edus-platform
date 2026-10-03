@@ -486,8 +486,78 @@
     ]
   },
   {
+    "kind": "assessment-schemes",
+    "title": "Assessment schemes",
+    "group": "Exams",
+    "fields": [
+      {
+        "key": "name",
+        "label": "Scheme name",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "type",
+        "label": "Type",
+        "type": "select",
+        "required": true,
+        "source": null,
+        "options": [
+          "Marks",
+          "Grade",
+          "Components"
+        ]
+      },
+      {
+        "key": "components",
+        "label": "Components (Theory:70:28, Practical:30)",
+        "type": "text",
+        "required": false,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "passPercent",
+        "label": "Pass percentage (optional)",
+        "type": "number",
+        "required": false,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "grades",
+        "label": "Grade scale (A+:90, A:80, B:60, C:40, D:0)",
+        "type": "text",
+        "required": false,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "notes",
+        "label": "Notes",
+        "type": "textarea",
+        "required": false,
+        "source": null,
+        "options": null
+      }
+    ],
+    "read": [
+      "Administrator",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ],
+    "write": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
     "kind": "exams",
-    "title": "Exam schedules",
+    "title": "Exams & timetable",
     "group": "Exams",
     "fields": [
       {
@@ -495,6 +565,22 @@
         "label": "Exam / term",
         "type": "text",
         "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "yearId",
+        "label": "Academic year",
+        "type": "reference",
+        "required": false,
+        "source": "academic-years",
+        "options": null
+      },
+      {
+        "key": "term",
+        "label": "Term",
+        "type": "text",
+        "required": false,
         "source": null,
         "options": null
       },
@@ -515,6 +601,30 @@
         "options": null
       },
       {
+        "key": "schemeId",
+        "label": "Assessment scheme",
+        "type": "reference",
+        "required": false,
+        "source": "assessment-schemes",
+        "options": null
+      },
+      {
+        "key": "maxMarks",
+        "label": "Maximum marks (set by the scheme when one is chosen)",
+        "type": "number",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "passMarks",
+        "label": "Pass marks (set by the scheme when one is chosen)",
+        "type": "number",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
         "key": "date",
         "label": "Exam date",
         "type": "date",
@@ -523,30 +633,51 @@
         "options": null
       },
       {
-        "key": "maxMarks",
-        "label": "Maximum marks",
-        "type": "number",
-        "required": true,
+        "key": "startsAt",
+        "label": "Starts at",
+        "type": "time",
+        "required": false,
         "source": null,
         "options": null
       },
       {
-        "key": "passMarks",
-        "label": "Pass marks",
-        "type": "number",
-        "required": true,
+        "key": "endsAt",
+        "label": "Ends at",
+        "type": "time",
+        "required": false,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "room",
+        "label": "Room / location",
+        "type": "text",
+        "required": false,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "instructions",
+        "label": "Instructions",
+        "type": "textarea",
+        "required": false,
         "source": null,
         "options": null
       },
       {
         "key": "status",
-        "label": "Publication",
+        "label": "Status",
         "type": "select",
         "required": true,
         "source": null,
         "options": [
           "Draft",
-          "Published"
+          "Scheduled",
+          "MarksEntry",
+          "Submitted",
+          "Approved",
+          "Published",
+          "Closed"
         ]
       }
     ],
@@ -564,7 +695,7 @@
   },
   {
     "kind": "marks",
-    "title": "Marks & remarks",
+    "title": "Marks & results",
     "group": "Exams",
     "fields": [
       {
@@ -584,10 +715,38 @@
         "options": null
       },
       {
+        "key": "status",
+        "label": "Attendance",
+        "type": "select",
+        "required": false,
+        "source": null,
+        "options": [
+          "Present",
+          "Absent",
+          "Exempt"
+        ]
+      },
+      {
         "key": "score",
-        "label": "Marks obtained",
+        "label": "Marks obtained (total)",
         "type": "number",
-        "required": true,
+        "required": false,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "components",
+        "label": "Component marks (Theory=56; Practical=25)",
+        "type": "text",
+        "required": false,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "grade",
+        "label": "Grade",
+        "type": "text",
+        "required": false,
         "source": null,
         "options": null
       },

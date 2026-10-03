@@ -31,6 +31,54 @@ export const handInLabel = (item: BoardItem) => item.submissionMode === 'Done' ?
 export const overviewTotals = (items: OverviewItem[]) => ({ toReview: items.reduce((n, i) => n + i.pending, 0), missing: items.reduce((n, i) => n + i.missing, 0), late: items.reduce((n, i) => n + i.late, 0), published: items.filter(i => i.status === 'Published').length })
 export interface Submission { id: string, homeworkId: string, studentId: string, response: string, feedback: string, grade: string }
 export interface Exam { id: string, name: string, classId: string, subjectId: string, date: string, maxMarks: string, passMarks: string, status: string }
+// Exams & results: the lifecycle, the scheme an exam is marked by, the marksheet and the report card, as the server
+// shapes them. The server decides who may enter or move what; these helpers only shape the screens and pre-check entries.
+export type ExamStatus = 'Draft' | 'Scheduled' | 'MarksEntry' | 'Submitted' | 'Approved' | 'Published' | 'Closed'
+export const EXAM_STATUSES: ExamStatus[] = ['Draft', 'Scheduled', 'MarksEntry', 'Submitted', 'Approved', 'Published', 'Closed']
+export const EXAM_STATUS_LABEL: Record<ExamStatus, string> = { Draft: 'Draft', Scheduled: 'Scheduled', MarksEntry: 'Marks entry', Submitted: 'Awaiting approval', Approved: 'Approved', Published: 'Published', Closed: 'Closed' }
+export const examTone = (status: ExamStatus): 'neutral' | 'success' | 'warning' | 'danger' | 'primary' => status === 'Published' ? 'success' : status === 'Approved' ? 'primary' : status === 'Submitted' || status === 'MarksEntry' ? 'warning' : 'neutral'
+export interface Scheme { type: 'Marks' | 'Grade' | 'Components', max: number, passMarks: number | null, gradeOnly: boolean, components: { name: string, max: number, pass: number | null }[], grades: { label: string, minPercent: number }[] }
+export interface TimetableExam { id: string, version: number, name: string, term: string, className: string, subjectName: string, date: string, startsAt: string, endsAt: string, room: string, instructions: string, schemeName: string, maxMarks: string, status: ExamStatus, resultsVisible: boolean, returnReason: string }
+export interface ExamOverview extends TimetableExam { assigned: number, entered: number, missing: number, absent: number, exempt: number, average: number | null, passed: number, failed: number }
+export type MarkStatus = 'Present' | 'Absent' | 'Exempt'
+export const MARK_STATUSES: MarkStatus[] = ['Present', 'Absent', 'Exempt']
+export interface SheetMark { id: string, version: number, status: MarkStatus, score: number | null, grade: string, pass: boolean, components: { name: string, max: number, score: number | null }[], remarks: string }
+export interface SheetRow { studentId: string, name: string, code: string, mark: SheetMark | null }
+export interface Marksheet { exam: TimetableExam, scheme: Scheme, students: SheetRow[], entered: number, canEdit: boolean, canSubmit: boolean, canReview: boolean }
+export interface MarkEntry { status: MarkStatus, components: Record<string, string>, grade: string, remarks: string }
+export const examTime = (exam: Pick<TimetableExam, 'startsAt' | 'endsAt'>) => exam.startsAt ? exam.startsAt + (exam.endsAt ? '–' + exam.endsAt : '') : ''
+/** Upcoming exams soonest first and held exams most recent first, from the server's date order. */
+export const splitExams = <T extends { date: string }>(items: T[], today: string) => ({ upcoming: items.filter(i => i.date >= today), held: items.filter(i => i.date < today).reverse() })
+export const examsByDay = <T extends { date: string }>(items: T[]) => { const groups: { date: string, items: T[] }[] = []; for (const item of items) { const last = groups[groups.length - 1]; if (last && last.date === item.date) last.items.push(item); else groups.push({ date: item.date, items: [item] }) } return groups }
+export const toMarkEntry = (row: SheetRow, scheme: Scheme): MarkEntry => { const components: Record<string, string> = {}; for (const c of scheme.components) { const f = row.mark?.components.find(x => x.name === c.name); components[c.name] = f?.score == null ? '' : String(f.score) } return { status: row.mark?.status ?? 'Present', components, grade: row.mark && scheme.gradeOnly ? row.mark.grade : '', remarks: row.mark?.remarks ?? '' } }
+const num = (text: string) => { const t = text.trim(); if (t === '') return null; const v = Number(t); return Number.isFinite(v) ? v : NaN }
+/** The total a present student would get; null while a component is still empty. */
+export const markTotal = (entry: MarkEntry, scheme: Scheme): number | null => { if (entry.status !== 'Present' || scheme.gradeOnly) return null; let sum = 0; for (const c of scheme.components) { const v = num(entry.components[c.name] ?? ''); if (v === null || Number.isNaN(v)) return null; sum += v } return sum }
+export const markGrade = (scheme: Scheme, percent: number) => scheme.grades.find(g => percent >= g.minPercent)?.label ?? scheme.grades[scheme.grades.length - 1]?.label ?? ''
+/** What the server would refuse, said before the sheet is sent. */
+export const markProblem = (entry: MarkEntry, scheme: Scheme): string | null => {
+  if (entry.status !== 'Present') return null
+  if (scheme.gradeOnly) return entry.grade.trim() === '' || scheme.grades.some(g => g.label.toLowerCase() === entry.grade.trim().toLowerCase()) ? null : 'Use one of ' + scheme.grades.map(g => g.label).join(', ')
+  for (const c of scheme.components) { const v = num(entry.components[c.name] ?? ''); if (v === null) continue; if (Number.isNaN(v) || v < 0 || v > c.max) return (scheme.type === 'Marks' ? 'Marks' : c.name) + ' must be between 0 and ' + c.max }
+  return null
+}
+const sameMark = (a: MarkEntry, b: MarkEntry) => a.status === b.status && a.grade.trim() === b.grade.trim() && a.remarks.trim() === b.remarks.trim() && Object.keys({ ...a.components, ...b.components }).every(k => (a.components[k] ?? '').trim() === (b.components[k] ?? '').trim())
+/** The rows that changed and are complete, in the shape the marksheet call takes (a blank new row is not sent). */
+export const changedMarks = (rows: SheetRow[], drafts: Record<string, MarkEntry>, scheme: Scheme) => rows.flatMap(row => {
+  const draft = drafts[row.studentId]; if (!draft || sameMark(draft, toMarkEntry(row, scheme))) return []
+  const blank = draft.status === 'Present' && (scheme.gradeOnly ? draft.grade.trim() === '' : scheme.components.every(c => (draft.components[c.name] ?? '').trim() === '')) && draft.remarks.trim() === ''
+  if ((blank && !row.mark) || (draft.status === 'Present' && !scheme.gradeOnly && markTotal(draft, scheme) === null)) return []
+  const components: Record<string, number> = {}; for (const c of scheme.components) { const v = num(draft.components[c.name] ?? ''); if (v !== null && !Number.isNaN(v)) components[c.name] = v }
+  return [{ studentId: row.studentId, status: draft.status, components, grade: draft.grade.trim(), remarks: draft.remarks.trim(), version: row.mark?.version }]
+})
+export const markLabel = (mark: Pick<SheetMark, 'status' | 'score' | 'grade'> | null, scheme: Pick<Scheme, 'max' | 'gradeOnly'>) => !mark ? '' : mark.status === 'Absent' ? 'Absent' : mark.status === 'Exempt' ? 'Exempt' : scheme.gradeOnly ? mark.grade : mark.score == null ? '' : mark.score + ' / ' + scheme.max + (mark.grade ? ' · ' + mark.grade : '')
+/** Leadership's figures: what waits for approval, what is still being entered, what is published. */
+export const examTotals = (items: ExamOverview[]) => ({ exams: items.length, pendingApproval: items.filter(i => i.status === 'Submitted').length, entryIncomplete: items.filter(i => EXAM_STATUSES.indexOf(i.status) <= 2 && i.missing > 0).length, published: items.filter(i => i.resultsVisible).length, entered: items.reduce((n, i) => n + i.entered, 0), expected: items.reduce((n, i) => n + i.assigned, 0) })
+/** The one stage move each role may make from a screen: a teacher submits, leadership approves, returns or publishes. */
+export const examActions = (status: ExamStatus, who: { leadership: boolean, teacher: boolean, entered: number }): { to: ExamStatus, label: string, reason?: boolean }[] => {
+  if (who.leadership) return status === 'Draft' ? [{ to: 'Scheduled', label: 'Schedule' }] : status === 'Scheduled' ? [{ to: 'MarksEntry', label: 'Open marks entry' }] : status === 'Submitted' ? [{ to: 'Approved', label: 'Approve' }, { to: 'MarksEntry', label: 'Return for correction', reason: true }] : status === 'Approved' ? [{ to: 'Published', label: 'Publish results' }, { to: 'MarksEntry', label: 'Return for correction', reason: true }] : []
+  return who.teacher && (status === 'Draft' || status === 'Scheduled' || status === 'MarksEntry') && who.entered > 0 ? [{ to: 'Submitted', label: 'Submit for approval' }] : []
+}
 export interface Circular { id: string, title: string, message: string, audience: string, classId: string, dueDate: string, createdAt: string }
 export interface CalendarEvent { id: string, title: string, startsOn: string, endsOn: string, description: string }
 export interface Message { id: string, title: string, message: string, createdAt: string }
@@ -43,7 +91,11 @@ export interface Reason { reason: string, remark: string }
 export interface ClassRegister { className: string, expected: number, marked: number, present: number, absent: number, late: number, excused: number, state: string, teacher: string, submittedAt: string }
 export interface RegisterTotals { expected: number, marked: number, present: number, absent: number, late: number, excused: number, completed: number, pending: number, percent: number }
 export interface DayRecord { day: string, status: AttendanceStatus, reason: string, remark: string }
-export interface ReportCard { results: { exam: string, subject: string, score: number, maximum: number, pass: boolean, remarks: string }[], obtained: number, maximum: number, percent: number, grade: string }
+export interface ReportResult { exam: string, term: string, subject: string, status: MarkStatus, components: { name: string, max: number, score: number | null }[], score: number | null, maximum: number | null, grade: string, pass: boolean, remarks: string }
+export interface ReportCard { results: ReportResult[], obtained: number, maximum: number, percent: number, grade: string, passed: number, failed: number, year: string, attendance: { percent: number | null, markedDays: number, present: number, absent: number, late: number } | null }
+/** "Theory 56/70 · Practical 25/30" when an exam has components; nothing for plain marks. */
+export const componentsLabel = (components: { name: string, max: number, score: number | null }[]) => components.length > 1 ? components.map(c => c.name + ' ' + (c.score ?? '—') + '/' + c.max).join(' · ') : ''
+export const resultLabel = (r: ReportResult) => r.status === 'Absent' ? 'Absent' : r.status === 'Exempt' ? 'Exempt' : r.maximum == null ? r.grade || '—' : r.score + ' / ' + r.maximum
 
 const day = (value: string) => String(value ?? '').slice(0, 10)
 

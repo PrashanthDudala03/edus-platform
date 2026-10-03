@@ -39,11 +39,11 @@ backend code that is written but not deployed (see `docs/notifications/`).
 | Attendance | IMPLEMENTED | `GET /suite/reports/attendance?month=`, `GET /suite/reports/attendance/days` | Monthly totals per child, plus each marked day with the reason the school recorded (absent, late and excused days first; "show all" for the month). |
 | Homework | IMPLEMENTED | `GET /suite/homework/board` | Board per child: due today, upcoming, completed, late, missing, excused, reviewed; the teacher's check, marks and feedback. Parents read only. Files are counted, opened on the web. |
 | Timetable | IMPLEMENTED | `GET /suite/records/timetable`, `GET /suite/options` | Weekly, by day. |
-| Results | IMPLEMENTED | `GET /suite/report-cards/{student}` | Published exams, overall percent and grade. Printable report card: FUTURE. |
+| Results | IMPLEMENTED | `GET /suite/report-cards/{student}` | Published exams with components (Theory + Practical), grade, absent/exempt, overall percent and grade, attendance for the year. Printable report card: web only. |
 | Fees | IMPLEMENTED (view) | `GET /suite/fees` | Charges, received, outstanding. Online payment: BLOCKED BY API (does not exist in EduOS). Receipts download: FUTURE. |
 | Notices | PARTIAL | `circulars`, `calendar`, `messages` records, `POST /suite/circulars/{id}/acknowledge` | Read and acknowledge. Whether a circular was already acknowledged: BLOCKED BY API (no endpoint returns it), so the tick lasts for the session only. |
 | Calendar / events | IMPLEMENTED | `GET /suite/records/calendar` | Inside Notices. |
-| Exams | IMPLEMENTED | `GET /suite/records/exams` | Upcoming and held. |
+| Exams | IMPLEMENTED | `GET /suite/exams/timetable` | Timetable: upcoming and held, with time and room; never a draft. |
 
 ## Teacher
 
@@ -57,7 +57,7 @@ backend code that is written but not deployed (see `docs/notifications/`).
 | Student / class view | PARTIAL | register rows | Students appear in the register by class. A student profile screen: FUTURE. |
 | Notices | PARTIAL | as Parent | |
 | Leave | IMPLEMENTED | `leave-requests` records | Own requests and "Request leave". Needs the account linked to a staff profile. |
-| Exams | IMPLEMENTED (view) | `GET /suite/records/exams` | Marks entry stays on the web for now: FUTURE. |
+| Exams | IMPLEMENTED | `GET /suite/exams/timetable`, `GET /suite/exams/overview`, `GET`/`POST /suite/exams/{id}/marksheet`, `POST /suite/exams/{id}/transition` | Timetable; marks entry per class with Present / Absent / Exempt, component fields, running total and grade; save as draft; submit for approval. Exam setup stays on the web. |
 
 ## Student
 
@@ -66,9 +66,9 @@ backend code that is written but not deployed (see `docs/notifications/`).
 | Timetable | IMPLEMENTED | as above | |
 | Homework | IMPLEMENTED | `GET /suite/homework/board`, `POST`/`PUT /suite/records/submissions` | Board with state per assignment; Mark as done, hand in a written answer, hand in again (earlier work kept on the server), late decided by the server; the teacher's check, marks and feedback. File uploads: web only (counted in the app). |
 | Attendance | IMPLEMENTED | `GET /suite/reports/attendance`, `GET /suite/reports/attendance/days` | Monthly totals and each marked day with its reason. |
-| Results | IMPLEMENTED | `GET /suite/report-cards/{student}` | |
+| Results | IMPLEMENTED | `GET /suite/report-cards/{student}` | As for parents, own record only. |
 | Notices, calendar | PARTIAL / IMPLEMENTED | as Parent | |
-| Exams | IMPLEMENTED | `GET /suite/records/exams` | Published exams only (server rule). |
+| Exams | IMPLEMENTED | `GET /suite/exams/timetable` | Scheduled exams (server rule); results only once published. |
 
 ## Principal / Administrator
 
@@ -76,7 +76,7 @@ backend code that is written but not deployed (see `docs/notifications/`).
 |---|---|---|---|
 | School overview | IMPLEMENTED | `GET /operations/overview` | Enrolment, staff, today's attendance, by class. |
 | Attendance overview | IMPLEMENTED | `GET`/`POST /suite/student-attendance`, `GET /suite/student-attendance/registers` | Whole-school register by class and day; today's registers (submitted, in progress, not started) on the Overview screen; corrections with a reason. REQUIRES DEVICE TEST. |
-| Academics | PARTIAL | `GET /suite/records/exams` | Exam list. Result analysis (`/suite/reports/marks`): FUTURE. |
+| Academics | IMPLEMENTED | `GET /suite/exams/timetable`, `GET /suite/exams/overview`, `GET /suite/exams/{id}/marksheet`, `POST /suite/exams/{id}/transition` | Timetable; every exam's stage with marks entered, awaiting approval and published counts; open a sheet to approve, return with a reason, or publish. Analytics and exam setup stay on the web. |
 | Fee overview | IMPLEMENTED (view) | `GET /suite/fees` | Totals and charges. Issuing charges and recording payments stay on the web. |
 | Leave approvals | IMPLEMENTED | `PUT /suite/records/leave-requests/{id}` | Approve or reject with a remark; version-checked. |
 | Notices, calendar | PARTIAL / IMPLEMENTED | as Parent | Publishing circulars from the app: FUTURE. |
@@ -116,6 +116,7 @@ reviewed account links.
 
 ## Verification
 
+- 2026-10-04 (Exams & Report Cards 2.0): Exams screen rewritten on the exam timetable, overview, marksheet and transition endpoints; Results screen shows components, grades, absent/exempt and attendance; leadership sees exam status and can approve, return or publish; exam notification routes added. `npm run typecheck` clean; `npm test` 65 passing. Not yet seen on a device.
 - 2026-10-03 (Homework & Assignments 2.0): Homework screen rewritten on `GET /suite/homework/board|overview|{id}/submissions`, `PUT /suite/homework/{id}/verify|review/{studentId}` and the submissions record save; submission modes (Mark as done, Text, File, Physical, None), one-tap Completed / Late / Missing / Excused check for teachers, hand in and hand in again for students; Home shows what needs attention and what is to review. `npm run typecheck` clean; `npm test` 61 passing. Not yet seen on a device.
 - 2026-10-05 (Smart Attendance): `npm run typecheck` clean; `npm test` 56 passing (register entries with reasons, correction detection, notification routes). Register, Children and Overview changes are not yet seen on a device.
 

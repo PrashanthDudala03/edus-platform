@@ -24,7 +24,18 @@ export function printSchoolDocument(kind:string,result:Row){
   body=line('Receipt number',receipt.receipt)+line('Student',receipt.student)+line('Admission number',receipt.admissionNumber)+line('Fee / instalment',receipt.description)+line('Payment date',String(receipt.paidOn).slice(0,10))+line('Amount received',receipt.currency+' '+Number(receipt.amount).toFixed(2))+line('Method',receipt.method)+line('Reference',receipt.reference||'Cash payment')+'<p class="note">This receipt records a payment received by the school. No online payment was collected by this application.</p>'
  }else if(kind==='report'){
   title='Student report card'
-  body=line('Student',student.name)+line('Admission number',student.admissionNumber)+line('Current class',student.class)+'<table><thead><tr><th>Exam</th><th>Subject</th><th>Marks</th><th>Maximum</th><th>Result</th><th>Remarks</th></tr></thead><tbody>'+result.results.map((r:Row)=>'<tr>'+[r.exam,r.subject,r.score,r.maximum,r.pass?'Pass':'Below pass marks',r.remarks].map(v=>'<td>'+escape(v)+'</td>').join('')+'</tr>').join('')+'</tbody></table>'+line('Total',result.obtained+' / '+result.maximum)+line('Percentage',result.percent+'%')+line('Grade',result.grade)+'<p class="note">'+escape(result.note)+'</p>'
+  // Scheme-aware: each result shows its components (Theory 56/70 · Practical 25/30) when the exam has them, the grade
+  // the scheme gives, and Absent or Exempt instead of marks. Totals appear only where marks make them meaningful.
+  const marks=(r:Row)=>r.status==='Absent'?'Absent':r.status==='Exempt'?'Exempt':r.maximum==null?'—':r.score+' / '+r.maximum
+  const parts=(r:Row)=>Array.isArray(r.components)&&r.components.length>1?r.components.map((c:Row)=>c.name+' '+(c.score??'—')+'/'+c.max).join(' · '):''
+  const att=result.attendance
+  body=line('Student',student.name)+line('Admission number',student.admissionNumber)+line('Class',student.class)+(result.year?line('Academic year',result.year+(result.term?' · '+result.term:'')):'')
+   +'<table><thead><tr><th>Exam</th><th>Subject</th><th>Marks</th><th>Components</th><th>Grade</th><th>Result</th><th>Remarks</th></tr></thead><tbody>'+result.results.map((r:Row)=>'<tr>'+[r.exam+(r.term?' · '+r.term:''),r.subject,marks(r),parts(r),r.grade,r.status==='Exempt'?'Exempt':r.pass?'Pass':'Below pass marks',r.remarks].map(v=>'<td>'+escape(v)+'</td>').join('')+'</tr>').join('')+'</tbody></table>'
+   +(result.maximum?line('Total',result.obtained+' / '+result.maximum)+line('Percentage',result.percent+'%'):'')+line('Grade',result.grade)+line('Subjects passed',result.passed+(result.failed?' · '+result.failed+' below pass marks':''))
+   +(att?line('Attendance '+String(att.from).slice(0,10)+' to '+String(att.to).slice(0,10),(att.percent==null?'—':att.percent+'%')+' · '+att.present+' present, '+att.late+' late, '+att.absent+' absent, '+att.excused+' excused of '+att.markedDays+' days'):'')
+   +'<p class="note">'+escape(result.note)+'</p>'
+  if(result.signatures?.principal)school.principal=result.signatures.principal
+  body+='<div class="signature"><span>Class teacher'+(result.signatures?.classTeacher?': '+escape(result.signatures.classTeacher):'')+'</span><span>Parent / guardian</span></div>'
  }else{
   title=cert.type||'Certificate'
   body=line('Document number',cert.certificateNumber)+line('Issued on',cert.issuedOn)

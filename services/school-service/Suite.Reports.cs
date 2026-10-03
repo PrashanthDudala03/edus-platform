@@ -45,19 +45,10 @@ public static partial class Suite
             var rows=await Q(c,"SELECT a.id,a.action,a.entity_type AS module,a.entity_id AS record,a.created_at AS time,COALESCE(u.username,'System') AS actor FROM suite.audit a LEFT JOIN auth_db.users u ON u.id=a.user_id WHERE a.school_id=@s ORDER BY a.created_at DESC LIMIT 100 OFFSET @skip",("s",a.School),("skip",(page-1)*100));
             return Results.Ok(new{data=rows});
         });
-        group.MapGet("/report-cards/{student:guid}",async(Guid student,HttpContext http,string? examName=null)=>{
+        // The report card: published results only, scheme-aware, with the period's attendance. Scope is checked before any lookup.
+        group.MapGet("/report-cards/{student:guid}",async(Guid student,HttpContext http,string? examName=null,string? term=null,Guid? yearId=null)=>{
             await using var c=await Open();var a=await Access(http,c);Require(a.SchoolWide||a.Students.Contains(student.ToString()),"Student record not available.",403);
-            var pupil=(await Q(c,"SELECT id,first_name || ' ' || last_name AS name,roll_number AS \"admissionNumber\",current_class AS class FROM student_db.students WHERE id=@id AND school_id=@s",("id",student),("s",a.School))).FirstOrDefault();Require(pupil is not null,"Student not found.",404);
-            var exams=(await Records(c,a.School,"exams")).Where(e=>Text(e,"status")=="Published"&&(string.IsNullOrWhiteSpace(examName)||Text(e,"name")==examName)).ToList();
-            var subjects=await Records(c,a.School,"subjects");var marks=(await Records(c,a.School,"marks")).Where(m=>Text(m,"studentId")==student.ToString()).ToList();
-            var results=new List<object>();decimal obtained=0,maximum=0;
-            foreach(var mark in marks){var exam=exams.FirstOrDefault(e=>Text(e,"id")==Text(mark,"examId"));if(exam is null)continue;obtained+=Number(mark,"score");maximum+=Number(exam,"maxMarks");
-                results.Add(new{exam=Text(exam,"name"),subject=Text(subjects.First(s=>Text(s,"id")==Text(exam,"subjectId")),"name"),score=Number(mark,"score"),maximum=Number(exam,"maxMarks"),pass=Number(mark,"score")>=Number(exam,"passMarks"),remarks=Text(mark,"remarks")});}
-            var percent=maximum>0?decimal.Round(obtained/maximum*100,2):0;
-            var config=(await Records(c,a.School,"school-config")).FirstOrDefault();
-            decimal Threshold(string key,decimal fallback)=>config is null?fallback:Number(config,key);
-            var grade=maximum==0?"Not available":percent>=Threshold("gradeA",90)?"A":percent>=Threshold("gradeB",75)?"B":percent>=Threshold("gradeC",60)?"C":percent>=Threshold("gradeD",40)?"D":"E";
-            return Results.Ok(new{data=new{school=await SchoolPrint(c,a.School),student=pupil,results,obtained,maximum,percent,grade,note="Only published exams with entered marks are included. This report is not a board-issued certificate."}});
+            return Results.Ok(new{data=await ReportCard(c,a,student,examName,term,yearId)});
         });
         group.MapGet("/certificates/{id:guid}/print",async(Guid id,HttpContext http)=>{
             await using var c=await Open();var a=await Access(http,c);var certificate=await Get(c,a.School,"certificates",id);Require(Readable("certificates",certificate,a),"Certificate access denied.",403);

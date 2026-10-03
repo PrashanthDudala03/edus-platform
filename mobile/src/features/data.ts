@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { can } from '@/access/experience'
 import { api, useSession } from '@/services'
 import { isoMonth } from '@/utils/format'
-import type { Assignment, AttendanceStatus, BoardItem, CalendarEvent, Charge, Child, Circular, ClassRegister, DayRecord, Exam, Homework, HomeworkGroup, HomeworkSubmission, Leave, Message, OverviewItem, RegisterRow, RegisterTotals, ReportCard, ReviewRow, Submission } from './logic'
+import type { Assignment, AttendanceStatus, BoardItem, CalendarEvent, Charge, Child, Circular, ClassRegister, DayRecord, Exam, ExamOverview, ExamStatus, Homework, HomeworkGroup, HomeworkSubmission, Leave, MarkStatus, Marksheet, Message, OverviewItem, RegisterRow, RegisterTotals, ReportCard, ReportResult, ReviewRow, Scheme, SheetMark, Submission, TimetableExam } from './logic'
 
 // Every request the core modules make, in one place. Each is an existing EduOS endpoint that already limits rows to
 // what the signed-in account may see; the app adds no filter that could be mistaken for access control. A query is
@@ -59,10 +59,45 @@ export function useChildren(month = isoMonth(new Date()), enabled = true) {
 export function useReportCard(studentId: string | undefined) {
   const allowed = usePermission('reports.view')
   return useQuery({ queryKey: ['report-card', studentId], enabled: allowed && !!studentId, staleTime: 60_000, queryFn: async (): Promise<ReportCard> => {
-    const card = await get<Row>('/suite/report-cards/' + studentId)
-    return { obtained: n(card.obtained), maximum: n(card.maximum), percent: n(card.percent), grade: s(card.grade),
-      results: (Array.isArray(card.results) ? card.results as Row[] : []).map(r => ({ exam: s(r.exam), subject: s(r.subject), score: n(r.score), maximum: n(r.maximum), pass: r.pass === true, remarks: s(r.remarks) })) }
+    const card = await get<Row>('/suite/report-cards/' + studentId), att = card.attendance as Row | null
+    return { obtained: n(card.obtained), maximum: n(card.maximum), percent: n(card.percent), grade: s(card.grade), passed: n(card.passed), failed: n(card.failed), year: s(card.year),
+      attendance: att ? { percent: att.percent == null ? null : n(att.percent), markedDays: n(att.markedDays), present: n(att.present), absent: n(att.absent), late: n(att.late) } : null,
+      results: (Array.isArray(card.results) ? card.results as Row[] : []).map((r): ReportResult => ({ exam: s(r.exam), term: s(r.term), subject: s(r.subject), status: markStatus(r.status), components: components(r.components), score: r.score == null ? null : n(r.score), maximum: r.maximum == null ? null : n(r.maximum), grade: s(r.grade), pass: r.pass === true, remarks: s(r.remarks) })) }
   } })
+}
+const markStatus = (v: unknown): MarkStatus => v === 'Absent' || v === 'Exempt' ? v : 'Present'
+const components = (v: unknown) => (Array.isArray(v) ? v as Row[] : []).map(c => ({ name: s(c.name), max: n(c.max), score: c.score == null ? null : n(c.score) }))
+const examStatus = (v: unknown): ExamStatus => (['Draft', 'Scheduled', 'MarksEntry', 'Submitted', 'Approved', 'Published', 'Closed'].includes(s(v)) ? s(v) : 'Draft') as ExamStatus
+const timetableExam = (r: Row): TimetableExam => ({ id: s(r.id), version: n(r.version), name: s(r.name), term: s(r.term), className: s(r.className), subjectName: s(r.subjectName), date: s(r.date).slice(0, 10), startsAt: s(r.startsAt), endsAt: s(r.endsAt), room: s(r.room), instructions: s(r.instructions), schemeName: s(r.schemeName), maxMarks: s(r.maxMarks), status: examStatus(r.status), resultsVisible: r.resultsVisible === true, returnReason: s(r.returnReason) })
+const scheme = (r: Row): Scheme => ({ type: (['Marks', 'Grade', 'Components'].includes(s(r.type)) ? s(r.type) : 'Marks') as Scheme['type'], max: n(r.max), passMarks: r.passMarks == null ? null : n(r.passMarks), gradeOnly: r.gradeOnly === true, components: (Array.isArray(r.components) ? r.components as Row[] : []).map(c => ({ name: s(c.name), max: n(c.max), pass: c.pass == null ? null : n(c.pass) })), grades: (Array.isArray(r.grades) ? r.grades as Row[] : []).map(g => ({ label: s(g.label), minPercent: n(g.minPercent) })) })
+const sheetMark = (r: unknown): SheetMark | null => { if (!r || typeof r !== 'object') return null; const m = r as Row; return { id: s(m.id), version: n(m.version), status: markStatus(m.status), score: m.score == null ? null : n(m.score), grade: s(m.grade), pass: m.pass === true, components: components(m.components), remarks: s(m.remarks) } }
+/** The exam timetable the account may see: scheduled exams for families, every stage for staff. */
+export function useExamTimetable(enabled = true) {
+  const allowed = usePermission('exams.view')
+  return useQuery({ queryKey: ['exam-timetable'], enabled: enabled && allowed, staleTime: 60_000, queryFn: async (): Promise<{ items: TimetableExam[], today: string }> => { const d = await get<Row>('/suite/exams/timetable'); return { items: (Array.isArray(d.items) ? d.items as Row[] : []).map(timetableExam), today: s(d.today) } } })
+}
+/** Every exam a teacher or leadership manages, with how marks entry is going. */
+export function useExamOverview(enabled = true) {
+  const allowed = usePermission('exams.view')
+  return useQuery({ queryKey: ['exam-overview'], enabled: enabled && allowed, staleTime: 30_000, queryFn: async (): Promise<ExamOverview[]> => { const d = await get<Row>('/suite/exams/overview'); return (Array.isArray(d.items) ? d.items as Row[] : []).map(r => ({ ...timetableExam(r), assigned: n(r.assigned), entered: n(r.entered), missing: n(r.missing), absent: n(r.absent), exempt: n(r.exempt), average: r.average == null ? null : n(r.average), passed: n(r.passed), failed: n(r.failed) })) } })
+}
+export function useMarksheet(examId: string | undefined) {
+  return useQuery({ queryKey: ['marksheet', examId], enabled: !!examId, staleTime: 15_000, queryFn: async (): Promise<Marksheet> => { const d = await get<Row>('/suite/exams/' + examId + '/marksheet')
+    return { exam: timetableExam(d.exam as Row), scheme: scheme(d.scheme as Row), students: (Array.isArray(d.students) ? d.students as Row[] : []).map(r => ({ studentId: s(r.studentId), name: s(r.name), code: s(r.code), mark: sheetMark(r.mark) })), entered: n(d.entered), canEdit: d.canEdit === true, canSubmit: d.canSubmit === true, canReview: d.canReview === true } } })
+}
+const examKeys = ['exam-timetable', 'exam-overview', 'marksheet', 'report-card', 'records']
+/** Saves changed rows (every row goes through the ordinary marks save on the server) and, if asked, submits the sheet. */
+export function useSaveMarksheet() {
+  const cache = useQueryClient()
+  return useMutation({ mutationFn: async (input: { examId: string, entries: { studentId: string, status: MarkStatus, components: Record<string, number>, grade: string, remarks: string, version?: number }[], submit: boolean }) =>
+    (await api.post(`/suite/exams/${input.examId}/marksheet`, { entries: input.entries, submit: input.submit })).data.data as { saved: number, errors: { studentId: string, message: string }[], status: string },
+    onSuccess: () => Promise.all(examKeys.map(k => cache.invalidateQueries({ queryKey: [k] }))) })
+}
+/** One stage move: the server decides whether this account may make it. */
+export function useExamTransition() {
+  const cache = useQueryClient()
+  return useMutation({ mutationFn: (input: { examId: string, to: ExamStatus, reason?: string, version?: number }) => api.post(`/suite/exams/${input.examId}/transition`, { to: input.to, reason: input.reason ?? '', version: input.version }),
+    onSuccess: () => Promise.all(examKeys.map(k => cache.invalidateQueries({ queryKey: [k] }))) })
 }
 export function useFees(enabled = true) {
   const allowed = usePermission('fees.view')
