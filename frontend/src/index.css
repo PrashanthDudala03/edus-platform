@@ -177,3 +177,77 @@ input::placeholder,textarea::placeholder{color:#738269}
  .sw-people{display:flex;gap:16px;margin:0 -20px;padding:0 20px 8px;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}.sw-people article{flex:0 0 72%;scroll-snap-align:start}
  .sw-wins{grid-template-columns:minmax(0,1fr);gap:24px}.sw-wins .featured{grid-column:auto}.sw-wins .featured .sw-win-media{min-height:320px}.sw-wins .featured .sw-win-text{padding:90px 22px 22px}
  .sw-gallery.mosaic{grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:42vw;gap:10px}.sw-gallery.mosaic figure:nth-child(n){grid-column:auto;grid-row:auto}.sw-gallery.mosaic figure:first-child{grid-column:span 2;grid-row:span 2}.sw-gallery.mosaic figure:last-child:nth-child(even){grid-column:span 2}.sw-gallery{grid-auto-rows:60vw}.sw-events li{gap:16px}.sw-date{width:58px;height:64px}.sw-ready{padding:52px 0}.sw-foot{padding:44px 0 28px}}
+/* ===== Header identity, My account and small-screen layout =====
+   Desktop is the baseline and is not changed here: base rules below only style elements that are new (the identity
+   link, My account) and give them exactly the space the old header text and avatar had. Every layout change lives
+   in a media query: 1200px (tighter), 900px (tables become cards), 700px (phone density). */
+.identity-wrap{position:relative;display:flex;z-index:45}
+.identity{display:flex;align-items:center;gap:15px;padding:6px 8px;margin:-6px -8px;border-radius:12px;position:relative;cursor:pointer;color:inherit;background:none;font:inherit;transition:background .15s}
+.identity:hover,.identity.active{background:#f1f5ee}.identity:active{background:#e6eee2}.identity>*{pointer-events:none}
+div.stat-card:hover{transform:none;box-shadow:none}
+.account-card{max-width:760px;padding:24px}.account-top{display:flex;align-items:center;gap:16px;min-width:0}.account-top h2{font-size:20px;overflow-wrap:anywhere}.account-top p{color:#56664d;font-size:13px;margin-top:3px;overflow-wrap:anywhere}
+.avatar.account-avatar{width:60px;height:60px;font-size:20px;flex-shrink:0;color:#6b4d35}.account-details{margin:20px 0 0}.account-details>div{display:grid;grid-template-columns:minmax(120px,32%) minmax(0,1fr);gap:14px;padding:11px 0;border-top:1px solid var(--border)}
+.account-details dt{color:#56664d;font-size:12px}.account-details dd{margin:0;font-size:13px;color:#22302a;overflow-wrap:anywhere}
+.account-linked{border-top:1px solid var(--border);padding-top:14px}.account-linked h3{font-size:13px}.account-linked ul{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:6px}.account-linked li{display:flex;justify-content:space-between;gap:12px;font-size:13px;flex-wrap:wrap}.account-linked li span,.account-linked p{color:#56664d;font-size:12px}
+.account-actions{display:flex;gap:10px;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
+/* The profile card: opens under the identity, anchored to its right edge, floating over the page (nothing moves). */
+.profile-card{position:absolute;top:calc(100% + 16px);right:-8px;width:312px;max-width:calc(100vw - 24px);padding:18px;background:#fff;border:1px solid var(--border);border-radius:14px;box-shadow:0 18px 44px #1f3a2a29;text-align:left;cursor:default}
+.profile-card-top{display:flex;align-items:center;gap:12px;min-width:0}.profile-card-top .avatar{width:46px;height:46px;font-size:16px;flex-shrink:0;color:#6b4d35}.profile-card-top div{min-width:0}
+.profile-card-top strong{display:block;font-size:15px;color:#1f2d24;overflow-wrap:anywhere}.profile-card-top small{display:block;margin-top:2px;font-size:12px;color:#56664d;overflow-wrap:anywhere}
+.profile-card dl{margin:14px 0 0;padding:12px 0 2px;border-top:1px solid var(--border);display:grid;gap:9px}.profile-card dl>div{display:grid;grid-template-columns:92px minmax(0,1fr);gap:10px}
+.profile-card dt{font-size:11px;color:#56664d}.profile-card dd{margin:0;font-size:12px;color:#22302a;overflow-wrap:anywhere}
+.profile-card-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}.profile-card-actions .button{min-height:40px;padding:8px 10px}
+/* ===== Alignment contract =====
+   One set of rules for every record page, so equivalent things line up without per-page positioning.
+   Page:    every block starts and ends on the two lines set by .main-content's padding.
+   Toolbar: title and count on the left; search, export and other controls on the right, all 44px high on one line.
+   Table:   a real table, so the header and every row share the same column tracks. Text columns start on the same
+            line in the header and in every row (th and td have the same side padding). Rows are one height.
+   Actions: the last column is only as wide as its controls, sits at the right edge, and its heading is right-aligned
+            directly above it. The controls are one line, vertically centred, with one gap. */
+th,td{vertical-align:middle}
+.table-scroll tbody td{height:72px;padding-top:12px;padding-bottom:12px}
+td:has(>.row-actions),table:has(td:last-child>.row-actions) thead th:last-child{width:1%;white-space:nowrap}
+table:has(td:last-child>.row-actions) thead th:last-child{text-align:right}
+.row-actions{align-items:center;justify-content:flex-end;flex-wrap:nowrap;gap:6px}
+.toolbar-actions>input,.toolbar-actions .search-field input,.toolbar-actions select,.toolbar-actions .button{height:44px;min-height:44px;margin-top:0;margin-bottom:0}
+.row-actions .button{min-height:32px;height:32px;padding:0 11px;font-size:11px}
+/* A row with three or more text actions needs the room: its table uses tighter cell padding so it still fits. */
+table:has(.row-actions>.button:nth-child(3)) th,table:has(.row-actions>.button:nth-child(3)) td{padding-left:13px;padding-right:13px}
+/* Narrower than a desktop: a long name or role is shortened instead of pushing the header, and table cells tighten. */
+@media(max-width:1200px){
+ .identity .user-info{min-width:0}.identity .user-info strong,.identity .user-info small{display:block;max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .topbar{min-width:0}.breadcrumb{min-width:0;overflow:hidden;white-space:nowrap}.breadcrumb strong{overflow:hidden;text-overflow:ellipsis}.topbar-right{flex-shrink:0;min-width:0}
+}
+@media(min-width:901px) and (max-width:1200px){th,td{padding-left:12px;padding-right:12px}.truncate-cell{max-width:170px}}
+/* Upright tablets and phones: a table row becomes a compact card. The first column is its title, the rest are
+   labelled pairs, and the row's actions sit together on one line. Nothing scrolls sideways. */
+@media(max-width:900px){
+ .table-scroll{overflow-x:visible}.table-scroll table,.table-scroll tbody{display:block;white-space:normal}
+ .table-scroll thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+ .table-scroll tr{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:9px 14px;padding:13px 16px;border-bottom:1px solid #eef2e9}
+ .table-scroll td,.table-scroll tbody td{display:block;height:auto;width:auto;padding:0;border:0;min-width:0;max-width:none;overflow:visible;overflow-wrap:anywhere;white-space:normal;font-size:13px;color:#33423a}
+ .table-scroll td::before{content:attr(data-label);display:block;margin-bottom:2px;font-size:10px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:#5d6b54}
+ .table-scroll td:not([data-label])::before,.table-scroll td[data-label=""]::before,.table-scroll td:first-child::before{display:none}
+ .table-scroll td:first-child{grid-column:1/-1;font-size:15px;font-weight:600;color:#1f2d24}
+ .table-scroll td:empty{display:none}.table-scroll td[colspan],.table-scroll td:has(.row-actions),.table-scroll td:last-child:has(button,.button){grid-column:1/-1}
+ .table-scroll td:has(.row-actions)::before{display:none}.table-scroll .row-actions{justify-content:flex-start;align-items:center;gap:6px;flex-wrap:wrap}
+ /* One or two compact icon actions sit beside the last detail instead of taking a line of their own. */
+ .table-scroll td:has(.row-actions):not(:has(.row-actions>:nth-child(3))):not(:has(.row-actions>.button)){grid-column:auto;align-self:end;justify-self:end}
+ .table-scroll td select,.table-scroll td input{max-width:100%}
+}
+/* Phones. */
+@media(max-width:700px){
+ .profile-card{position:fixed;top:66px;left:12px;right:12px;width:auto;max-width:none}
+ .identity{gap:8px;padding:6px;margin:-6px}.identity .user-info{display:flex}.identity .user-info strong,.identity .user-info small{max-width:104px}.identity .user-info strong{font-size:11px}.identity .user-info small{font-size:9px}
+ .breadcrumb>span{display:none}.breadcrumb strong{font-size:13px}
+ .main-content{padding:18px 14px}.page-heading{gap:12px;margin-bottom:16px}.page-heading h1{font-size:23px}.page-heading p{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+ .module-tabs{flex-wrap:nowrap;overflow-x:auto;margin:0 -14px 14px;padding:0 14px 4px;scrollbar-width:none}.module-tabs a{flex:0 0 auto}
+ .directory-toolbar{padding:14px 16px;gap:10px}.toolbar-actions{flex-wrap:nowrap;width:100%}.toolbar-actions>input{flex:1;min-width:0}.toolbar-actions .button{flex:0 0 auto}
+ .panel-heading{padding:14px 16px 8px}.account-card{padding:16px}.account-details>div{grid-template-columns:minmax(96px,36%) minmax(0,1fr);gap:10px}
+ /* Short figures stay two to a row, laid out sideways so a tile is not a tall card for one number. */
+ .stat-card{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:11px;align-items:center;padding:12px 13px}.stat-top{grid-row:1/3;align-self:start}.stat-top>svg{display:none}
+ .stat-card>strong{margin:0;font-size:22px;letter-spacing:-.5px}.stat-card h3{grid-column:2;font-size:11px;overflow-wrap:anywhere}.stat-card p{grid-column:1/-1;margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ .kpi-row{grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:8px}
+}
+

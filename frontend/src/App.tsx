@@ -21,6 +21,7 @@ import BillingPage from './pages/billing/BillingPage'
 import SubscriptionPage from './pages/billing/SubscriptionPage'
 import SchoolHomePage, { SchoolHomePreviewPage } from './pages/home/SchoolHomePage'
 import SchoolHomeManagePage from './pages/home/SchoolHomeManagePage'
+import AccountPage from './pages/AccountPage'
 import { homeFor, roleOf, LEADERSHIP, SCHOOL_ROLES, type Role } from './roles'
 const queryClient = new QueryClient({defaultOptions:{queries:{retry:1,staleTime:15000,refetchOnWindowFocus:false}}})
 useAuthStore.subscribe((state, previous) => {
@@ -52,6 +53,7 @@ export default function App() {
         <Route path="super-admin/schools" element={<SchoolsPage />} />
         <Route path="super-admin/billing" element={<BillingPage />} />
         <Route path="super-admin/billing/:tab" element={<BillingPage />} />
+        <Route path="super-admin/account" element={<AccountPage />} />
       </Route>
       <Route element={<RoleGate allow={['Administrator']} />}>
         <Route path="admin" element={<DashboardPage />} />
@@ -71,6 +73,7 @@ export default function App() {
         <Route path="audit" element={<AuditPage />} />
       </Route>
       <Route element={<RoleGate allow={SCHOOL_ROLES} />}>
+        <Route path="account" element={<AccountPage />} />
         <Route path="home" element={<SchoolHomePage />} />
         <Route path="home/manage" element={<SchoolHomeManagePage />} />
         <Route path="home/preview" element={<SchoolHomePreviewPage />} />
