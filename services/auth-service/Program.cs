@@ -226,7 +226,7 @@ publicAuth.MapPost("/login", async (LoginRequest request, IMediator mediator, Au
     }
     catch (LoginRejectedException ex)
     {
-        return Results.Json(new { statusCode = ex.Status, message = ex.Message }, statusCode: ex.Status);
+        return Results.Json(ex.Body, statusCode: ex.Status);
     }
     catch (Exception ex)
     {

@@ -1,4 +1,4 @@
-import { LayoutDashboard, GraduationCap, Users, BookOpen, CalendarCheck, Megaphone, ShieldCheck, Settings, Layers, Building2, Wallet, FileText, ClipboardList, CreditCard, School, type LucideIcon } from 'lucide-react'
+import { LayoutDashboard, GraduationCap, Users, BookOpen, CalendarCheck, Megaphone, ShieldCheck, Settings, Layers, Building2, Bell, History, Wallet, FileText, ClipboardList, CreditCard, School, type LucideIcon } from 'lucide-react'
 import type { User } from './store/auth'
 
 // Presentation only. Every API call is authorized again by the gateway and the owning service.
@@ -33,6 +33,7 @@ export const navigation: Record<Role, NavSection[]> = {
     { title: 'Overview', links: [['/admin', 'Dashboard', LayoutDashboard], ['/home', 'School Home', School], ['/suite', 'All school modules', Layers]] },
     { title: 'School & users', links: [['/settings', 'School settings & accounts', Settings], ['/suite/school-config', 'Branding & print settings', Settings], ['/home/manage', 'School Home management', School], ['/subscription', 'Subscription & billing', CreditCard], ['/suite/account-links', 'Account profile links', Users], ['/suite/academic-years', 'Academic years', BookOpen], ['/suite/classes', 'Classes & sections', BookOpen], ['/suite/subjects', 'Subjects', BookOpen]] },
     { title: 'People', links: [['/students', 'Student records', GraduationCap], ['/teachers', 'Teacher profiles', Users], ['/parents', 'Parents & guardians', Users]] },
+    { title: 'Notifications', links: [['/notifications/templates', 'Notification wording', Bell], ['/notifications/history', 'Delivery history', History]] },
     { title: 'Academics', links: [['/suite/admissions', 'Admissions', GraduationCap], ['/suite/allocation', 'Class allocation & promotion', GraduationCap], ['/suite/teaching-assignments', 'Teaching assignments', Users], ['/suite/timetable', 'Weekly timetable', CalendarCheck], ['/suite/exams', 'Exams & schedules', ClipboardList], ['/suite/marks', 'Marks & remarks', ClipboardList], ['/suite/homework', 'Homework & assignments', BookOpen], ['/suite/submissions', 'Submissions & feedback', BookOpen]] },
     { title: 'Attendance', links: [['/attendance', 'Daily register', CalendarCheck], ['/suite/register', 'Student attendance', CalendarCheck], ['/suite/staff-attendance', 'Staff attendance', CalendarCheck], ['/suite/leave-requests', 'Leave approvals', CalendarCheck]] },
     { title: 'Finance', links: [['/suite/fees', 'Fees & receipts', Wallet], ['/suite/fee-structures', 'Fee structures', Wallet]] },

@@ -21,6 +21,8 @@ import BillingPage from './pages/billing/BillingPage'
 import SubscriptionPage from './pages/billing/SubscriptionPage'
 import SchoolHomePage, { SchoolHomePreviewPage } from './pages/home/SchoolHomePage'
 import SchoolHomeManagePage from './pages/home/SchoolHomeManagePage'
+import NotificationTemplatesPage from './pages/notifications/NotificationTemplatesPage'
+import NotificationHistoryPage from './pages/notifications/NotificationHistoryPage'
 import AccountPage from './pages/AccountPage'
 import { homeFor, roleOf, LEADERSHIP, SCHOOL_ROLES, type Role } from './roles'
 const queryClient = new QueryClient({defaultOptions:{queries:{retry:1,staleTime:15000,refetchOnWindowFocus:false}}})
@@ -77,6 +79,8 @@ export default function App() {
         <Route path="home" element={<SchoolHomePage />} />
         <Route path="home/manage" element={<SchoolHomeManagePage />} />
         <Route path="home/preview" element={<SchoolHomePreviewPage />} />
+        <Route path="notifications/templates" element={<NotificationTemplatesPage />} />
+        <Route path="notifications/history" element={<NotificationHistoryPage />} />
         <Route path="suite" element={<SchoolModules />} />
         <Route path="suite/:kind" element={<SuiteRouter />} />
       </Route>

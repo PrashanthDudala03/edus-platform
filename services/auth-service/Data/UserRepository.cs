@@ -1,3 +1,4 @@
+using EduOS.ServiceAuth;
 using Microsoft.EntityFrameworkCore;
 using Services.Auth.Models;
 
@@ -9,6 +10,7 @@ public interface IUserRepository
     /// <summary>Non-deleted accounts, active or not, whose username or email equals the sign-in name; limited to one school when given.</summary>
     Task<List<User>> FindLoginCandidatesAsync(Guid? schoolId, string login);
     Task<bool> IsSchoolActiveAsync(Guid schoolId);
+    Task<Dictionary<Guid, string>> GetSchoolNamesAsync(IReadOnlyCollection<Guid> schoolIds);
     Task<User?> GetByIdAsync(Guid userId);
     Task<User?> GetByEmailAsync(Guid schoolId, string email);
     Task CreateAsync(User user);
@@ -46,6 +48,19 @@ public class UserRepository : IUserRepository
     }
 
     public Task<bool> IsSchoolActiveAsync(Guid schoolId) => RoleModel.SchoolIsActive(_context, schoolId);
+
+    /// <summary>Display names for a sign-in school choice. Callers pass only schools of accounts whose password was proved.</summary>
+    public async Task<Dictionary<Guid, string>> GetSchoolNamesAsync(IReadOnlyCollection<Guid> schoolIds) {
+        var names = new Dictionary<Guid, string>();
+        foreach (var id in schoolIds.Distinct().Take(10)) {
+            if (id == EduOSTenants.Platform) { names[id] = "EduOS platform"; continue; }
+            var rows = await _context.Database.SqlQuery<string>($"""
+                SELECT name AS "Value" FROM school_db.schools WHERE id = {id} AND deleted_at IS NULL
+                """).ToListAsync();
+            if (rows.Count == 1 && !string.IsNullOrWhiteSpace(rows[0])) names[id] = rows[0].Trim();
+        }
+        return names;
+    }
 
     public async Task<User?> GetByIdAsync(Guid userId)
     {
