@@ -150,7 +150,7 @@ test.describe.serial('Security boundaries against real Docker services',()=>{
   await denied(A,'Administrator','GET','/suite/circulars/'+B.circular+'/acknowledgements',undefined,404)
   await denied(A,'Administrator','POST','/suite/allocate',{studentIds:[B.student],classId:A.cl},400)
   await denied(A,'Administrator','POST','/suite/allocate',{studentIds:[A.student],classId:B.cl},404)
-  await denied(A,'Administrator','POST','/suite/student-attendance',{day,entries:[{studentId:B.student,status:'Present'}]},400)
+  await denied(A,'Administrator','POST','/suite/student-attendance',{day,entries:[{studentId:B.student,status:'Present'}]},403)
   await denied(A,'Administrator','POST','/operations/attendance',{day,entries:[{studentId:B.student,status:'Present'}]},400)
   await denied(A,'Administrator','POST','/suite/records/account-links',{userId:B.users.Student,studentId:A.student},400)
   // References into another school's Suite records resolve as "not found in this school"; external tables answer 400.
