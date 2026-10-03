@@ -22,9 +22,9 @@ test('the experience follows the data scope, not the role name', () => {
 
 test('each role gets its agreed navigation, in order', () => {
   const labels = (user: User) => navigationFor(user).map(entry => entry.label)
-  assert.deepEqual(labels(parent), ['Children', 'Homework', 'Notices', 'Timetable', 'Results', 'Fees', 'Exams'])
+  assert.deepEqual(labels(parent), ['Children', 'Homework', 'Notices', 'Timetable', 'Results', 'Fees', 'Exams', 'Student 360'])
   assert.deepEqual(labels(teacher), ['Classes', 'Attendance', 'Timetable', 'Homework', 'Exams', 'My leave', 'Notices'])
-  assert.deepEqual(labels(student), ['Timetable', 'Homework', 'Results', 'Attendance', 'Exams', 'Notices'])
+  assert.deepEqual(labels(student), ['Timetable', 'Homework', 'Results', 'Attendance', 'Exams', 'Notices', 'My school profile'])
   assert.deepEqual(labels(leader), ['Overview', 'Attendance', 'Leave', 'Academics', 'Fees', 'Notices'])
   for (const user of [parent, teacher, student, leader]) assert.ok(navigationFor(user).every(entry => entry.route), 'every entry now opens a real screen')
 })

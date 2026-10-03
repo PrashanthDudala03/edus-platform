@@ -25,7 +25,7 @@ export const can = (user: Pick<User, 'permissions'> | null | undefined, permissi
 
 export type Destination =
   | '/home' | '/profile' | '/welcome' | '/children' | '/classes' | '/timetable' | '/overview'
-  | '/homework' | '/results' | '/fees' | '/notices' | '/register' | '/leave' | '/exams' | '/notifications'
+  | '/homework' | '/results' | '/fees' | '/notices' | '/register' | '/leave' | '/exams' | '/notifications' | '/student360'
 export interface NavItem {
   key: string
   label: string
@@ -54,6 +54,7 @@ export const NAVIGATION: Record<Experience, NavItem[]> = {
     item('results', 'Results', 'Marks and the report card', 'ribbon-outline', 'reports.view', '/results'),
     item('fees', 'Fees', 'Dues and what has been received', 'wallet-outline', 'fees.view', '/fees'),
     item('exams', 'Exams', 'Upcoming and held exams', 'school-outline', 'exams.view', '/exams'),
+    item('student360', 'Student 360', 'Everything about each child in one place', 'person-circle-outline', 'reports.view', '/student360'),
   ],
   teacher: [
     item('classes', 'Classes', 'The classes assigned to you', 'easel-outline', 'classes.view', '/classes', true),
@@ -63,6 +64,7 @@ export const NAVIGATION: Record<Experience, NavItem[]> = {
     item('exams', 'Exams', 'Exams for your classes', 'school-outline', 'exams.view', '/exams'),
     item('leave', 'My leave', 'Request leave and see decisions', 'document-text-outline', 'leave-requests.view', '/leave'),
     item('notices', 'Notices', 'Circulars, events and messages', 'megaphone-outline', 'circulars.view', '/notices'),
+    item('student360', 'Students', 'Everything about a student in your classes', 'people-outline', 'reports.view', '/student360'),
   ],
   student: [
     item('timetable', 'Timetable', 'Your lessons for the week', 'time-outline', 'timetable.view', '/timetable', true),
@@ -71,6 +73,7 @@ export const NAVIGATION: Record<Experience, NavItem[]> = {
     item('attendance', 'Attendance', 'Your attendance by month', 'calendar-outline', 'reports.view', '/children'),
     item('exams', 'Exams', 'Upcoming and held exams', 'school-outline', 'exams.view', '/exams'),
     item('notices', 'Notices', 'Circulars, events and messages', 'megaphone-outline', 'circulars.view', '/notices'),
+    item('student360', 'My school profile', 'Attendance, homework, results and more in one place', 'person-circle-outline', 'reports.view', '/student360'),
   ],
   principal: [
     item('overview', 'Overview', 'Enrolment, staff and today’s attendance', 'stats-chart-outline', 'overview.view', '/overview', true),
@@ -79,6 +82,7 @@ export const NAVIGATION: Record<Experience, NavItem[]> = {
     item('academics', 'Academics', 'Exams across the school', 'school-outline', 'exams.view', '/exams'),
     item('fees', 'Fees', 'Billed, received and outstanding', 'wallet-outline', 'fees.view', '/fees'),
     item('notices', 'Notices', 'Circulars, events and messages', 'megaphone-outline', 'circulars.view', '/notices'),
+    item('student360', 'Students', 'Any student of the school, in one place', 'people-outline', 'reports.view', '/student360'),
   ],
 }
 

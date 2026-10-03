@@ -94,6 +94,7 @@ public class PermissionTests
     }
     [Theory]
     [InlineData("/api/suite/student-attendance/registers","GET","attendance.view")][InlineData("/api/v1/suite/student-attendance/history","GET","attendance.view")]
+    [InlineData("/api/suite/students/7c1d0000-0000-4000-8000-0000000000a1/360","GET","reports.view")][InlineData("/api/v1/suite/students/7c1d0000-0000-4000-8000-0000000000a1/360/timeline","GET","reports.view")][InlineData("/api/suite/students/7c1d0000-0000-4000-8000-0000000000a1/360","POST","unsupported")]
     [InlineData("/api/suite/exams/timetable","GET","exams.view")][InlineData("/api/v1/suite/exams/overview","GET","exams.view")][InlineData("/api/suite/exams/7c1d0000-0000-4000-8000-0000000000e1/marksheet","GET","exams.view")]
     [InlineData("/api/suite/exams/7c1d0000-0000-4000-8000-0000000000e1/marksheet","POST","marks.manage")][InlineData("/api/v1/suite/exams/7c1d0000-0000-4000-8000-0000000000e1/transition","POST","exams.view")]
     [InlineData("/api/suite/records/assessment-schemes","GET","exams.view")][InlineData("/api/v1/suite/records/assessment-schemes","POST","exams.manage")][InlineData("/api/suite/records/exams","PUT","exams.manage")]

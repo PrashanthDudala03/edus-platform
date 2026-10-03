@@ -11,7 +11,7 @@ import { color } from '@/theme/tokens'
 // Every role has Home and Profile, with up to three of the role's own screens between them (five tabs at most).
 // All other screens live here too, without a tab button: they open from Home or Profile and keep the bar in view.
 // A screen the account has no entry for refuses to open, whatever the bar shows.
-const ROLE_TABS = ['children', 'classes', 'timetable', 'overview', 'homework', 'results', 'register', 'leave', 'notices', 'fees', 'exams', 'notifications'] as const
+const ROLE_TABS = ['children', 'classes', 'timetable', 'overview', 'homework', 'results', 'register', 'leave', 'notices', 'fees', 'exams', 'notifications', 'student360'] as const
 // The selected tab shows the filled icon, the others the outline, so the current place is obvious at a glance.
 const icon = (name: IconName) => ({ color: tint, focused }: { color: ColorValue, size: number, focused: boolean }) => <Ionicons name={(focused ? name.replace('-outline', '') : name) as IconName} size={24} color={tint} />
 

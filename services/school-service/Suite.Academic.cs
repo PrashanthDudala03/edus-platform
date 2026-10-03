@@ -140,6 +140,7 @@ public static partial class Suite
         group.MapPost("/student-attendance",SaveRegister);
         MapHomework(group);
         MapExams(group);
+        MapStudent360(group);
         MapAttendance(group);
         group.MapPost("/admissions/{id:guid}/accept",async(Guid id,HttpContext http)=>{
             await using var c=await Open();var a=await Access(http,c);Require(a.Admin,"Only administrators can accept admissions.",403);
