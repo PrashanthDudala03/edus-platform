@@ -8,7 +8,7 @@ using Xunit;
 public class NotificationTenancyTests
 {
     static readonly string Folder = Path.Combine(AppContext.BaseDirectory, "Sources");
-    static readonly string[] Sources = [.. Directory.GetFiles(Folder, "Suite.Notification*.cs"), Path.Combine(Folder, "Suite.Attendance.cs")];
+    static readonly string[] Sources = [.. Directory.GetFiles(Folder, "Suite.Notification*.cs"), Path.Combine(Folder, "Suite.Attendance.cs"), Path.Combine(Folder, "Suite.Homework.cs")];
     static readonly string Engine = File.ReadAllText(Path.Combine(Folder, "Suite.Notifications.cs")), Schema = File.ReadAllText(Path.Combine(Folder, "NotificationSchema.sql"));
     static readonly string[] PerSchool = ["notifications", "recipients", "deliveries", "preferences", "template_overrides", "devices"];
 
@@ -22,7 +22,7 @@ public class NotificationTenancyTests
     [Fact]
     public void TheSourcesAreRead()
     {
-        Assert.Equal(4, Sources.Length);
+        Assert.Equal(5, Sources.Length);
         Assert.True(Statements().Count() >= 25);
         Assert.All(PerSchool, table => Assert.Contains(Statements(), statement => statement.Table == table));
         Assert.All(PerSchool, table => Assert.Contains($"CREATE TABLE IF NOT EXISTS notify.{table}(", Schema));

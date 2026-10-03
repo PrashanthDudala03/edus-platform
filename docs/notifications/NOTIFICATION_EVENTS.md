@@ -21,6 +21,7 @@ to its own screen.
 | Student late | `attendance.late` | As student absent | `attendance` | studentName, className, date, schoolName | IMPLEMENTED |
 | Attendance corrected | `attendance.corrected` | As student absent, when a submitted register is corrected for the student and the status changed | `attendance` | studentName, className, date, status, reason, schoolName | IMPLEMENTED |
 | Homework assigned | `homework.assigned` | Student and parent accounts linked to students allocated to the class, whose role holds `homework.view` | `homework` | homeworkTitle, subjectName, className, dueDate, teacherName, schoolName | IMPLEMENTED |
+| Homework reviewed | `homework.reviewed` | The student and the parent accounts linked to them, whose role holds `submissions.view` | `homework` | homeworkTitle, subjectName, amount (marks), remark (feedback), teacherName, schoolName | IMPLEMENTED |
 | Homework due | `homework.due` | As homework assigned | `homework` | homeworkTitle, subjectName, className, dueDate, schoolName | BLOCKED BY DOMAIN EVENT |
 | Submission received | none yet | The teacher(s) assigned to the homework's class and subject | `homework` | to define | FUTURE |
 | Result published | `result.published` | Student and parent accounts linked to the students who have a mark in the exam, whose role holds `marks.view` | `results` | examName, subjectName, className, schoolName | IMPLEMENTED |
@@ -41,7 +42,8 @@ to its own screen.
 | Leave approved / rejected | a leave request's status changes to Approved or Rejected | the record save commits | request version (a later, different decision is announced; the same save never twice) |
 | Student absent / late | `POST /suite/student-attendance` stores a student as Absent or Late for the first time that day | the register transaction commits | student and day, for a register of today or yesterday only. Saving again does not repeat it; a later correction is announced as a correction instead. Older registers notify nobody |
 | Attendance corrected | a submitted register is corrected and the student's status changes | the correction commits | correction (a new event key each time; saving the same correction again sends nothing because nothing changes) |
-| Homework assigned | a homework record is created (homework has no draft state) | the record save commits | homework |
+| Homework assigned | a homework record becomes Published (created as Published, or a draft is published); a "homework.published" event is this one | the record save commits | homework. Closing and reopening does not repeat it |
+| Homework reviewed | a teacher gives or changes marks or feedback on a submission (the teacher's Completed / Late / Missing / Excused check sends nothing) | the record save commits | submission version (every review is announced once) |
 | Result published | an exam's Publication changes to Published and the exam has marks | the record save commits | exam. Unpublishing to correct a mark and publishing again does not repeat it |
 | Fee due | `POST /suite/fees/charges` issues a charge to a student (amount after concession above zero) | the charge transaction commits | charge |
 
@@ -76,7 +78,7 @@ Nothing in EduOS runs on a timer. A future scheduler needs:
 | Need | Detail |
 |---|---|
 | A daily run per school | at a fixed local time; schools have no time zone setting yet, so that must be added or one assumed |
-| Homework due | homework whose due date is tomorrow; recipients as homework assigned, minus students who already submitted; key `homework.due:homeworkId:dueDate` |
+| Homework due | Published homework whose due moment (`HomeworkRules.DueAt`, date plus optional time) falls within the next day; recipients as homework assigned, minus students whose submission is handed in, reviewed or checked Completed / Late / Excused; key `homework.due:homeworkId:dueDate`. The scheduler is the boundary: no service runs on a clock today |
 | Fee overdue | charges past their due date with a balance; recipients as fee due; key `fee.overdue:chargeId:dueDate` (or per week, if reminders should repeat) |
 | Safety | the event keys already make a run that happens twice harmless; the run must be claimed by one instance (a row lock or an advisory lock) |
 | Decision | whether the manual fee reminder should become this event |

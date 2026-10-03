@@ -94,7 +94,8 @@ public class PermissionTests
     }
     [Theory]
     [InlineData("/api/suite/student-attendance/registers","GET","attendance.view")][InlineData("/api/v1/suite/student-attendance/history","GET","attendance.view")]
-    [InlineData("/api/suite/student-attendance","POST","attendance.mark")][InlineData("/api/v1/suite/reports/attendance/days","GET","reports.view")][InlineData("/api/suite/reports/attendance/classes","GET","reports.view")]
+    [InlineData("/api/suite/student-attendance","POST","attendance.mark")][InlineData("/api/suite/homework/board","GET","homework.view")][InlineData("/api/v1/suite/homework/overview","GET","homework.view")]
+    [InlineData("/api/suite/homework/7c1d0000-0000-4000-8000-0000000000d1/submissions","GET","homework.view")][InlineData("/api/suite/homework/7c1d0000-0000-4000-8000-0000000000d1/review/7c1d0000-0000-4000-8000-0000000000d2","PUT","homework.manage")][InlineData("/api/v1/suite/reports/attendance/days","GET","reports.view")][InlineData("/api/suite/reports/attendance/classes","GET","reports.view")]
     public void AttendanceWorkflowRoutesKeepTheExistingPermissions(string path,string method,string permission)
     {
         Assert.Equal(permission,PermissionAccess.Required(path,method));

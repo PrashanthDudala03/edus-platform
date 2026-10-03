@@ -82,7 +82,7 @@ public static partial class Suite
             "teaching-assignments" or "staff-attendance" or "leave-requests"=>a.Teachers.Contains(Text(d,"teacherId")),
             "exams"=>a.Exams.Contains(Text(d,"id")),
             "marks"=>a.Students.Contains(Text(d,"studentId"))&&a.Exams.Contains(Text(d,"examId")),
-            "homework"=>a.Homework.Contains(Text(d,"id")),
+            "homework"=>a.Homework.Contains(Text(d,"id"))&&(a.Role=="Teacher"||HomeworkRules.Status(Text(d,"status"))!="Draft"),
             "submissions"=>a.Students.Contains(Text(d,"studentId"))&&a.Homework.Contains(Text(d,"homeworkId")),
             "certificates"=>a.Students.Contains(Text(d,"studentId")),
             "circulars"=>(Text(d,"audience")=="All"||Text(d,"audience")==a.Role)&&(Text(d,"classId")==""||a.Classes.Contains(Text(d,"classId"))),

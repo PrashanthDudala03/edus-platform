@@ -37,6 +37,7 @@ public static class PermissionAccess
             "home" => read && p.ElementAtOrDefault(4) is null or "images" ? null : "school-home.manage",
             "records" => p.ElementAtOrDefault(4) + (read ? ".view" : method == "DELETE" ? ".archive" : ".manage"),
             "student-attendance" => read ? "attendance.view" : "attendance.mark",
+            "homework" => read ? "homework.view" : "homework.manage",
             "fees" => read ? "fees.view" : p.ElementAtOrDefault(4) == "payments" ? "fees.collect" : "fees.manage",
             "reports" => p.ElementAtOrDefault(4) == "audit" ? "audit.view" : "reports.view",
             "report-cards" => "reports.view", "certificates" => "certificates.view",

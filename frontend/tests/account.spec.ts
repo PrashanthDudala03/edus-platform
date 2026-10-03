@@ -10,7 +10,7 @@ const types: Record<string, string> = { '.html': 'text/html', '.js': 'text/javas
 const school = '11111111-1111-4111-8111-111111111111'
 const person = (firstName: string, lastName: string, role: string, dataScope: string, permissions: string[] = []) => ({ id: '33333333-3333-4333-8333-333333333333', username: firstName.toLowerCase() + '@example.test', email: firstName.toLowerCase() + '@example.test', firstName, lastName, schoolId: dataScope === 'platform' ? '00000000-0000-0000-0000-00000000e005' : school, roles: [role], dataScope, permissions })
 const people = {
-  teacher: person('Ravi', 'Kumar', 'Teacher', 'teacher', ['classes.view', 'homework.view', 'homework.manage']),
+  teacher: person('Ravi', 'Kumar', 'Teacher', 'teacher', ['classes.view', 'homework.view', 'subjects.view', 'subjects.manage']),
   parent: person('Neha', 'Sharma', 'Parent', 'parent', ['homework.view']),
   student: person('Aarav', 'Sharma', 'Student', 'student', ['homework.view']),
   principal: person('Kavita', 'Menon', 'Principal', 'school', ['overview.view']),
@@ -18,7 +18,7 @@ const people = {
   superadmin: person('Platform', 'Owner', 'SuperAdmin', 'platform', ['platform.manage']),
   longName: person('Venkatanarasimharajuvaripeta', 'Subrahmanyeswara-Chandrasekhar', 'Examinations and Assessment Coordinator', 'school', ['overview.view']),
 }
-const homeworkModule = { kind: 'homework', title: 'Homework', group: 'Learning', canWrite: true, fields: [{ key: 'title', label: 'Assignment', type: 'text', required: true }, { key: 'classId', label: 'Class', type: 'reference', required: true, source: 'classes' }, { key: 'subjectId', label: 'Subject', type: 'reference', required: true, source: 'subjects' }, { key: 'dueDate', label: 'Due date', type: 'date', required: true }] }
+const homeworkModule = { kind: 'subjects', title: 'Subjects', group: 'Learning', canWrite: true, fields: [{ key: 'title', label: 'Assignment', type: 'text', required: true }, { key: 'classId', label: 'Class', type: 'reference', required: true, source: 'classes' }, { key: 'subjectId', label: 'Subject', type: 'reference', required: true, source: 'subjects' }, { key: 'dueDate', label: 'Due date', type: 'date', required: true }] }
 const homework = [1, 2].map(n => ({ id: `7c1d0000-0000-4000-8000-00000000000${n}`, version: 1, title: 'Fractions worksheet ' + n, classId: 'c1', subjectId: 's1', dueDate: '2026-10-0' + n }))
 
 async function mock(page: Page, user: typeof people.teacher) {
@@ -35,7 +35,7 @@ async function mock(page: Page, user: typeof people.teacher) {
     if (path === '/suite/records/classes') return json(route, { data: [{ id: 'c1', name: 'Grade 6', section: 'A' }], totalCount: 1 })
     if (path === '/suite/records/teaching-assignments') return json(route, { data: [{ id: 'a1', classId: 'c1', subjectId: 's1' }], totalCount: 1 })
     if (path === '/suite/catalog') return json(route, [homeworkModule])
-    if (path === '/suite/records/homework') return json(route, { data: homework, totalCount: 2, page: 1, pageSize: 20 })
+    if (path === '/suite/records/subjects') return json(route, { data: homework, totalCount: 2, page: 1, pageSize: 20 })
     if (path === '/suite/home') return json(route, { home: null, canManage: false })
     if (path) return json(route, [])
     if (!existsSync(dist)) return route.continue()
@@ -158,7 +158,7 @@ test.describe('Shared record table on a phone', () => {
     test(`at ${width}px a row is a labelled card with its actions on one line and no sideways scrolling`, async ({ page }) => {
       await page.setViewportSize({ width, height: 844 })
       await mock(page, people.teacher)
-      await page.goto('/suite/homework')
+      await page.goto('/suite/subjects')
       const row = main(page).locator('tbody tr').first()
       await expect(row).toContainText('Fractions worksheet 1')
       await fits(page)
@@ -176,7 +176,7 @@ test.describe('Shared record table on a phone', () => {
   test('on a desktop the same data is still a table', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await mock(page, people.teacher)
-    await page.goto('/suite/homework')
+    await page.goto('/suite/subjects')
     await expect(main(page).getByRole('columnheader', { name: 'Due date' })).toBeVisible()
     await expect(main(page).locator('tbody tr').first()).toHaveCSS('display', 'table-row')
     await fits(page)

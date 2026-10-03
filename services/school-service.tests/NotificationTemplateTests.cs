@@ -12,7 +12,7 @@ public class NotificationTemplateTests
     [Fact]
     public void EveryTemplateIsAKnownTypeWithValidDefaultWording()
     {
-        Assert.Equal(new[] { "circular.published", "leave.requested", "leave.approved", "leave.rejected", "attendance.absent", "attendance.late", "attendance.corrected", "homework.assigned", "homework.due", "result.published", "fee.due", "fee.overdue" }, NotificationTemplates.All.Select(t => t.Key));
+        Assert.Equal(new[] { "circular.published", "leave.requested", "leave.approved", "leave.rejected", "attendance.absent", "attendance.late", "attendance.corrected", "homework.assigned", "homework.reviewed", "homework.due", "result.published", "fee.due", "fee.overdue" }, NotificationTemplates.All.Select(t => t.Key));
         var known = NotificationTemplates.Variables.Select(v => v.Name).ToHashSet();
         foreach (var template in NotificationTemplates.All)
         {
@@ -33,7 +33,7 @@ public class NotificationTemplateTests
     [Fact]
     public void OnlyEventsEduOSRaisesAreMarkedAsSending()
     {
-        Assert.Equal(new[] { "circular.published", "leave.requested", "leave.approved", "leave.rejected", "attendance.absent", "attendance.late", "attendance.corrected", "homework.assigned", "result.published", "fee.due" }, NotificationTemplates.All.Where(t => t.Status == NotificationTemplates.Implemented).Select(t => t.Key));
+        Assert.Equal(new[] { "circular.published", "leave.requested", "leave.approved", "leave.rejected", "attendance.absent", "attendance.late", "attendance.corrected", "homework.assigned", "homework.reviewed", "result.published", "fee.due" }, NotificationTemplates.All.Where(t => t.Status == NotificationTemplates.Implemented).Select(t => t.Key));
         // Nothing in EduOS raises these yet: both need something that runs on a schedule.
         Assert.Equal(new[] { "homework.due", "fee.overdue" }, NotificationTemplates.All.Where(t => t.Status == NotificationTemplates.Blocked).Select(t => t.Key));
         Assert.False(NotificationRules.KnownType("leave.decided"));

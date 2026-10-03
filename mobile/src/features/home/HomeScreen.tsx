@@ -13,8 +13,8 @@ import { api, useSession } from '@/services'
 import type { User } from '@/session/types'
 import { color, elevation, radius, space } from '@/theme/tokens'
 import { dayParts, dayRange, greeting, initials, isoDay, lessonsByDay, percent, weekdayOf } from '@/utils/format'
-import { useCalendar, useChildren, useCirculars, useFees, useHomework, useLeave, useNames, usePermission, useRegister, useReportCard, useSubmissions } from '../data'
-import { feeTotals, money, newestFirst, registerSummary, splitHomework, upcomingEvents } from '../logic'
+import { useCalendar, useChildren, useCirculars, useFees, useHomework, useHomeworkBoard, useHomeworkOverview, useLeave, useNames, usePermission, useRegister, useReportCard } from '../data'
+import { GROUP_LABEL, feeTotals, money, needsAttention, newestFirst, overviewTotals, registerSummary, splitHomework, upcomingEvents } from '../logic'
 import { NotificationBell } from '../notifications/NotificationsScreen'
 import { useOverview } from '../principal/OverviewScreen'
 import { SchoolImage, useBrand, useSchoolHome } from '../school-home/api'
@@ -61,9 +61,8 @@ function NoticesPreview({ go }: { go: Go }) {
 
 function FamilyHome({ student, go }: { student: boolean, go: Go }) {
   const children = useChildren(), [chosen, setChosen] = useState(''), child = children.data?.find(c => c.studentId === chosen) ?? children.data?.[0]
-  const card = useReportCard(child?.studentId), homework = useHomework(), submissions = useSubmissions(), fees = useFees(), mayFees = usePermission('fees.view'), mayHomework = usePermission('homework.view'), name = useNames(mayHomework)
-  const today = isoDay(new Date()), due = splitHomework((homework.data ?? []).filter(item => !child?.classId || item.classId === child.classId), today).upcoming
-  const handedIn = new Set((submissions.data ?? []).filter(s => s.studentId === child?.studentId).map(s => s.homeworkId)), open = due.filter(item => !handedIn.has(item.id))
+  const card = useReportCard(child?.studentId), fees = useFees(), mayFees = usePermission('fees.view'), mayHomework = usePermission('homework.view'), board = useHomeworkBoard(child?.studentId, mayHomework)
+  const due = needsAttention(board.data ?? []), open = due.filter(item => item.group === 'missing')
   const rate = child ? percent(child.present + child.late, child.markedDays) : null, totals = feeTotals((fees.data ?? []).filter(charge => !child || charge.studentId === child.studentId))
   if (children.allowed && children.data?.length === 0) return <Card><AppText variant="heading">{student ? 'Your student record is not linked yet' : 'No children linked yet'}</AppText><AppText tone="muted">Ask the school office to link this account to the student record. Everything appears here straight away.</AppText></Card>
   return <>
@@ -71,23 +70,23 @@ function FamilyHome({ student, go }: { student: boolean, go: Go }) {
     {!!child && <Pressable accessibilityRole="button" accessibilityLabel={'Attendance for ' + child.name} onPress={() => go('/children')} style={({ pressed }) => [styles.person, pressed && styles.pressed]}><Avatar label={initials(child.name)} size={44} /><View style={styles.flex}><AppText variant="heading" numberOfLines={1}>{child.name}</AppText><AppText variant="caption" tone="muted" numberOfLines={1}>{child.className || 'Class not allocated yet'}</AppText></View><Ionicons name="chevron-forward" size={18} color={color.textFaint} /></Pressable>}
     <Summary go={go} figures={[
       { value: children.data === undefined || rate === null ? dash : rate + '%', label: 'Attendance', note: child?.markedDays ? `${child.present + child.late} of ${child.markedDays} days` : 'Nothing marked yet', route: '/children' },
-      ...(mayHomework ? [{ value: homework.data === undefined ? dash : String(due.length), label: 'Homework due', note: submissions.data ? `${open.length} not handed in` : undefined, warn: open.length > 0, route: '/homework' as const }] : []),
+      ...(mayHomework ? [{ value: board.data === undefined ? dash : String(due.length), label: 'Homework due', note: board.data ? (open.length ? `${open.length} missing` : 'Nothing missing') : undefined, warn: open.length > 0, route: '/homework' as const }] : []),
       { value: card.data?.maximum ? card.data.percent + '%' : dash, label: 'Results', note: card.data?.maximum ? 'Grade ' + card.data.grade : 'None published', route: '/results' }]} />
     {mayFees && fees.data !== undefined && totals.count > 0 && <Group><ListItem icon="wallet-outline" title={totals.balance > 0 ? money(totals.currency, totals.balance) + ' outstanding' : 'Fees are up to date'} subtitle={`${totals.outstanding} of ${totals.count} charges with a balance`} onPress={() => go('/fees')} last /></Group>}
     <TodayLessons classId={child?.classId || undefined} go={go} />
     {mayHomework && <Group title="Homework due" action={<LinkText label="All homework" onPress={() => go('/homework')} />}>
-      {homework.data === undefined ? <View style={styles.pad}><Skeleton width="65%" /></View> : due.length === 0 ? <ListItem icon="book-outline" title="No homework due" last />
-        : due.slice(0, 3).map((item, i, all) => <ListItem key={item.id} icon="book-outline" title={item.title} subtitle={name('subjects', item.subjectId)} meta={'Due ' + (dayParts(item.dueDate)?.label ?? item.dueDate)} onPress={() => go('/homework')} last={i === all.length - 1} />)}</Group>}
+      {board.data === undefined ? <View style={styles.pad}><Skeleton width="65%" /></View> : due.length === 0 ? <ListItem icon="book-outline" title="No homework due" last />
+        : due.slice(0, 3).map((item, i, all) => <ListItem key={item.id} icon="book-outline" title={item.title} subtitle={[item.subjectName, GROUP_LABEL[item.group]].filter(Boolean).join(' · ')} meta={'Due ' + (dayParts(item.dueDate)?.label ?? item.dueDate)} onPress={() => go('/homework')} last={i === all.length - 1} />)}</Group>}
     <NoticesPreview go={go} /></>
 }
 function TeacherHome({ go }: { go: Go }) {
-  const classes = useMyClasses(usePermission('classes.view')), today = isoDay(new Date()), register = useRegister(today), mayMark = usePermission('attendance.mark'), homework = useHomework(), mayHomework = usePermission('homework.view')
-  const summary = registerSummary(register.data ?? []), due = splitHomework(homework.data ?? [], today).upcoming
+  const classes = useMyClasses(usePermission('classes.view')), today = isoDay(new Date()), register = useRegister(today), mayMark = usePermission('attendance.mark'), homework = useHomework(), mayHomework = usePermission('homework.view'), work = useHomeworkOverview(mayHomework)
+  const summary = registerSummary(register.data ?? []), due = splitHomework(homework.data ?? [], today).upcoming, workTotals = overviewTotals(work.data ?? [])
   return <>
     <Summary go={go} figures={[
       { value: classes.data ? String(classes.data.total) : dash, label: 'My classes', route: '/classes' },
       { value: register.data ? `${summary.total - summary.unmarked}/${summary.total}` : dash, label: 'Marked today', note: register.data ? (summary.unmarked ? `${summary.unmarked} to mark` : summary.total ? 'Complete' : 'No students yet') : undefined, warn: !!register.data && summary.unmarked > 0, route: '/register' },
-      ...(mayHomework ? [{ value: homework.data ? String(due.length) : dash, label: 'Homework set', note: 'Still due', route: '/homework' as const }] : [])]} />
+      ...(mayHomework ? [{ value: work.data ? String(workTotals.toReview) : homework.data ? String(due.length) : dash, label: work.data ? 'To review' : 'Homework set', note: work.data ? `${workTotals.missing} missing · ${workTotals.late} late` : 'Still due', warn: workTotals.toReview > 0, route: '/homework' as const }] : [])]} />
     {mayMark && !!register.data && summary.unmarked > 0 && <Group><ListItem icon="checkbox-outline" title="Take today’s attendance" subtitle={`${summary.unmarked} of ${summary.total} students not marked yet`} onPress={() => go('/register')} last /></Group>}
     <TodayLessons go={go} showClass /><NoticesPreview go={go} /></>
 }

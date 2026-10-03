@@ -8,6 +8,7 @@ import { Empty, ErrorBox, Loading, PageHeader, today } from '../../components/UI
 import { data, label, printSchoolDocument, type Row } from '../suite/helpers'
 import { FeeSummary, Panel, QueryState, RecentCirculars, StatTile, TodayTimetable, UpcomingExams, useOptions, useRecords } from './widgets'
 import { AttendanceDays } from '../suite/AttendancePages'
+import { Board } from '../suite/HomeworkPage'
 type ReportCard = { results: Row[], obtained: number, maximum: number, percent: number, grade: string }
 
 // Parent and Student portals. The API returns only the students linked to this account, so the child list,
@@ -55,7 +56,8 @@ function ChildView({ studentId, classId, role }: { studentId: string, classId?: 
       <StatTile label="Documents" value={docs.length} note="Certificates issued by the school" icon={FileText} tone="purple" to="/suite/certificates" />
     </div>
     <div className="dashboard-grid"><TodayTimetable classIds={classId ? [classId] : []} link="/suite/timetable" />
-      <Panel title="Homework" description="Due from today" link="/suite/homework">
+      <Board studentId={studentId} studentName="this student" canSubmit={role === 'Student'} compact />
+      <Panel title="Homework records" description="Due from today" link="/suite/homework">
         <QueryState query={homework} empty={!due.length} emptyText={['No homework due', 'New assignments for this class will appear here.']}>
           <ul className="dash-list">{due.slice(0, 5).map(h => <li key={h.id}><span className="stat-icon teal"><BookOpen size={17} /></span><div><strong>{h.title}</strong><small>{label(options.data, 'subjects', h.subjectId)} · due {String(h.dueDate).slice(0, 10)}</small></div>{submitted.has(h.id) ? <span className="status-tag active">Submitted</span> : role === 'Student' ? <Link className="button small primary" to="/suite/submissions"><Upload size={14} />Submit</Link> : <span className="tag">Not submitted</span>}</li>)}</ul>
         </QueryState>
