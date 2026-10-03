@@ -33,6 +33,12 @@ Run step 3 only after the old auth-service is running; the new one re-applies th
 
 **Rollback.** Stop ai-service, then in the AI database: `DROP SCHEMA ai CASCADE; DROP ROLE ai_app;`. Nothing outside the AI database depends on it.
 
+## Exams & Report Cards (2026-10-04, no database change)
+
+**What it does.** No table, column, index or permission changes. Exams and marks stay JSON documents in `suite.records`; the new fields (`yearId`, `term`, `schemeId`, `startsAt`, `endsAt`, `room`, `instructions`, the seven-stage `status` and the stage stamps on exams; `status`, `components`, `grade`, `pass`, `history`, `enteredBy/At` on marks) are keys inside that JSON. The new `assessment-schemes` record kind lives in the same table and shares the `exams.view` / `exams.manage` permissions, so no role rows are added. Existing records read as Draft or Published plain-marks exams exactly as before.
+
+**Applied by** nothing: rebuild school-service, the api-gateway (permission map) and the frontend. Rollback is deploying the previous images; the extra JSON keys are ignored by older code, except that exams in the five new intermediate stages would read as drafts there.
+
 ## Homework & Assignments (2026-10-03, no database change)
 
 **What it does.** No table, column, index or permission changes. Homework and submissions stay JSON documents in `suite.records`; the new fields (`submissionMode`, `status`, `publishedOn`, `dueTime`, `maxMarks` on homework; `outcome`, `verifiedAt`, `submittedAt`, `late`, `status`, `reviewedAt`, `history` on submissions) are keys inside that JSON, and the schema file `services/school-service/SuiteSchemas.json` ships with the image. Existing records read as Published, `Text` mode. Files stay in `suite.documents` and the document store.

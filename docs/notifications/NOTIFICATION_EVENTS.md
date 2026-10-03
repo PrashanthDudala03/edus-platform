@@ -25,7 +25,8 @@ to its own screen.
 | Homework due | `homework.due` | As homework assigned | `homework` | homeworkTitle, subjectName, className, dueDate, schoolName | BLOCKED BY DOMAIN EVENT |
 | Submission received | none yet | The teacher(s) assigned to the homework's class and subject | `homework` | to define | FUTURE |
 | Result published | `result.published` | Student and parent accounts linked to the students who have a mark in the exam, whose role holds `marks.view` | `results` | examName, subjectName, className, schoolName | IMPLEMENTED |
-| Exam scheduled | none yet | Students of the class, their families and its teachers | `home` until an exams destination exists | to define | FUTURE |
+| Exam scheduled | `exam.scheduled` | Student and parent accounts linked to students allocated to the class, whose role holds `exams.view` | `timetable` | examName, subjectName, className, date, time, room, schoolName | IMPLEMENTED |
+| Exam timetable changed | `exam.rescheduled` | As exam scheduled | `timetable` | examName, subjectName, className, date, time, room, schoolName | IMPLEMENTED |
 | Fee due | `fee.due` | Parent accounts linked to the student whose role holds `fees.view` | `fees` | studentName, amount, dueDate, schoolName | IMPLEMENTED |
 | Fee overdue | `fee.overdue` | As fee due | `fees` | studentName, amount, dueDate, schoolName | BLOCKED BY DOMAIN EVENT |
 | Payment received | none yet | Parent accounts linked to the student | `fees` | to define | FUTURE |
@@ -44,7 +45,9 @@ to its own screen.
 | Attendance corrected | a submitted register is corrected and the student's status changes | the correction commits | correction (a new event key each time; saving the same correction again sends nothing because nothing changes) |
 | Homework assigned | a homework record becomes Published (created as Published, or a draft is published); a "homework.published" event is this one | the record save commits | homework. Closing and reopening does not repeat it |
 | Homework reviewed | a teacher gives or changes marks or feedback on a submission (the teacher's Completed / Late / Missing / Excused check sends nothing) | the record save commits | submission version (every review is announced once) |
-| Result published | an exam's Publication changes to Published and the exam has marks | the record save commits | exam. Unpublishing to correct a mark and publishing again does not repeat it |
+| Result published | an exam becomes Published (or Closed) and has marks, by the record save or the lifecycle call | the write commits | exam. Unpublishing to correct a mark and publishing again does not repeat it |
+| Exam scheduled | an exam leaves Draft (Scheduled or any later stage) | the write commits | exam, once however many times it moves |
+| Exam timetable changed | a scheduled exam's date, start or end time, or room changes | the write commits | exam and the new date, time and room (the same change saved twice sends nothing) |
 | Fee due | `POST /suite/fees/charges` issues a charge to a student (amount after concession above zero) | the charge transaction commits | charge |
 
 Viewing or calculating a balance raises nothing. The manual fee reminder (`POST /suite/fees/{id}/remind`) and the manual
@@ -87,6 +90,6 @@ Nothing in EduOS runs on a timer. A future scheduler needs:
 
 | Event | Where the event is in EduOS | Before switching on |
 |---|---|---|
-| Announcement, Submission received, Exam scheduled, Payment received | Records are created (an exam becomes visible when Published; payments by `POST /suite/fees/payments`) | Add the type, template and recipients; for submissions, resolve the teacher from teaching assignments |
+| Announcement, Submission received, Payment received | Records are created (an exam becomes visible when Published; payments by `POST /suite/fees/payments`) | Add the type, template and recipients; for submissions, resolve the teacher from teaching assignments |
 
 Reserved types without a template yet: `message.received`, `timetable.changed`, `school-home.published`.

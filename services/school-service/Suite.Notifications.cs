@@ -27,6 +27,7 @@ public static class NotificationRules
         ["attendance.absent"] = "attendance", ["attendance.late"] = "attendance", ["attendance.corrected"] = "attendance", ["homework.assigned"] = "homework", ["homework.due"] = "homework", ["result.published"] = "results",
         ["homework.reviewed"] = "homework", ["fee.due"] = "fees", ["fee.overdue"] = "fees", ["circular.published"] = "notices", ["message.received"] = "notices",
         ["leave.requested"] = "leave", ["leave.approved"] = "leave", ["leave.rejected"] = "leave", ["timetable.changed"] = "timetable", ["school-home.published"] = "school",
+        ["exam.scheduled"] = "timetable", ["exam.rescheduled"] = "timetable",
     };
     public static IReadOnlyCollection<string> Types => TypeCategory.Keys;
     public static bool KnownType(string? type) => type is not null && TypeCategory.ContainsKey(type);
@@ -283,7 +284,23 @@ public static partial class Suite
                 await Send(c, a.School, "homework.reviewed", NotificationRules.EventKey("homework.reviewed", id, "v" + ((int)Number(old, "version") + 1)), new() { ["homeworkTitle"] = Text(homework, "title"), ["subjectName"] = Text(subject, "name"),
                     ["remark"] = Text(d, "feedback"), ["amount"] = Text(d, "grade") == "" ? "" : Text(d, "grade") + (Text(homework, "maxMarks") == "" ? "" : " of " + Text(homework, "maxMarks")), ["teacherName"] = await AccountName(c, a), ["schoolName"] = await SchoolName(c, a.School) }, Id(d, "homeworkId"), family, a.User, "suite.submissions");
             }
-            if (kind == "exams" && Text(d, "status") == "Published" && (old is null || Text(old, "status") != "Published"))
+            if (kind == "exams" && ExamRules.FamilyVisible(Text(d, "status")))
+            {
+                // Putting an exam on the timetable tells the class and their families once; a later change of date,
+                // time or room is announced as a change, once per new sitting. Drafts tell nobody.
+                var wasVisible = old is not null && ExamRules.FamilyVisible(Text(old, "status"));
+                var moved = wasVisible && (Text(old!, "date") != Text(d, "date") || Text(old, "startsAt") != Text(d, "startsAt") || Text(old, "endsAt") != Text(d, "endsAt") || Text(old, "room") != Text(d, "room"));
+                if (!wasVisible || moved)
+                {
+                    var classId = Id(d, "classId"); var cls = await Get(c, a.School, "classes", classId); var subject = await Get(c, a.School, "subjects", Id(d, "subjectId"));
+                    var family = (await FamiliesOfClass(c, a.School, classId)).ToHashSet(); var readers = (await UsersWith(c, a.School, "exams.view", ["parent", "student"])).Where(family.Contains).ToList();
+                    var when = Text(d, "startsAt") == "" ? "" : Text(d, "startsAt") + (Text(d, "endsAt") == "" ? "" : "-" + Text(d, "endsAt"));
+                    var values = new Dictionary<string, string?> { ["examName"] = Text(d, "name"), ["subjectName"] = Text(subject, "name"), ["className"] = Label("classes", cls), ["date"] = NotificationTemplates.Day(Text(d, "date")), ["time"] = when, ["room"] = Text(d, "room"), ["schoolName"] = await SchoolName(c, a.School) };
+                    if (!wasVisible) await Send(c, a.School, "exam.scheduled", NotificationRules.EventKey("exam.scheduled", id), values, id, readers, a.User, "suite.exams");
+                    else await Send(c, a.School, "exam.rescheduled", NotificationRules.EventKey("exam.rescheduled", id, Text(d, "date") + "T" + Text(d, "startsAt") + "-" + Text(d, "endsAt") + "@" + Text(d, "room")), values, id, readers, a.User, "suite.exams");
+                }
+            }
+            if (kind == "exams" && ExamRules.ResultsVisible(Text(d, "status")) && (old is null || !ExamRules.ResultsVisible(Text(old, "status"))))
             {
                 // Marks can only be entered while an exam is a draft, so publishing an exam that has marks is the
                 // moment those results are final and families can read them. An exam published without marks only

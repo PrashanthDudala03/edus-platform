@@ -6,7 +6,7 @@ import type { User } from '../session/types.ts'
 // serve push taps and deep links when push arrives; device registration is still only a seam.
 export type NotificationType =
   | 'attendance.absent' | 'attendance.late' | 'attendance.corrected' | 'homework.assigned' | 'homework.reviewed' | 'homework.due' | 'result.published' | 'fee.due' | 'fee.overdue' | 'circular.published'
-  | 'message.received' | 'leave.requested' | 'leave.approved' | 'leave.rejected' | 'timetable.changed' | 'school-home.published'
+  | 'message.received' | 'leave.requested' | 'leave.approved' | 'leave.rejected' | 'timetable.changed' | 'school-home.published' | 'exam.scheduled' | 'exam.rescheduled'
 
 /** What a notification will carry. Ids are opaque; the server authorises them again when the screen loads. */
 export interface NotificationPayload { type: string, entityId?: string, studentId?: string }
@@ -29,6 +29,8 @@ const DESTINATIONS: Record<NotificationType, Destination[]> = {
   'leave.approved': ['/leave'],
   'leave.rejected': ['/leave'],
   'timetable.changed': ['/timetable'],
+  'exam.scheduled': ['/exams'],
+  'exam.rescheduled': ['/exams'],
   'school-home.published': ['/welcome'],
 }
 export const isNotificationType = (type: string): type is NotificationType => Object.prototype.hasOwnProperty.call(DESTINATIONS, type)

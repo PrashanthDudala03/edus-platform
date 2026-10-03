@@ -94,6 +94,9 @@ public class PermissionTests
     }
     [Theory]
     [InlineData("/api/suite/student-attendance/registers","GET","attendance.view")][InlineData("/api/v1/suite/student-attendance/history","GET","attendance.view")]
+    [InlineData("/api/suite/exams/timetable","GET","exams.view")][InlineData("/api/v1/suite/exams/overview","GET","exams.view")][InlineData("/api/suite/exams/7c1d0000-0000-4000-8000-0000000000e1/marksheet","GET","exams.view")]
+    [InlineData("/api/suite/exams/7c1d0000-0000-4000-8000-0000000000e1/marksheet","POST","marks.manage")][InlineData("/api/v1/suite/exams/7c1d0000-0000-4000-8000-0000000000e1/transition","POST","exams.view")]
+    [InlineData("/api/suite/records/assessment-schemes","GET","exams.view")][InlineData("/api/v1/suite/records/assessment-schemes","POST","exams.manage")][InlineData("/api/suite/records/exams","PUT","exams.manage")]
     [InlineData("/api/suite/student-attendance","POST","attendance.mark")][InlineData("/api/suite/homework/board","GET","homework.view")][InlineData("/api/v1/suite/homework/overview","GET","homework.view")]
     [InlineData("/api/suite/homework/7c1d0000-0000-4000-8000-0000000000d1/submissions","GET","homework.view")][InlineData("/api/suite/homework/7c1d0000-0000-4000-8000-0000000000d1/review/7c1d0000-0000-4000-8000-0000000000d2","PUT","homework.manage")][InlineData("/api/v1/suite/reports/attendance/days","GET","reports.view")][InlineData("/api/suite/reports/attendance/classes","GET","reports.view")]
     public void AttendanceWorkflowRoutesKeepTheExistingPermissions(string path,string method,string permission)

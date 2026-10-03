@@ -17,12 +17,41 @@ public static partial class Suite
             Require(!peers.Any(p=>Text(p,"teacherId")==Text(d,"teacherId")&&Text(p,"status")!="Rejected"&&Text(d,"status")!="Rejected"&&Day(p,"fromDate")<=Day(d,"toDate")&&Day(p,"toDate")>=Day(d,"fromDate")),"This staff member already has an overlapping leave request.",409);
         }
         if(kind=="fee-structures"){Require(Number(d,"amount")>0,"Fee amount must be positive.");Unique("name","classId","installment");if(old is not null){var issued=await Q(c,"SELECT id FROM suite.charges WHERE structure_id=@id AND school_id=@s LIMIT 1",("id",id),("s",a.School));Require(issued.Count==0,"An issued fee structure is immutable. Create a new structure or instalment.",409);}}
-        if(kind=="exams"){Require(Number(d,"maxMarks")>0&&Number(d,"passMarks")<=Number(d,"maxMarks"),"Pass marks must be within the positive maximum marks.");Unique("name","classId","subjectId");if(old is not null&&Text(old,"status")=="Published")Require(Text(d,"maxMarks")==Text(old,"maxMarks")&&Text(d,"classId")==Text(old,"classId")&&Text(d,"subjectId")==Text(old,"subjectId"),"Published exam details cannot be changed.");}
+        if(kind=="assessment-schemes"){
+            Unique("name");var passPercent=d["passPercent"] is JsonValue pv&&pv.TryGetValue<decimal>(out var pp)?pp:(decimal?)null;
+            var problem=ExamRules.Build(Text(d,"type"),Text(d,"components"),Text(d,"grades"),passPercent,100,0,ExamRules.LegacyGrades(90,75,60,40),out _);Require(problem is null,problem??"");
+            if(old is not null){var used=(await Records(c,a.School,"exams")).Any(e=>Text(e,"schemeId")==id.ToString()&&ExamRules.ResultsVisible(Text(e,"status")));Require(!used||(Text(d,"type")==Text(old,"type")&&Text(d,"components")==Text(old,"components")&&Text(d,"grades")==Text(old,"grades")&&Text(d,"passPercent")==Text(old,"passPercent")),"This scheme is used by published results; create a new scheme instead of changing it.",409);}
+        }
+        if(kind=="exams"){
+            Require(Number(d,"maxMarks")>0&&Number(d,"passMarks")<=Number(d,"maxMarks"),"Pass marks must be within the positive maximum marks.");Unique("name","classId","subjectId");
+            // Lifecycle: created as a draft unless scheduled or published outright; later changes follow the transition rules (only leadership writes exams).
+            var examStatus=Text(d,"status")==""?(old is null?"Draft":ExamRules.Status(Text(old,"status"))):Text(d,"status");d["status"]=examStatus;
+            var move=ExamRules.TransitionProblem(old is null?"Draft":Text(old,"status"),examStatus,a.SchoolWide&&a.Can("exams.manage"),false,0);Require(move is null,move??"",409);
+            // A scheme decides the maximum and pass marks for marks and component schemes; a grade-only scheme leaves them as entered.
+            if(Text(d,"schemeId")!=""){var scheme=await SchemeOf(c,a.School,d,await Get(c,a.School,"assessment-schemes",Id(d,"schemeId")));if(!scheme.GradeOnly){d["maxMarks"]=scheme.Max;d["passMarks"]=scheme.PassMarks??Number(d,"passMarks");}}
+            if(Text(d,"startsAt")!=""&&Text(d,"endsAt")!="")Require(TimeOnly.Parse(Text(d,"startsAt"))<TimeOnly.Parse(Text(d,"endsAt")),"The exam must end after it starts.");
+            foreach(var p in peers)if(Text(p,"classId")==Text(d,"classId")&&ExamRules.Status(Text(p,"status"))!="Closed")Require(!ExamRules.Clash(Text(p,"date"),Text(p,"startsAt"),Text(p,"endsAt"),Text(d,"date"),Text(d,"startsAt"),Text(d,"endsAt")),"This class already has an exam at that time: "+Text(p,"name")+".",409);
+            if(old is not null&&ExamRules.ResultsVisible(Text(old,"status"))&&ExamRules.ResultsVisible(examStatus))Require(Text(d,"maxMarks")==Text(old,"maxMarks")&&Text(d,"classId")==Text(old,"classId")&&Text(d,"subjectId")==Text(old,"subjectId")&&Text(d,"schemeId")==Text(old,"schemeId"),"Published exam details cannot be changed.");
+            StampExam(d,old,examStatus,a.User,DateTime.UtcNow,null);
+        }
         if(kind=="marks"){
             Unique("examId","studentId");var exam=await Get(c,a.School,"exams",Id(d,"examId"));
-            Require(Text(exam,"status")=="Draft","Unpublish this exam before correcting marks.",409);
-            Require(Number(d,"score")<=Number(exam,"maxMarks"),"Marks cannot exceed the exam maximum.");
+            Require(ExamRules.MarksEditable(Text(exam,"status"),a.SchoolWide),ExamRules.ResultsVisible(Text(exam,"status"))?"Unpublish this exam before correcting marks.":"This exam is not open for marks entry.",409);
             await InClass(c,a.School,Id(d,"studentId"),Id(exam,"classId"));
+            if(a.Role=="Teacher"&&!a.SchoolWide)Require(await TeachesExam(c,a,exam),"You are not assigned to teach this subject in this class.",403);
+            // The scheme validates the entry and works out the total, grade and pass; the client never sets those.
+            var scheme=await SchemeOf(c,a.School,exam);var entered=ExamRules.ParseEntered(Text(d,"components"));
+            decimal? score=d["score"] is JsonValue sv&&sv.TryGetValue<decimal>(out var s0)?s0:null;
+            var problem=ExamRules.MarkProblem(scheme,Text(d,"status"),entered,score,Text(d,"grade"),out var total,out var grade,out var pass);Require(problem is null,problem??"");
+            if(scheme.Type=="Marks"&&score is not null&&Text(d,"status") is ""or"Present")d["components"]=ExamRules.FormatEntered([new KeyValuePair<string,decimal>(scheme.Components[0].Name,score.Value)]);
+            if(total is not null)d["score"]=total;else d.Remove("score");
+            d["grade"]=grade;d["pass"]=pass?"Yes":"No";if(Text(d,"status")=="")d["status"]="Present";
+            // Every change keeps the previous figures with who entered them, so a correction is never silent.
+            if(old is not null&&(Text(old,"score")!=Text(d,"score")||Text(old,"components")!=Text(d,"components")||Text(old,"grade")!=Text(d,"grade")||Text(old,"status")!=Text(d,"status"))){
+                var history=old["history"] is JsonArray h?(JsonArray)h.DeepClone():new JsonArray();history.Add(new JsonObject{["score"]=old["score"]?.DeepClone(),["components"]=Text(old,"components"),["grade"]=Text(old,"grade"),["status"]=Text(old,"status"),["enteredBy"]=Text(old,"enteredBy"),["enteredAt"]=Text(old,"enteredAt")});
+                while(history.Count>ExamRules.MaxHistory)history.RemoveAt(0);d["history"]=history;
+            }else if(old?["history"] is not null)d["history"]=old["history"]!.DeepClone();
+            d["enteredBy"]=a.User.ToString();d["enteredAt"]=DateTime.UtcNow.ToString("o");
         }
         if(kind=="circulars"&&Text(d,"dueDate")!="")Require(Day(d,"dueDate")>=DateOnly.FromDateTime(DateTime.UtcNow),"Acknowledgement deadline cannot be in the past.");
         if(kind=="calendar")Require(Day(d,"startsOn")<=Day(d,"endsOn"),"Event end date must follow its start.");
@@ -110,6 +139,7 @@ public static partial class Suite
         });
         group.MapPost("/student-attendance",SaveRegister);
         MapHomework(group);
+        MapExams(group);
         MapAttendance(group);
         group.MapPost("/admissions/{id:guid}/accept",async(Guid id,HttpContext http)=>{
             await using var c=await Open();var a=await Access(http,c);Require(a.Admin,"Only administrators can accept admissions.",403);
