@@ -7,6 +7,8 @@ import { ErrorBox, PageHeader, today } from '../../components/UI'
 import { data, type Row } from '../suite/helpers'
 import { FeeSummary, Panel, QueryState, RecentCirculars, StatTile, UpcomingExams, useRecords } from './widgets'
 import { RegistersPanel } from '../suite/AttendancePages'
+import { useOverview } from '../suite/HomeworkPage'
+import { overviewTotals } from '../suite/homework'
 type Overview = { stats: { students: number, teachers: number, parents: number, classes: number, present: number, marked: number } }
 
 // Academic and operational head of one school: reads everything, changes academic oversight records only.
@@ -26,6 +28,7 @@ export default function PrincipalDashboard() {
     const scores = (marks.data || []).filter(m => m.examId === exam.id).map(m => Number(m.score) / Number(exam.maxMarks) * 100)
     return { exam, count: scores.length, average: scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0, passed: (marks.data || []).filter(m => m.examId === exam.id && Number(m.score) >= Number(exam.passMarks)).length }
   }).filter(r => r.count > 0)
+  const work = useOverview(), workTotals = overviewTotals(work.data?.items ?? [])
   const hour = new Date().getHours(), greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
   return <><PageHeader eyebrow="PRINCIPAL PORTAL" title={greeting + ', ' + (user?.firstName || 'Principal') + '.'} description="Academic and operational oversight for your school. Finance and account administration stay with the school administrator." />
     {overview.isError ? <ErrorBox message={errorMessage(overview.error)} /> : <div className="stats-grid">
@@ -43,6 +46,7 @@ export default function PrincipalDashboard() {
       </Panel>
       <Panel title="Needs your attention" description="Pending school activity">
         <ul className="dash-list">
+          <li><span className="stat-icon blue"><BookOpen size={17} /></span><div><strong>{work.isPending ? '…' : workTotals.published} published assignment{workTotals.published === 1 ? '' : 's'}</strong><small>{work.isPending ? '' : workTotals.missing + ' missing · ' + workTotals.toReview + ' to review'}</small></div><Link className="text-link" to="/suite/homework">Open <ArrowUpRight size={14} /></Link></li>
           <li><span className="stat-icon peach"><Users size={17} /></span><div><strong>{leave.isPending ? '…' : pendingLeave} leave request{pendingLeave === 1 ? '' : 's'} awaiting approval</strong><small>Approve or reject staff leave</small></div><Link className="text-link" to="/suite/leave-requests">Review <ArrowUpRight size={14} /></Link></li>
           <li><span className="stat-icon teal"><GraduationCap size={17} /></span><div><strong>{admissions.isPending ? '…' : pendingAdmissions} submitted admission{pendingAdmissions === 1 ? '' : 's'}</strong><small>Accepted by the school administrator</small></div></li>
         </ul>

@@ -771,7 +771,7 @@
   },
   {
     "kind": "homework",
-    "title": "Homework",
+    "title": "Homework & assignments",
     "group": "Learning",
     "fields": [
       {
@@ -805,6 +805,48 @@
         "required": true,
         "source": null,
         "options": null
+      },
+      {
+        "key": "dueTime",
+        "label": "Due time",
+        "type": "time",
+        "required": false,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "maxMarks",
+        "label": "Maximum marks (optional)",
+        "type": "number",
+        "required": false,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "submissionMode",
+        "label": "Submission mode",
+        "type": "select",
+        "required": false,
+        "source": null,
+        "options": [
+          "None",
+          "Done",
+          "Text",
+          "File",
+          "Physical"
+        ]
+      },
+      {
+        "key": "status",
+        "label": "Status",
+        "type": "select",
+        "required": false,
+        "source": null,
+        "options": [
+          "Draft",
+          "Published",
+          "Closed"
+        ]
       },
       {
         "key": "instructions",
@@ -853,7 +895,7 @@
         "key": "response",
         "label": "Student response",
         "type": "textarea",
-        "required": true,
+        "required": false,
         "source": null,
         "options": null
       },
@@ -872,6 +914,19 @@
         "required": false,
         "source": null,
         "options": null
+      },
+      {
+        "key": "outcome",
+        "label": "Teacher's check",
+        "type": "select",
+        "required": false,
+        "source": null,
+        "options": [
+          "Completed",
+          "Late",
+          "Missing",
+          "Excused"
+        ]
       }
     ],
     "read": [

@@ -29,10 +29,44 @@ public static partial class Suite
         if(kind=="messages"&&!a.SchoolWide){
             var links=await Records(c,a.School,"account-links");Require(links.Any(l=>Text(l,"userId")==Text(d,"recipientUserId")&&a.Students.Contains(Text(l,"studentId"))),"Teachers may message linked accounts in their assigned classes only.",403);
         }
-        if(kind=="homework"&&old is null)Require(Day(d,"dueDate")>=DateOnly.FromDateTime(DateTime.UtcNow),"A new assignment cannot be due in the past.");
+        if(kind=="homework"){
+            // Lifecycle: a new assignment is a draft unless published outright; later changes follow the allowed transitions.
+            if(Text(d,"status")=="")d["status"]=old is null?"Published":HomeworkRules.Status(Text(old,"status"));
+            var handedIn=old is null?0:(await Records(c,a.School,"submissions")).Count(s=>Text(s,"homeworkId")==id.ToString());
+            var problem=HomeworkRules.TransitionProblem(old is null?"Draft":Text(old,"status"),Text(d,"status"),handedIn);Require(problem is null,problem??"",409);
+            if(old is null&&Text(d,"status")=="Published")Require(Day(d,"dueDate")>=DateOnly.FromDateTime(DateTime.UtcNow),"A new assignment cannot be due in the past.");
+            if(Text(d,"status")=="Published"&&(old is null||HomeworkRules.Status(Text(old,"status"))!="Published"))d["publishedOn"]=DateTime.UtcNow.ToString("yyyy-MM-dd");
+            else if(old?["publishedOn"] is not null)d["publishedOn"]=old["publishedOn"]!.DeepClone();
+            if(d["maxMarks"] is JsonValue m&&m.TryGetValue<decimal>(out var max))Require(max>0&&max<=1000,"Maximum marks must be between 1 and 1000.");
+            // A teacher sets work only for a subject they are assigned to teach in that class (the class teacher may set any subject).
+            if(a.Role=="Teacher"&&!a.SchoolWide){var mine=(await Records(c,a.School,"teaching-assignments")).Where(t=>a.Teachers.Contains(Text(t,"teacherId"))&&Text(t,"classId")==Text(d,"classId")).Select(t=>Text(t,"subjectId")).ToList();
+                var classTeacher=(await Records(c,a.School,"classes")).Any(cl=>Text(cl,"id")==Text(d,"classId")&&a.Teachers.Contains(Text(cl,"teacherId")));
+                Require(classTeacher||mine.Count==0||mine.Contains(Text(d,"subjectId")),"You are not assigned to teach this subject in this class.",403);}
+        }
         if(kind=="submissions"){
             Unique("homeworkId","studentId");var homework=await Get(c,a.School,"homework",Id(d,"homeworkId"));await InClass(c,a.School,Id(d,"studentId"),Id(homework,"classId"));
-            if(!a.SchoolWide&&a.Role!="Teacher")Require(Day(homework,"dueDate")>=DateOnly.FromDateTime(DateTime.UtcNow),"This assignment is past its submission deadline.",409);
+            foreach(var key in new[]{"submittedAt","late","status","reviewedAt","verifiedAt","history"})if(old?[key] is not null)d[key]=old[key]!.DeepClone();
+            var staff=a.SchoolWide||a.Role=="Teacher";var now=DateTime.UtcNow;var mode=HomeworkRules.Mode(Text(homework,"submissionMode"));
+            if(!staff){
+                // Students never set the teacher's check, marks or feedback; those stay as they were.
+                d["outcome"]=old is null?"":Text(old,"outcome");d["grade"]=old is null?"":Text(old,"grade");d["feedback"]=old is null?"":Text(old,"feedback");
+                var problem=HomeworkRules.SubmitProblem(Text(homework,"status"),Text(old??new(),"status"),Text(d,"outcome"),mode,Text(d,"response"));Require(problem is null,problem??"",409);
+                if(old is not null&&Text(old,"response")!=Text(d,"response")){
+                    // Handing in again keeps the earlier work: the newest few versions travel with the record.
+                    var history=old["history"] is JsonArray h?(JsonArray)h.DeepClone():new JsonArray();history.Add(new JsonObject{["response"]=Text(old,"response"),["submittedAt"]=Text(old,"submittedAt")});
+                    while(history.Count>HomeworkRules.MaxHistory)history.RemoveAt(0);d["history"]=history;
+                }
+                // A first hand-in (or a changed one) is stamped now and judged against the due moment; it clears a "missing" check.
+                if(old is null||Text(old,"response")!=Text(d,"response")){d["submittedAt"]=now.ToString("o");d["late"]=HomeworkRules.IsLate(now,Text(homework,"dueDate"),Text(homework,"dueTime"))?"Yes":"No";d["status"]="Submitted";if(Text(d,"outcome")=="Missing")d["outcome"]="";}
+            }else{
+                // Marks and feedback make the work reviewed; clearing both returns it to handed in. The check (Completed, Late, Missing, Excused) is stamped when it changes.
+                Require(Text(d,"outcome")==""||HomeworkRules.Outcomes.Contains(Text(d,"outcome")),"Choose Completed, Late, Missing or Excused.");
+                var marks=HomeworkRules.MarksProblem(Text(homework,"maxMarks"),Text(d,"grade"));Require(marks is null,marks??"");
+                var reviewed=Text(d,"grade")!=""||Text(d,"feedback")!="";if(reviewed)d["status"]="Reviewed";else if(Text(d,"status")=="Reviewed")d["status"]="Submitted";
+                if(reviewed&&(old is null||Text(old,"grade")!=Text(d,"grade")||Text(old,"feedback")!=Text(d,"feedback")||Text(old,"status")!="Reviewed"))d["reviewedAt"]=now.ToString("o");else if(!reviewed)d.Remove("reviewedAt");
+                if(Text(d,"outcome")!=(old is null?"":Text(old,"outcome")))d["verifiedAt"]=now.ToString("o");
+            }
+            if(Text(d,"status")=="")d["status"]=Text(d,"outcome")==""?"Submitted":"";
         }
         if(kind=="timetable"){
             Require(TimeOnly.Parse(Text(d,"startsAt"))<TimeOnly.Parse(Text(d,"endsAt")),"Period must end after it starts.");
@@ -75,6 +109,7 @@ public static partial class Suite
             return Results.Ok(new{data=rows.Where(r=>a.SchoolWide||a.Students.Contains(Text(r,"id")))});
         });
         group.MapPost("/student-attendance",SaveRegister);
+        MapHomework(group);
         MapAttendance(group);
         group.MapPost("/admissions/{id:guid}/accept",async(Guid id,HttpContext http)=>{
             await using var c=await Open();var a=await Access(http,c);Require(a.Admin,"Only administrators can accept admissions.",403);

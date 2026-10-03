@@ -33,6 +33,12 @@ Run step 3 only after the old auth-service is running; the new one re-applies th
 
 **Rollback.** Stop ai-service, then in the AI database: `DROP SCHEMA ai CASCADE; DROP ROLE ai_app;`. Nothing outside the AI database depends on it.
 
+## Homework & Assignments (2026-10-03, no database change)
+
+**What it does.** No table, column, index or permission changes. Homework and submissions stay JSON documents in `suite.records`; the new fields (`submissionMode`, `status`, `publishedOn`, `dueTime`, `maxMarks` on homework; `outcome`, `verifiedAt`, `submittedAt`, `late`, `status`, `reviewedAt`, `history` on submissions) are keys inside that JSON, and the schema file `services/school-service/SuiteSchemas.json` ships with the image. Existing records read as Published, `Text` mode. Files stay in `suite.documents` and the document store.
+
+**Applied by** nothing: rebuild school-service (and the frontend). Rollback is deploying the previous image; the extra JSON keys are ignored by older code.
+
 ## Smart Attendance (2026-10-05, prepared, not applied)
 
 **What it does.** Additive only. `school_db.attendance` gains `reason`, `remark`, `marked_by` and `marked_at` (nullable or defaulted; existing rows are untouched). Two new tables: `school_db.attendance_registers` (one row per class and day once a register is submitted) and `school_db.attendance_history` (every submission and correction with actor, reason and the previous status), plus two indexes. The history table gets the existing `suite_audit` trigger so changes also appear in the attributed activity report. No permission changes: the workflow reuses `attendance.view`, `attendance.mark` and `reports.view`.

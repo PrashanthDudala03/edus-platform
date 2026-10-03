@@ -25,7 +25,7 @@ public static class NotificationRules
     static readonly Dictionary<string, string> TypeCategory = new()
     {
         ["attendance.absent"] = "attendance", ["attendance.late"] = "attendance", ["attendance.corrected"] = "attendance", ["homework.assigned"] = "homework", ["homework.due"] = "homework", ["result.published"] = "results",
-        ["fee.due"] = "fees", ["fee.overdue"] = "fees", ["circular.published"] = "notices", ["message.received"] = "notices",
+        ["homework.reviewed"] = "homework", ["fee.due"] = "fees", ["fee.overdue"] = "fees", ["circular.published"] = "notices", ["message.received"] = "notices",
         ["leave.requested"] = "leave", ["leave.approved"] = "leave", ["leave.rejected"] = "leave", ["timetable.changed"] = "timetable", ["school-home.published"] = "school",
     };
     public static IReadOnlyCollection<string> Types => TypeCategory.Keys;
@@ -246,7 +246,7 @@ public static partial class Suite
     {
         try
         {
-            if (kind is not ("circulars" or "leave-requests" or "homework" or "exams")) return;
+            if (kind is not ("circulars" or "leave-requests" or "homework" or "submissions" or "exams")) return;
             await using var c = await Open();
             if (kind == "circulars" && old is null)
             {
@@ -264,15 +264,24 @@ public static partial class Suite
                 await Send(c, a.School, "circular.published", NotificationRules.EventKey("circular.published", id), new() { ["circularTitle"] = Text(d, "title"), ["circularMessage"] = Text(d, "message"),
                     ["className"] = cls is null ? "" : Label("classes", cls), ["schoolName"] = await SchoolName(c, a.School), ["date"] = NotificationTemplates.Day(DateTime.UtcNow.ToString("yyyy-MM-dd")) }, id, audience, a.User, "suite.circulars");
             }
-            if (kind == "homework" && old is null)
+            if (kind == "homework" && HomeworkRules.Status(Text(d, "status")) == "Published" && (old is null || HomeworkRules.Status(Text(old, "status")) != "Published"))
             {
-                // Homework has no draft state: creating it is the moment a class is given it. It reaches the students
-                // allocated to that class and their linked parents, and only accounts whose role may see homework.
+                // Publishing is the moment a class is given the work (a draft tells nobody). It reaches the students
+                // allocated to that class and their linked parents, once per assignment however often it is reopened.
                 var classId = Id(d, "classId"); var cls = await Get(c, a.School, "classes", classId); var subject = await Get(c, a.School, "subjects", Id(d, "subjectId"));
                 var family = (await FamiliesOfClass(c, a.School, classId)).ToHashSet();
                 var readers = (await UsersWith(c, a.School, "homework.view", ["parent", "student"])).Where(family.Contains);
                 await Send(c, a.School, "homework.assigned", NotificationRules.EventKey("homework.assigned", id), new() { ["homeworkTitle"] = Text(d, "title"), ["subjectName"] = Text(subject, "name"),
                     ["className"] = Label("classes", cls), ["dueDate"] = NotificationTemplates.Day(Text(d, "dueDate")), ["teacherName"] = await AccountName(c, a), ["schoolName"] = await SchoolName(c, a.School) }, id, readers, a.User, "suite.homework");
+            }
+            if (kind == "submissions" && old is not null && Text(d, "status") == "Reviewed" && Text(d, "reviewedAt") != Text(old, "reviewedAt"))
+            {
+                // Marks or feedback were given (or changed): the student and their family hear once per review.
+                var homework = await Get(c, a.School, "homework", Id(d, "homeworkId")); var student = Id(d, "studentId");
+                var family = (await GuardiansOf(c, a.School, [student], "submissions.view", "student")).GetValueOrDefault(student) ?? [];
+                var subject = await Get(c, a.School, "subjects", Id(homework, "subjectId"));
+                await Send(c, a.School, "homework.reviewed", NotificationRules.EventKey("homework.reviewed", id, "v" + ((int)Number(old, "version") + 1)), new() { ["homeworkTitle"] = Text(homework, "title"), ["subjectName"] = Text(subject, "name"),
+                    ["remark"] = Text(d, "feedback"), ["amount"] = Text(d, "grade") == "" ? "" : Text(d, "grade") + (Text(homework, "maxMarks") == "" ? "" : " of " + Text(homework, "maxMarks")), ["teacherName"] = await AccountName(c, a), ["schoolName"] = await SchoolName(c, a.School) }, Id(d, "homeworkId"), family, a.User, "suite.submissions");
             }
             if (kind == "exams" && Text(d, "status") == "Published" && (old is null || Text(old, "status") != "Published"))
             {

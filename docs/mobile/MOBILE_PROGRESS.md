@@ -37,7 +37,7 @@ backend code that is written but not deployed (see `docs/notifications/`).
 |---|---|---|---|
 | Children | IMPLEMENTED | `GET /suite/reports/attendance`, `GET /suite/allocations` | Linked children with class. |
 | Attendance | IMPLEMENTED | `GET /suite/reports/attendance?month=`, `GET /suite/reports/attendance/days` | Monthly totals per child, plus each marked day with the reason the school recorded (absent, late and excused days first; "show all" for the month). |
-| Homework | PARTIAL | `GET /suite/records/homework`, `submissions` | List, detail, handed-in status. Parents cannot hand in from the app; attachments not shown. |
+| Homework | IMPLEMENTED | `GET /suite/homework/board` | Board per child: due today, upcoming, completed, late, missing, excused, reviewed; the teacher's check, marks and feedback. Parents read only. Files are counted, opened on the web. |
 | Timetable | IMPLEMENTED | `GET /suite/records/timetable`, `GET /suite/options` | Weekly, by day. |
 | Results | IMPLEMENTED | `GET /suite/report-cards/{student}` | Published exams, overall percent and grade. Printable report card: FUTURE. |
 | Fees | IMPLEMENTED (view) | `GET /suite/fees` | Charges, received, outstanding. Online payment: BLOCKED BY API (does not exist in EduOS). Receipts download: FUTURE. |
@@ -52,7 +52,7 @@ backend code that is written but not deployed (see `docs/notifications/`).
 | My classes | IMPLEMENTED | `GET /suite/records/classes` | Tap a class to open its register. Shows the first 20 (API page size). |
 | Mark attendance | IMPLEMENTED | `GET`/`POST /suite/student-attendance`, `GET /suite/student-attendance/registers` | Per-student status, "mark the rest present", structured reason per student, submit the class register, correction with a reason once submitted, register state badge. REQUIRES DEVICE TEST. |
 | Attendance history | PARTIAL | same | The last 7 days can be opened and corrected. Older days and monthly staff reports: FUTURE. |
-| Homework | PARTIAL | `GET /suite/records/homework` | View. Setting homework and giving feedback from the app: FUTURE (API exists). |
+| Homework | IMPLEMENTED | `GET /suite/homework/overview`, `GET /suite/homework/{id}/submissions`, `PUT /suite/homework/{id}/verify|review/{studentId}` | Every assignment with handed in, to review and missing counts; student-by-student check (Completed, Late, Missing, Excused) and marks with feedback. Setting homework stays on the web. |
 | Timetable | IMPLEMENTED | `GET /suite/records/timetable` | |
 | Student / class view | PARTIAL | register rows | Students appear in the register by class. A student profile screen: FUTURE. |
 | Notices | PARTIAL | as Parent | |
@@ -64,7 +64,7 @@ backend code that is written but not deployed (see `docs/notifications/`).
 | Module | Status | API | Notes |
 |---|---|---|---|
 | Timetable | IMPLEMENTED | as above | |
-| Homework | PARTIAL | `homework`, `submissions` records, `POST /suite/records/submissions` | List, detail, hand in a written response before the due date. Attachments and editing a submission: FUTURE (document API exists). |
+| Homework | IMPLEMENTED | `GET /suite/homework/board`, `POST`/`PUT /suite/records/submissions` | Board with state per assignment; Mark as done, hand in a written answer, hand in again (earlier work kept on the server), late decided by the server; the teacher's check, marks and feedback. File uploads: web only (counted in the app). |
 | Attendance | IMPLEMENTED | `GET /suite/reports/attendance`, `GET /suite/reports/attendance/days` | Monthly totals and each marked day with its reason. |
 | Results | IMPLEMENTED | `GET /suite/report-cards/{student}` | |
 | Notices, calendar | PARTIAL / IMPLEMENTED | as Parent | |
@@ -116,6 +116,7 @@ reviewed account links.
 
 ## Verification
 
+- 2026-10-03 (Homework & Assignments 2.0): Homework screen rewritten on `GET /suite/homework/board|overview|{id}/submissions`, `PUT /suite/homework/{id}/verify|review/{studentId}` and the submissions record save; submission modes (Mark as done, Text, File, Physical, None), one-tap Completed / Late / Missing / Excused check for teachers, hand in and hand in again for students; Home shows what needs attention and what is to review. `npm run typecheck` clean; `npm test` 61 passing. Not yet seen on a device.
 - 2026-10-05 (Smart Attendance): `npm run typecheck` clean; `npm test` 56 passing (register entries with reasons, correction detection, notification routes). Register, Children and Overview changes are not yet seen on a device.
 
 - 2026-10-03 (layout and profile pass): the Home identity block (avatar, greeting, name, role) opens Profile for every role; sheet actions (Approve, Reject) sit side by side; Profile shows sign-in name, email, school and role in label and value rows; the account-type choice on Create account wraps instead of scrolling sideways. Marker is now "Build 5". Typecheck clean, 53 tests passing; not yet confirmed on the device. On the web the same pass added My account (`/account`, `/super-admin/account`) behind the header identity, and tables that become labelled cards below 900px; `frontend/audit-responsive.mjs` re-checks every role at a given width against the live API (read-only).

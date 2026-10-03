@@ -61,6 +61,8 @@ public static class NotificationTemplates
             ["studentName", "className", "date", "status", "reason", "schoolName"], InApp("Attendance updated for {{studentName}}", "The record for {{date}} is now {{status}}. {{reason}}")),
         new("homework.assigned", "Homework is set for a class", "Homework assigned", "For the students of a class and their families when homework is set.", "homework", Implemented,
             ["homeworkTitle", "subjectName", "className", "dueDate", "teacherName", "schoolName"], InApp("New homework: {{homeworkTitle}}", "{{subjectName}}, due {{dueDate}}.")),
+        new("homework.reviewed", "Handed-in work is reviewed", "Homework reviewed", "For a student and their family when a teacher gives marks or feedback.", "homework", Implemented,
+            ["homeworkTitle", "subjectName", "amount", "remark", "teacherName", "schoolName"], InApp("{{homeworkTitle}} was reviewed", "{{subjectName}}: {{amount}} {{remark}}")),
         new("homework.due", "Homework is due soon", "Homework due", "A reminder before homework is due.", "homework", Blocked,
             ["homeworkTitle", "subjectName", "className", "dueDate", "schoolName"], InApp("Homework due soon: {{homeworkTitle}}", "{{subjectName}} is due on {{dueDate}}.")),
         new("result.published", "An exam that has marks is published", "Results published", "For the students who have marks in an exam, and their families, when the exam is published.", "results", Implemented,

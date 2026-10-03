@@ -8,6 +8,7 @@ import { useAuthStore } from '../../store/auth'
 import { Dialog, Empty, ErrorBox, Loading, PageHeader, Pagination } from '../../components/UI'
 import { data, Field, Module, Options, Row, label, workbook, printSchoolDocument } from './helpers'
 import { FeesPage, ReportsPage, AllocationPage } from './SuiteTools'
+import HomeworkPage from './HomeworkPage'
 import { RegisterPage } from './AttendancePages'
 import { ForbiddenPage } from '../ForbiddenPage'
 import { canVisit } from '../../access'
@@ -23,7 +24,7 @@ export function SchoolModules(){
 }
 // Connected tools are shown only to roles their endpoints accept; the API still decides every request.
 const toolRoles:Record<string,string[]>={fees:['Administrator','Principal','Parent','Student'],allocation:['Administrator'],register:['Administrator','Principal','Teacher'],reports:['Administrator','Principal','Teacher','Parent','Student']}
-export default function SuiteRouter(){const{kind}=useParams(),user=useAuthStore(s=>s.user);if(kind&&!canVisit(user,'/suite/'+kind))return <ForbiddenPage/>;return kind==='fees'?<FeesPage/>:kind==='reports'?<ReportsPage/>:kind==='allocation'?<AllocationPage/>:kind==='register'?<RegisterPage/>:<RecordPage key={kind} kind={kind||''}/>}
+export default function SuiteRouter(){const{kind}=useParams(),user=useAuthStore(s=>s.user);if(kind&&!canVisit(user,'/suite/'+kind))return <ForbiddenPage/>;return kind==='fees'?<FeesPage/>:kind==='reports'?<ReportsPage/>:kind==='allocation'?<AllocationPage/>:kind==='register'?<RegisterPage/>:kind==='homework'?<HomeworkPage/>:<RecordPage key={kind} kind={kind||''}/>}
 function RecordPage({kind}:{kind:string}){
  const cache=useQueryClient(),role=useAuthStore(s=>s.user?.roles[0]),admin=isAdministrator(role),leader=isLeadership(role)
  const [linkDraft,setLinkDraft]=useState<Record<string,string>>()
@@ -76,7 +77,7 @@ export function SuiteInput({field:f,options,value,readOnly=false}:{field:Field,o
  {f.type==='reference'||f.type==='select'?<select name={f.key} required={f.required} defaultValue={defaultValue} disabled={readOnly}><option value="">Select…</option>{f.type==='reference'?options?.[f.source!]?.map(o=><option key={o.id} value={o.id}>{o.label}</option>):f.options?.map(o=><option key={o}>{o}</option>)}</select>:f.type==='textarea'?<textarea name={f.key} defaultValue={defaultValue} required={f.required} maxLength={4000} readOnly={readOnly} rows={4}/>:<input name={f.key} type={f.type==='money'?'number':f.type} defaultValue={defaultValue} required={f.required} readOnly={readOnly} step={f.type==='money'||f.type==='number'?'0.01':undefined} min={f.type==='money'||f.type==='number'?0:undefined} maxLength={255}/>}
  {readOnly&&<input type="hidden" name={f.key} value={defaultValue}/>}</label>
 }
-function Attachments({recordId,canUpload}:{recordId:string,canUpload:boolean}){
+export function Attachments({recordId,canUpload}:{recordId:string,canUpload:boolean}){
  const cache=useQueryClient(),[error,setError]=useState(''),[busy,setBusy]=useState(false)
  const list=useQuery<Row[]>({queryKey:['suite','documents',recordId],queryFn:()=>data('/documents',{recordId})})
  async function upload(file:File){setError('');if(file.size>8*1024*1024){setError('Choose a file smaller than 8 MB.');return}setBusy(true);try{const body=new FormData();body.append('file',file);await client.post('/suite/documents',body,{params:{recordId}});await cache.invalidateQueries({queryKey:['suite','documents',recordId]})}catch(e){setError(errorMessage(e))}finally{setBusy(false)}}

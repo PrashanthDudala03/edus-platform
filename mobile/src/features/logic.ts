@@ -5,6 +5,30 @@ export const STATUSES: AttendanceStatus[] = ['Present', 'Late', 'Absent', 'Excus
 
 export interface Child { studentId: string, name: string, className: string, classId: string, admissionNumber: string, present: number, absent: number, late: number, excused: number, markedDays: number }
 export interface Homework { id: string, title: string, classId: string, subjectId: string, dueDate: string, instructions: string }
+export type HomeworkGroup = 'due-today' | 'upcoming' | 'submitted' | 'reviewed' | 'late' | 'missing' | 'excused' | 'closed'
+export const HOMEWORK_GROUPS: HomeworkGroup[] = ['due-today', 'upcoming', 'missing', 'late', 'submitted', 'reviewed', 'excused', 'closed']
+export const GROUP_LABEL: Record<HomeworkGroup, string> = { 'due-today': 'Due today', upcoming: 'Upcoming', submitted: 'Completed', reviewed: 'Reviewed', late: 'Completed late', missing: 'Missing', excused: 'Excused', closed: 'Closed' }
+/** How work comes back: information only, a tap to confirm, a written answer, files (web upload), or shown in class. */
+export type SubmissionMode = 'None' | 'Done' | 'Text' | 'File' | 'Physical'
+export const MODE_LABEL: Record<SubmissionMode, string> = { None: 'No online submission', Done: 'Mark as done', Text: 'Text response', File: 'Online file submission', Physical: 'Shown in class' }
+export type Outcome = '' | 'Completed' | 'Late' | 'Missing' | 'Excused'
+export const OUTCOMES: Exclude<Outcome, ''>[] = ['Completed', 'Late', 'Missing', 'Excused']
+export interface HomeworkSubmission { id: string, version: number, status: 'Submitted' | 'Reviewed' | '', submittedAt: string, late: boolean, outcome: Outcome, response: string, grade: string, feedback: string, resubmissions: number, attachments: number }
+export interface Assignment { id: string, title: string, className: string, subjectName: string, teacher: string, instructions: string, dueDate: string, dueTime: string, maxMarks: string, submissionMode: SubmissionMode, status: 'Draft' | 'Published' | 'Closed', attachments: number }
+export const studentSubmits = (mode: SubmissionMode) => mode === 'Done' || mode === 'Text' || mode === 'File'
+export const tracked = (mode: SubmissionMode) => mode !== 'None'
+export interface BoardItem extends Assignment { group: HomeworkGroup, submission: HomeworkSubmission | null }
+export interface OverviewItem extends Assignment { assigned: number, submitted: number, late: number, reviewed: number, pending: number, missing: number }
+export interface ReviewRow { studentId: string, name: string, code: string, group: HomeworkGroup, submission: HomeworkSubmission | null }
+/** Groups that still need something from the student, soonest first. */
+export const needsAttention = (items: BoardItem[]) => items.filter(i => i.group === 'due-today' || i.group === 'upcoming' || i.group === 'missing').sort((a, b) => (a.dueDate + a.dueTime).localeCompare(b.dueDate + b.dueTime))
+export const groupTone = (group: HomeworkGroup): 'neutral' | 'success' | 'warning' | 'danger' | 'primary' => group === 'missing' ? 'danger' : group === 'late' ? 'warning' : group === 'reviewed' || group === 'submitted' ? 'success' : group === 'due-today' ? 'primary' : 'neutral'
+export const marksLabel = (submission: HomeworkSubmission | null, maxMarks: string) => submission?.grade ? submission.grade + (maxMarks ? ' / ' + maxMarks : '') : ''
+/** A student may hand in (again) while the work is published, is done online and is not yet reviewed or excused. */
+export const mayHandIn = (item: BoardItem) => item.status === 'Published' && studentSubmits(item.submissionMode) && item.submission?.status !== 'Reviewed' && item.submission?.outcome !== 'Excused'
+/** What the student does with this assignment, in their words. */
+export const handInLabel = (item: BoardItem) => item.submissionMode === 'Done' ? (item.submission ? 'Marked as done' : 'Mark as done') : item.submission ? 'Hand in again' : 'Hand in'
+export const overviewTotals = (items: OverviewItem[]) => ({ toReview: items.reduce((n, i) => n + i.pending, 0), missing: items.reduce((n, i) => n + i.missing, 0), late: items.reduce((n, i) => n + i.late, 0), published: items.filter(i => i.status === 'Published').length })
 export interface Submission { id: string, homeworkId: string, studentId: string, response: string, feedback: string, grade: string }
 export interface Exam { id: string, name: string, classId: string, subjectId: string, date: string, maxMarks: string, passMarks: string, status: string }
 export interface Circular { id: string, title: string, message: string, audience: string, classId: string, dueDate: string, createdAt: string }

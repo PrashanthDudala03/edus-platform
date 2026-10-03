@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { can } from '@/access/experience'
 import { api, useSession } from '@/services'
 import { isoMonth } from '@/utils/format'
-import type { AttendanceStatus, CalendarEvent, Charge, Child, Circular, ClassRegister, DayRecord, Exam, Homework, Leave, Message, RegisterRow, RegisterTotals, ReportCard, Submission } from './logic'
+import type { Assignment, AttendanceStatus, BoardItem, CalendarEvent, Charge, Child, Circular, ClassRegister, DayRecord, Exam, Homework, HomeworkGroup, HomeworkSubmission, Leave, Message, OverviewItem, RegisterRow, RegisterTotals, ReportCard, ReviewRow, Submission } from './logic'
 
 // Every request the core modules make, in one place. Each is an existing EduOS endpoint that already limits rows to
 // what the signed-in account may see; the app adds no filter that could be mistaken for access control. A query is
@@ -100,6 +100,50 @@ export function useSaveRegister(day: string) {
     onSuccess: () => Promise.all([cache.invalidateQueries({ queryKey: ['register', day] }), cache.invalidateQueries({ queryKey: ['registers', day] }), cache.invalidateQueries({ queryKey: ['operations-overview'] }), cache.invalidateQueries({ queryKey: ['attendance-report'] }), cache.invalidateQueries({ queryKey: ['attendance-days'] })]) })
 }
 export function useAcknowledge() { return useMutation({ mutationFn: (circularId: string) => api.post(`/suite/circulars/${circularId}/acknowledge`) }) }
+const assignment = (r: Row): Assignment => ({ id: s(r.id), title: s(r.title), className: s(r.className), subjectName: s(r.subjectName), teacher: s(r.teacher), instructions: s(r.instructions), dueDate: s(r.dueDate).slice(0, 10), dueTime: s(r.dueTime), maxMarks: s(r.maxMarks), submissionMode: (['None', 'Done', 'Text', 'File', 'Physical'].includes(s(r.submissionMode)) ? s(r.submissionMode) : 'Text') as Assignment['submissionMode'], status: (s(r.status) || 'Published') as Assignment['status'], attachments: n(r.attachments) })
+const submission = (r: unknown): HomeworkSubmission | null => { if (!r || typeof r !== 'object') return null; const x = r as Row; return { id: s(x.id), version: n(x.version), status: s(x.status) === 'Reviewed' ? 'Reviewed' : s(x.status) === 'Submitted' ? 'Submitted' : '', submittedAt: s(x.submittedAt), late: x.late === true, outcome: (['Completed', 'Late', 'Missing', 'Excused'].includes(s(x.outcome)) ? s(x.outcome) : '') as HomeworkSubmission['outcome'], response: s(x.response), grade: s(x.grade), feedback: s(x.feedback), resubmissions: n(x.resubmissions), attachments: n(x.attachments) } }
+/** One student's assignments with their state (due today, upcoming, submitted, reviewed, late, missing). The server limits it to linked students. */
+export function useHomeworkBoard(studentId: string | undefined, enabled = true) {
+  const allowed = usePermission('homework.view')
+  return useQuery({ queryKey: ['homework-board', studentId], enabled: enabled && allowed && !!studentId, staleTime: 30_000, queryFn: async (): Promise<BoardItem[]> => {
+    const d = await get<Row>('/suite/homework/board', { studentId })
+    return (Array.isArray(d.items) ? d.items as Row[] : []).map(r => ({ ...assignment(r), group: s(r.group) as HomeworkGroup, submission: submission(r.submission) }))
+  } })
+}
+/** Every assignment a teacher (or leadership) manages, with how the class is doing. */
+export function useHomeworkOverview(enabled = true) {
+  const allowed = usePermission('homework.view')
+  return useQuery({ queryKey: ['homework-overview'], enabled: enabled && allowed, staleTime: 30_000, queryFn: async (): Promise<OverviewItem[]> => {
+    const d = await get<Row>('/suite/homework/overview')
+    return (Array.isArray(d.items) ? d.items as Row[] : []).map(r => ({ ...assignment(r), assigned: n(r.assigned), submitted: n(r.submitted), late: n(r.late), reviewed: n(r.reviewed), pending: n(r.pending), missing: n(r.missing) }))
+  } })
+}
+/** The review list for one assignment: every student of the class and what they handed in. */
+export function useHomeworkReview(homeworkId: string | undefined) {
+  return useQuery({ queryKey: ['homework-review', homeworkId], enabled: !!homeworkId, staleTime: 15_000, queryFn: async (): Promise<ReviewRow[]> => {
+    const d = await get<Row>('/suite/homework/' + homeworkId + '/submissions')
+    return (Array.isArray(d.students) ? d.students as Row[] : []).map(r => ({ studentId: s(r.studentId), name: s(r.name), code: s(r.code), group: s(r.group) as HomeworkGroup, submission: submission(r.submission) }))
+  } })
+}
+export function useReviewHomework() {
+  const cache = useQueryClient()
+  return useMutation({ mutationFn: (input: { homeworkId: string, studentId: string, grade: string, feedback: string, version: number }) => api.put(`/suite/homework/${input.homeworkId}/review/${input.studentId}`, { grade: input.grade, feedback: input.feedback, version: input.version }),
+    onSuccess: (_, input) => Promise.all([cache.invalidateQueries({ queryKey: ['homework-review', input.homeworkId] }), cache.invalidateQueries({ queryKey: ['homework-overview'] })]) })
+}
+/** The quick check for notebook and in-class work: Completed, Late, Missing or Excused per student; '' clears it. */
+export function useVerifyHomework() {
+  const cache = useQueryClient()
+  return useMutation({ mutationFn: (input: { homeworkId: string, studentId: string, outcome: string, version?: number }) => api.put(`/suite/homework/${input.homeworkId}/verify/${input.studentId}`, { outcome: input.outcome, version: input.version }),
+    onSuccess: (_, input) => Promise.all([cache.invalidateQueries({ queryKey: ['homework-review', input.homeworkId] }), cache.invalidateQueries({ queryKey: ['homework-overview'] })]) })
+}
+/** Handing in: a first submission is created; handing in again updates it and the server keeps the earlier work. */
+export function useHandIn() {
+  const cache = useQueryClient()
+  return useMutation({ mutationFn: async (input: { item: BoardItem, studentId: string, response: string }): Promise<unknown> => input.item.submission
+    ? api.put('/suite/records/submissions/' + input.item.submission.id, { homeworkId: input.item.id, studentId: input.studentId, response: input.response, feedback: input.item.submission.feedback, grade: input.item.submission.grade, version: input.item.submission.version })
+    : api.post('/suite/records/submissions', { homeworkId: input.item.id, studentId: input.studentId, response: input.response, feedback: '', grade: '' }),
+    onSuccess: () => Promise.all([cache.invalidateQueries({ queryKey: ['homework-board'] }), cache.invalidateQueries({ queryKey: ['records', 'submissions'] })]) })
+}
 export function useSubmitHomework() {
   const cache = useQueryClient()
   return useMutation({ mutationFn: (input: { homeworkId: string, studentId: string, response: string }) => api.post('/suite/records/submissions', { ...input, feedback: '', grade: '' }), onSuccess: () => cache.invalidateQueries({ queryKey: ['records', 'submissions'] }) })
