@@ -8,10 +8,19 @@ using Services.Auth.Services;
 namespace Services.Auth.Handlers;
 
 /// <summary>A sign-in refused for a reason the user may be told, with the HTTP status to answer.</summary>
-public class LoginRejectedException(int status, string message) : InvalidOperationException(message)
+public class LoginRejectedException(int status, string message, IReadOnlyList<SchoolChoice>? schools = null) : InvalidOperationException(message)
 {
     public int Status { get; } = status;
+    /// <summary>The schools to choose from, when the same sign-in name and password belong to several.</summary>
+    public IReadOnlyList<SchoolChoice>? Schools { get; } = schools;
+    /// <summary>What the client is told. Schools appear only when there is a choice to make.</summary>
+    public object Body => Schools is null
+        ? new { statusCode = Status, message = Message }
+        : new { statusCode = Status, message = Message, schools = Schools.Select(school => new { id = school.Id, name = school.Name }) };
 }
+
+/// <summary>A school offered at sign-in. Built only from accounts whose password was just proved.</summary>
+public sealed record SchoolChoice(Guid Id, string Name);
 
 public class LoginCommand : IRequest<JwtTokenResponse>
 {
@@ -34,6 +43,7 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, JwtTokenRespons
     private readonly IPasswordService _passwordService;
     private readonly IJwtService _jwtService;
     private readonly IValidator<LoginCommand> _validator;
+    private static string? _decoy;
 
     public LoginCommandHandler(
         IUserRepository userRepository,
@@ -63,16 +73,34 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, JwtTokenRespons
         // The role and school always come from the matched account, never from the request.
         var candidates = await _userRepository.FindLoginCandidatesAsync(requestedSchool, request.Username.Trim());
         var matches = candidates.Where(candidate => _passwordService.VerifyPassword(request.Password, candidate.PasswordHash)).ToList();
+        // A sign-in name nobody has still costs one password check, so the answer and its timing do not show
+        // whether the name (or the name in a chosen school) exists.
+        if (candidates.Count == 0) _passwordService.VerifyPassword(request.Password, _decoy ??= _passwordService.HashPassword(Guid.NewGuid().ToString("N")));
         if (matches.Count == 0)
         {
             Log.Warning("Login failed for {Username}", request.Username);
             throw new InvalidOperationException("Invalid credentials");
         }
-        if (matches.Count > 1)
-            throw new LoginRejectedException(409, "This sign-in name is used in more than one school. Enter your School ID to continue.");
-
         // Account state is revealed only to someone who already proved the password.
         var user = matches[0];
+        if (matches.Count > 1)
+        {
+            // The same sign-in name and password in several schools. The person chooses, and is offered only the
+            // schools these proven accounts can enter; a wrong password never reaches this point.
+            var usable = new List<User>();
+            foreach (var match in matches)
+                if (match.CanSignIn && await _userRepository.IsSchoolActiveAsync(match.SchoolId)) usable.Add(match);
+            var schools = usable.Select(match => match.SchoolId).Distinct().ToArray();
+            if (schools.Length != usable.Count)
+                throw new LoginRejectedException(409, "More than one account in your school uses this sign-in name. Contact your school administrator.");
+            if (usable.Count > 1)
+            {
+                var names = await _userRepository.GetSchoolNamesAsync(schools);
+                throw new LoginRejectedException(409, "This sign-in name is used in more than one school. Choose your school to continue.",
+                    schools.Select(id => new SchoolChoice(id, names.GetValueOrDefault(id, "School"))).OrderBy(school => school.Name, StringComparer.OrdinalIgnoreCase).ToList());
+            }
+            if (usable.Count == 1) user = usable[0];
+        }
         if (!user.CanSignIn)
             throw new LoginRejectedException(403, "Your account is currently disabled. Contact your school administrator.");
         if (!await _userRepository.IsSchoolActiveAsync(user.SchoolId))
