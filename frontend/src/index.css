@@ -232,7 +232,7 @@ table:has(.row-actions>.button:nth-child(3)) th,table:has(.row-actions>.button:n
  .table-scroll thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
  .table-scroll tr{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:9px 14px;padding:13px 16px;border-bottom:1px solid #eef2e9}
  .table-scroll td,.table-scroll tbody td{display:block;height:auto;width:auto;padding:0;border:0;min-width:0;max-width:none;overflow:visible;overflow-wrap:anywhere;white-space:normal;font-size:13px;color:#33423a}
- .table-scroll td::before{content:attr(data-label);display:block;margin-bottom:2px;font-size:10px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:#5d6b54}
+ .table-scroll td::before{content:attr(data-label) / "";display:block;margin-bottom:2px;font-size:10px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:#5d6b54}
  .table-scroll td:not([data-label])::before,.table-scroll td[data-label=""]::before,.table-scroll td:first-child::before{display:none}
  .table-scroll td:first-child{grid-column:1/-1;font-size:15px;font-weight:600;color:#1f2d24}
  .table-scroll td:empty{display:none}.table-scroll td[colspan],.table-scroll td:has(.row-actions),.table-scroll td:last-child:has(button,.button){grid-column:1/-1}

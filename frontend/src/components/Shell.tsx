@@ -15,11 +15,15 @@ export function useSignOut(){
  return async()=>{try{await authAPI.logout(refreshToken)}catch{}finally{clearAuth();cache.clear();navigate('/login')}}
 }
 // On a phone a table row is shown as a compact card (see index.css). Each cell then needs its column's name, which
-// is copied from the table's own header here, once, for every table on every page, as rows arrive.
+// is copied from the table's own header here, once, for every table on every page, as rows arrive. The card layout
+// changes the elements' display, which makes browsers drop a table's implicit roles, so the roles are set explicitly
+// here too: a screen reader still hears a table with headers and cells whatever the screen width.
+const ROLES:[string,string][]=[['table','table'],['thead','rowgroup'],['tbody','rowgroup'],['tr','row'],['th','columnheader'],['td','cell']]
 function useLabelledTables(){
  useEffect(()=>{
   const main=document.getElementById('main');if(!main)return
   const label=()=>{for(const table of main.querySelectorAll('table')){const heads=[...table.querySelectorAll('thead th')].map(th=>th.textContent?.trim()||'')
+   for(const [tag,role] of ROLES)for(const el of tag==='table'?[table]:table.querySelectorAll(tag))if(!el.hasAttribute('role'))el.setAttribute('role',role)
    for(const row of table.querySelectorAll('tbody tr'))[...row.children].forEach((cell,i)=>{const text=heads[i]||'';if(cell.getAttribute('data-label')!==text)cell.setAttribute('data-label',text)})}}
   let queued=0;const observer=new MutationObserver(()=>{if(!queued)queued=requestAnimationFrame(()=>{queued=0;label()})})
   observer.observe(main,{childList:true,subtree:true});label()
