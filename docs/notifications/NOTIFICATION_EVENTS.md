@@ -18,6 +18,8 @@ to its own screen.
 | Circular published | `circular.published` | The circular's audience by data scope, holding `circulars.view`; with a class set, that class's families and teachers (plus leadership when the audience is All) | `notices` | circularTitle, circularMessage, className, schoolName, date | IMPLEMENTED |
 | Announcement | none yet | To decide: announcements (`/operations/announcements`) are a staff-side list that overlaps with circulars | `notices` | to define | FUTURE |
 | Student absent | `attendance.absent` | Parent accounts linked to the student (account link `relationship = parent`) whose role holds `reports.view` | `attendance` | studentName, className, date, schoolName | IMPLEMENTED |
+| Student late | `attendance.late` | As student absent | `attendance` | studentName, className, date, schoolName | IMPLEMENTED |
+| Attendance corrected | `attendance.corrected` | As student absent, when a submitted register is corrected for the student and the status changed | `attendance` | studentName, className, date, status, reason, schoolName | IMPLEMENTED |
 | Homework assigned | `homework.assigned` | Student and parent accounts linked to students allocated to the class, whose role holds `homework.view` | `homework` | homeworkTitle, subjectName, className, dueDate, teacherName, schoolName | IMPLEMENTED |
 | Homework due | `homework.due` | As homework assigned | `homework` | homeworkTitle, subjectName, className, dueDate, schoolName | BLOCKED BY DOMAIN EVENT |
 | Submission received | none yet | The teacher(s) assigned to the homework's class and subject | `homework` | to define | FUTURE |
@@ -37,7 +39,8 @@ to its own screen.
 | Circular published | a circular record is created | the record save commits | circular |
 | Leave requested | a leave request record is created | the record save commits | request |
 | Leave approved / rejected | a leave request's status changes to Approved or Rejected | the record save commits | request version (a later, different decision is announced; the same save never twice) |
-| Student absent | `POST /suite/student-attendance` stores a student as Absent | the register transaction commits | student and day, for a register of today or yesterday only. Saving again, or correcting to Present and back, does not repeat it. Older registers are corrections or back-filling and notify nobody |
+| Student absent / late | `POST /suite/student-attendance` stores a student as Absent or Late for the first time that day | the register transaction commits | student and day, for a register of today or yesterday only. Saving again does not repeat it; a later correction is announced as a correction instead. Older registers notify nobody |
+| Attendance corrected | a submitted register is corrected and the student's status changes | the correction commits | correction (a new event key each time; saving the same correction again sends nothing because nothing changes) |
 | Homework assigned | a homework record is created (homework has no draft state) | the record save commits | homework |
 | Result published | an exam's Publication changes to Published and the exam has marks | the record save commits | exam. Unpublishing to correct a mark and publishing again does not repeat it |
 | Fee due | `POST /suite/fees/charges` issues a charge to a student (amount after concession above zero) | the charge transaction commits | charge |

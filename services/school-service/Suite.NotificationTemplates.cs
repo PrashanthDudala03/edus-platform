@@ -39,7 +39,7 @@ public static class NotificationTemplates
         new("remark", "The remark added with the decision", "Please hand over your classes"), new("amount", "The amount with currency", "₹ 12,500"),
         new("dueDate", "The date it is due", "15 Oct 2026"), new("subjectName", "The subject", "Mathematics"),
         new("homeworkTitle", "The homework's title", "Fractions worksheet"), new("examName", "The exam or term", "Half-yearly examination"),
-        new("circularTitle", "The circular's title", "Parent-teacher meeting"), new("circularMessage", "The circular's text", "The parent-teacher meeting is on Saturday at 9 am."),
+        new("status", "The attendance status", "Present"), new("circularTitle", "The circular's title", "Parent-teacher meeting"), new("circularMessage", "The circular's text", "The parent-teacher meeting is on Saturday at 9 am."),
     ];
 
     static IReadOnlyDictionary<string, TemplateText> InApp(string title, string body) => new Dictionary<string, TemplateText> { ["in-app"] = new(title, body) };
@@ -55,6 +55,10 @@ public static class NotificationTemplates
             ["teacherName", "dateRange", "startDate", "endDate", "remark", "schoolName"], InApp("Your leave was rejected", "{{dateRange}}. {{remark}}")),
         new("attendance.absent", "A student is marked absent", "Student absent", "For a student's family when the student is marked absent.", "attendance", Implemented,
             ["studentName", "className", "date", "schoolName"], InApp("{{studentName}} was marked absent", "{{studentName}} was marked absent on {{date}}. Please contact the school if this needs correction.")),
+        new("attendance.late", "A student is marked late", "Student late", "For a student's family when the student is marked late.", "attendance", Implemented,
+            ["studentName", "className", "date", "schoolName"], InApp("{{studentName}} arrived late", "{{studentName}} was marked late on {{date}}.")),
+        new("attendance.corrected", "An attendance status is corrected", "Attendance corrected", "For a student's family when a submitted register is corrected for the student.", "attendance", Implemented,
+            ["studentName", "className", "date", "status", "reason", "schoolName"], InApp("Attendance updated for {{studentName}}", "The record for {{date}} is now {{status}}. {{reason}}")),
         new("homework.assigned", "Homework is set for a class", "Homework assigned", "For the students of a class and their families when homework is set.", "homework", Implemented,
             ["homeworkTitle", "subjectName", "className", "dueDate", "teacherName", "schoolName"], InApp("New homework: {{homeworkTitle}}", "{{subjectName}}, due {{dueDate}}.")),
         new("homework.due", "Homework is due soon", "Homework due", "A reminder before homework is due.", "homework", Blocked,

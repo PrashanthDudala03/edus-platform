@@ -2,10 +2,12 @@ import { StyleSheet, View } from 'react-native'
 import { useQuery } from '@tanstack/react-query'
 import { QueryView } from '@/components/QueryView'
 import { Header } from '@/components/blocks'
-import { AppText, Card, Screen } from '@/components/ui'
+import { AppText, Badge, Card, Screen } from '@/components/ui'
 import { api } from '@/services'
 import { color, space } from '@/theme/tokens'
 import { dayParts, figure, isoDay, percent } from '@/utils/format'
+import { useRegisters } from '../data'
+import { registerDone } from '../logic'
 
 // Leadership proof slice: the school's operations overview for today. GET /operations/overview is the same call the
 // web Administrator dashboard uses; the gateway supplies the school from the token.
@@ -24,7 +26,7 @@ export function useOverview(day: string, enabled = true) {
 }
 
 export function OverviewScreen() {
-  const today = isoDay(new Date()), overview = useOverview(today)
+  const today = isoDay(new Date()), overview = useOverview(today), registers = useRegisters(today)
   return <Screen refreshing={overview.isRefetching} onRefresh={() => { overview.refetch() }}>
     <Header overline={dayParts(today)?.label ?? 'Today'} title="School overview" route="/overview" />
     <QueryView query={overview} empty={{ title: 'Nothing to show yet', message: 'Figures appear once students and staff are added.' }} rows={4}>
@@ -38,6 +40,10 @@ export function OverviewScreen() {
               <View style={styles.bar} accessibilityLabel={`${rate} percent present of ${data.marked} marked`}><View style={[styles.barFill, { width: `${rate ?? 0}%` }]} /></View>
               <AppText variant="caption" tone="muted" style={styles.gap}>{figure(data.present)} of {figure(data.marked)} marked · {figure(Math.max(0, data.students - data.marked))} not yet marked</AppText></>}
           </Card>
+          {!!registers.data?.classes.length && <Card><AppText variant="heading">Today's registers</AppText>
+            <AppText variant="caption" tone="muted" style={styles.gap}>{registers.data.totals.completed} submitted · {registers.data.totals.pending} pending · {figure(registers.data.totals.absent)} absent · {figure(registers.data.totals.late)} late</AppText>
+            {registers.data.classes.map(r => <View key={r.className} style={styles.registerRow}><View style={styles.flex}><AppText variant="bodyStrong" numberOfLines={1}>{r.className}</AppText><AppText variant="caption" tone="muted" numberOfLines={1}>{[r.teacher, `${r.marked} of ${r.expected} marked`].filter(Boolean).join(' · ')}</AppText></View>
+              <Badge label={r.state} tone={registerDone(r.state) ? 'success' : r.state === 'Not started' ? 'danger' : 'warning'} /></View>)}</Card>}
           {data.byClass.length > 0 && <Card><AppText variant="heading">Enrolment by class</AppText>
             {data.byClass.slice(0, 10).map(row => <View key={row.name} style={styles.classRow}><AppText style={styles.className} numberOfLines={1}>{row.name}</AppText>
               <View style={styles.classBar}><View style={[styles.barFill, { width: `${(row.count / largest) * 100}%` }]} /></View><AppText variant="bodyStrong" style={styles.classCount}>{figure(row.count)}</AppText></View>)}
@@ -47,7 +53,7 @@ export function OverviewScreen() {
   </Screen>
 }
 const styles = StyleSheet.create({
-  gap: { marginTop: space.md }, grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: space.md }, tile: { width: '48.2%', gap: space.xs },
+  flex: { flex: 1 }, registerRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginTop: space.md }, gap: { marginTop: space.md }, grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: space.md }, tile: { width: '48.2%', gap: space.xs },
   rateRow: { flexDirection: 'row', alignItems: 'baseline', gap: space.sm, marginTop: space.sm },
   bar: { height: 8, borderRadius: 4, backgroundColor: color.surfaceMuted, marginTop: space.md, overflow: 'hidden' }, barFill: { height: 8, borderRadius: 4, backgroundColor: color.primary },
   classRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginTop: space.md }, className: { width: 92 }, classBar: { flex: 1, height: 8, borderRadius: 4, backgroundColor: color.surfaceMuted, overflow: 'hidden' }, classCount: { width: 44, textAlign: 'right' },

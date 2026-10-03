@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { can } from '@/access/experience'
 import { api, useSession } from '@/services'
 import { isoMonth } from '@/utils/format'
-import type { AttendanceStatus, CalendarEvent, Charge, Child, Circular, Exam, Homework, Leave, Message, RegisterRow, ReportCard, Submission } from './logic'
+import type { AttendanceStatus, CalendarEvent, Charge, Child, Circular, ClassRegister, DayRecord, Exam, Homework, Leave, Message, RegisterRow, RegisterTotals, ReportCard, Submission } from './logic'
 
 // Every request the core modules make, in one place. Each is an existing EduOS endpoint that already limits rows to
 // what the signed-in account may see; the app adds no filter that could be mistaken for access control. A query is
@@ -72,14 +72,32 @@ export function useFees(enabled = true) {
 /** The daily register for the students this account teaches (or the whole school for leadership). */
 export function useRegister(day: string, enabled = true) {
   const allowed = usePermission('attendance.view')
-  return useQuery({ queryKey: ['register', day], enabled: enabled && allowed, staleTime: 30_000, queryFn: async (): Promise<RegisterRow[]> => (await get<Row[]>('/suite/student-attendance', { day })).map(r => ({ id: s(r.id), code: s(r.code), name: s(r.name), className: s(r.class), status: s(r.status) as RegisterRow['status'] })) })
+  return useQuery({ queryKey: ['register', day], enabled: enabled && allowed, staleTime: 30_000, queryFn: async (): Promise<RegisterRow[]> => (await get<Row[]>('/suite/student-attendance', { day })).map(r => ({ id: s(r.id), code: s(r.code), name: s(r.name), className: s(r.class), status: s(r.status) as RegisterRow['status'], reason: s(r.reason), remark: s(r.remark) })) })
+}
+/** Which classes have completed the day's register, with the day's totals. Leadership sees the school; a teacher their classes. */
+export function useRegisters(day: string, enabled = true) {
+  const allowed = usePermission('attendance.view')
+  return useQuery({ queryKey: ['registers', day], enabled: enabled && allowed, staleTime: 30_000, queryFn: async (): Promise<{ totals: RegisterTotals, classes: ClassRegister[], reasons: string[] }> => {
+    const d = await get<Row>('/suite/student-attendance/registers', { day }), t = (d.totals ?? {}) as Row
+    return { totals: { expected: n(t.expected), marked: n(t.marked), present: n(t.present), absent: n(t.absent), late: n(t.late), excused: n(t.excused), completed: n(t.completed), pending: n(t.pending), percent: n(t.percent) },
+      classes: (Array.isArray(d.classes) ? d.classes as Row[] : []).map(r => ({ className: s(r.className), expected: n(r.expected), marked: n(r.marked), present: n(r.present), absent: n(r.absent), late: n(r.late), excused: n(r.excused), state: s(r.state), teacher: s(r.teacher), submittedAt: s(r.submittedAt) })),
+      reasons: Array.isArray(d.reasons) ? (d.reasons as unknown[]).map(s) : [] }
+  } })
+}
+/** One student's marked days in a month, with the reason the school recorded. The server limits it to linked students. */
+export function useAttendanceDays(studentId: string, month: string, enabled = true) {
+  const allowed = usePermission('reports.view')
+  return useQuery({ queryKey: ['attendance-days', studentId, month], enabled: enabled && allowed && !!studentId, staleTime: 60_000, queryFn: async (): Promise<DayRecord[]> => {
+    const d = await get<Row>('/suite/reports/attendance/days', { studentId, month })
+    return (Array.isArray(d.days) ? d.days as Row[] : []).map(r => ({ day: s(r.day).slice(0, 10), status: s(r.status) as AttendanceStatus, reason: s(r.reason), remark: s(r.remark) }))
+  } })
 }
 
 // Writes. Each one is an action the same account can already take on the web; the server validates and authorises it.
 export function useSaveRegister(day: string) {
   const cache = useQueryClient()
-  return useMutation({ mutationFn: (entries: { studentId: string, status: AttendanceStatus }[]) => api.post('/suite/student-attendance', { day, entries }),
-    onSuccess: () => Promise.all([cache.invalidateQueries({ queryKey: ['register', day] }), cache.invalidateQueries({ queryKey: ['operations-overview'] }), cache.invalidateQueries({ queryKey: ['attendance-report'] })]) })
+  return useMutation({ mutationFn: async (input: { entries: { studentId: string, status: AttendanceStatus, reason?: string, remark?: string }[], submit?: boolean, reason?: string, remark?: string }) => (await api.post('/suite/student-attendance', { day, ...input })).data as { message?: string },
+    onSuccess: () => Promise.all([cache.invalidateQueries({ queryKey: ['register', day] }), cache.invalidateQueries({ queryKey: ['registers', day] }), cache.invalidateQueries({ queryKey: ['operations-overview'] }), cache.invalidateQueries({ queryKey: ['attendance-report'] }), cache.invalidateQueries({ queryKey: ['attendance-days'] })]) })
 }
 export function useAcknowledge() { return useMutation({ mutationFn: (circularId: string) => api.post(`/suite/circulars/${circularId}/acknowledge`) }) }
 export function useSubmitHomework() {
