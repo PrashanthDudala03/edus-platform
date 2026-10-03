@@ -33,6 +33,14 @@ Run step 3 only after the old auth-service is running; the new one re-applies th
 
 **Rollback.** Stop ai-service, then in the AI database: `DROP SCHEMA ai CASCADE; DROP ROLE ai_app;`. Nothing outside the AI database depends on it.
 
+## Smart Attendance (2026-10-05, prepared, not applied)
+
+**What it does.** Additive only. `school_db.attendance` gains `reason`, `remark`, `marked_by` and `marked_at` (nullable or defaulted; existing rows are untouched). Two new tables: `school_db.attendance_registers` (one row per class and day once a register is submitted) and `school_db.attendance_history` (every submission and correction with actor, reason and the previous status), plus two indexes. The history table gets the existing `suite_audit` trigger so changes also appear in the attributed activity report. No permission changes: the workflow reuses `attendance.view`, `attendance.mark` and `reports.view`.
+
+**Applied by** school-service on start (idempotent): `services/school-service/AttendanceSchema.sql`. Rebuild school-service only; auth-service and the gateway are unchanged.
+
+**Rollback.** Deploy the previous image. Optionally `DROP TABLE school_db.attendance_history, school_db.attendance_registers; ALTER TABLE school_db.attendance DROP COLUMN reason, DROP COLUMN remark, DROP COLUMN marked_by, DROP COLUMN marked_at;`. Older code ignores the new columns.
+
 ## Notifications and notification wording (2026-10-02, prepared, not applied)
 
 **What it does.** school-service creates schema `notify` with six new tables (`notifications`, `recipients`, `deliveries`, `preferences`, `template_overrides`, `devices`). Nothing existing is altered and no data is moved. Once only, auth-service grants the new `notifications.manage` permission to the Administrator role of existing schools and adds it to every school's boundary; those accounts get `token_version + 1` and sign in again. New installations receive it from the Administrator template defaults.

@@ -6,6 +6,7 @@ import { useAuthStore } from '../../store/auth'
 import { ErrorBox, PageHeader, today } from '../../components/UI'
 import { data, type Row } from '../suite/helpers'
 import { FeeSummary, Panel, QueryState, RecentCirculars, StatTile, UpcomingExams, useRecords } from './widgets'
+import { RegistersPanel } from '../suite/AttendancePages'
 type Overview = { stats: { students: number, teachers: number, parents: number, classes: number, present: number, marked: number } }
 
 // Academic and operational head of one school: reads everything, changes academic oversight records only.
@@ -30,10 +31,11 @@ export default function PrincipalDashboard() {
     {overview.isError ? <ErrorBox message={errorMessage(overview.error)} /> : <div className="stats-grid">
       <StatTile label="Total students" value={s ? Number(s.students).toLocaleString() : '—'} note="Active student records" icon={GraduationCap} tone="teal" to="/students" />
       <StatTile label="Teaching staff" value={s ? Number(s.teachers).toLocaleString() : '—'} note="Teacher profiles" icon={BookOpen} tone="blue" to="/teachers" />
-      <StatTile label="Today's attendance" value={s?.marked ? Math.round(Number(s.present) / Number(s.marked) * 100) + '%' : '—'} note={s ? s.present + ' present of ' + s.marked + ' marked' : 'Loading'} icon={CalendarCheck} tone="peach" to="/attendance" />
+      <StatTile label="Today's attendance" value={s?.marked ? Math.round(Number(s.present) / Number(s.marked) * 100) + '%' : '—'} note={s ? s.present + ' present of ' + s.marked + ' marked' : 'Loading'} icon={CalendarCheck} tone="peach" to="/suite/register" />
       <StatTile label="Class groups" value={s ? Number(s.classes).toLocaleString() : '—'} note="From current enrolments" icon={Layers} tone="purple" to="/suite/classes" />
     </div>}
     <div className="dashboard-grid">
+      <RegistersPanel day={today()} compact />
       <Panel title="Staff attendance today" description={new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long' })} link="/suite/staff-attendance">
         <QueryState query={staff} empty={!staffToday.length} emptyText={['Not recorded yet', 'Staff attendance entered for today will appear here.']}>
           <div className="kpi-row"><div><span>Present or late</span><strong>{staffPresent}</strong></div><div><span>Absent or excused</span><strong>{staffToday.length - staffPresent}</strong></div><div><span>Recorded</span><strong>{staffToday.length}</strong></div></div>

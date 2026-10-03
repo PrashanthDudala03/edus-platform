@@ -7,6 +7,7 @@ import { useAuthStore } from '../../store/auth'
 import { Empty, ErrorBox, Loading, PageHeader, today } from '../../components/UI'
 import { data, label, printSchoolDocument, type Row } from '../suite/helpers'
 import { FeeSummary, Panel, QueryState, RecentCirculars, StatTile, TodayTimetable, UpcomingExams, useOptions, useRecords } from './widgets'
+import { AttendanceDays } from '../suite/AttendancePages'
 type ReportCard = { results: Row[], obtained: number, maximum: number, percent: number, grade: string }
 
 // Parent and Student portals. The API returns only the students linked to this account, so the child list,
@@ -75,6 +76,9 @@ function ChildView({ studentId, classId, role }: { studentId: string, classId?: 
             <div className="kpi-row"><div><span>Present</span><strong>{row?.present}</strong></div><div><span>Late</span><strong>{row?.late}</strong></div><div><span>Absent</span><strong>{row?.absent}</strong></div></div>
           </QueryState>
         </Panel>}
+      <Panel title="Attendance days" description={new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }) + ' · each marked day, with the reason the school recorded'}>
+        <AttendanceDays studentId={studentId} month={month} />
+      </Panel>
       <Panel title="Documents & certificates" description="Issued by the school" link="/suite/certificates">
         <QueryState query={certificates} empty={!docs.length} emptyText={['No documents yet', 'Certificates issued by the school will appear here.']}>
           <ul className="dash-list">{docs.slice(0, 4).map(d => <li key={d.id}><span className="stat-icon purple">{d.type === 'Student ID' ? <GraduationCap size={17} /> : <FileText size={17} />}</span><div><strong>{d.type}</strong><small>{d.certificateNumber} · {String(d.issuedOn).slice(0, 10)}</small></div><button className="button small secondary" onClick={() => printCertificate(d.id)}><Printer size={14} />Print</button></li>)}</ul>

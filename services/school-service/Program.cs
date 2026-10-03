@@ -84,6 +84,7 @@ Operations.Map(app, connectionString);
 await Suite.Initialize(connectionString);
 Suite.Map(app);
 await Suite.InitializeNotifications();
+await Suite.InitializeAttendance();
 Suite.MapNotifications(app);
 app.Run();
 

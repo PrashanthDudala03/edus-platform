@@ -24,7 +24,7 @@ public static class NotificationRules
     public static readonly string[] Routes = ["home", "attendance", "homework", "results", "fees", "notices", "leave", "timetable", "school-home"];
     static readonly Dictionary<string, string> TypeCategory = new()
     {
-        ["attendance.absent"] = "attendance", ["homework.assigned"] = "homework", ["homework.due"] = "homework", ["result.published"] = "results",
+        ["attendance.absent"] = "attendance", ["attendance.late"] = "attendance", ["attendance.corrected"] = "attendance", ["homework.assigned"] = "homework", ["homework.due"] = "homework", ["result.published"] = "results",
         ["fee.due"] = "fees", ["fee.overdue"] = "fees", ["circular.published"] = "notices", ["message.received"] = "notices",
         ["leave.requested"] = "leave", ["leave.approved"] = "leave", ["leave.rejected"] = "leave", ["timetable.changed"] = "timetable", ["school-home.published"] = "school",
     };
@@ -306,32 +306,6 @@ public static partial class Suite
             }
         }
         catch (Exception ex) { Log.Warning(ex, "Notification for {Kind} {Id} was not created", kind, id); }
-    }
-
-    /// <summary>
-    /// Tells guardians that their child was marked absent. Called after the register is committed. One notification
-    /// per student and day, ever: saving the register again, or correcting it and back, never repeats it.
-    /// </summary>
-    static async Task AnnounceAbsences(SchoolAccess a, DateOnly day, IReadOnlyCollection<Guid> absent)
-    {
-        try
-        {
-            if (absent.Count == 0 || !NotificationRules.Timely(day, DateOnly.FromDateTime(DateTime.UtcNow))) return;
-            await using var c = await Open();
-            var keys = absent.Distinct().ToDictionary(student => NotificationRules.EventKey("attendance.absent", student, day.ToString("yyyy-MM-dd")));
-            // One look-up for the whole register, so saving it again costs a single query.
-            var done = (await Q(c, "SELECT event_key AS key FROM notify.notifications WHERE school_id=@s AND event_key=ANY(@keys)", ("s", a.School), ("keys", keys.Keys.ToArray()))).Select(row => Text(row, "key")).ToHashSet();
-            var fresh = keys.Where(pair => !done.Contains(pair.Key)).ToList(); if (fresh.Count == 0) return;
-            var students = fresh.Select(pair => pair.Value).ToArray(); var guardians = await GuardiansOf(c, a.School, students, "reports.view");
-            if (guardians.Count == 0) return;
-            var profiles = (await Q(c, "SELECT id::text AS id,first_name || ' ' || last_name AS name,current_class AS class FROM student_db.students WHERE school_id=@s AND id=ANY(@ids)", ("s", a.School), ("ids", students))).ToDictionary(row => Text(row, "id"));
-            var school = await SchoolName(c, a.School);
-            foreach (var (key, student) in fresh)
-                if (guardians.TryGetValue(student, out var parents) && profiles.TryGetValue(student.ToString(), out var profile))
-                    await Send(c, a.School, "attendance.absent", key, new() { ["studentName"] = Text(profile, "name"), ["className"] = Text(profile, "class"), ["date"] = NotificationTemplates.Day(day.ToString("yyyy-MM-dd")), ["schoolName"] = school },
-                        student, parents, a.User, "suite.student-attendance");
-        }
-        catch (Exception ex) { Log.Warning(ex, "Absence notifications for {Day} were not created", day); }
     }
 
     /// <summary>Tells guardians that a fee was charged to their child. Called after the charge is committed; one notification per charge.</summary>

@@ -92,6 +92,14 @@ public class PermissionTests
         Assert.Null(PermissionAccess.Required("/api/v1/control/features","GET"));
         Assert.True(PermissionAccess.Allows(Context("Custom",scope,"/api/control/features","GET")));
     }
+    [Theory]
+    [InlineData("/api/suite/student-attendance/registers","GET","attendance.view")][InlineData("/api/v1/suite/student-attendance/history","GET","attendance.view")]
+    [InlineData("/api/suite/student-attendance","POST","attendance.mark")][InlineData("/api/v1/suite/reports/attendance/days","GET","reports.view")][InlineData("/api/suite/reports/attendance/classes","GET","reports.view")]
+    public void AttendanceWorkflowRoutesKeepTheExistingPermissions(string path,string method,string permission)
+    {
+        Assert.Equal(permission,PermissionAccess.Required(path,method));
+        Assert.False(PermissionAccess.Allows(Context("Custom","parent",path,method,"circulars.view")));
+    }
     [Fact]
     public void UnknownEndpointsFailClosed()=>Assert.False(PermissionAccess.Allows(Context("Administrator","school","/api/future-module","GET")));
     [Fact]

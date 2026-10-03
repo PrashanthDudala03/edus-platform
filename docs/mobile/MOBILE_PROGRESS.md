@@ -36,7 +36,7 @@ backend code that is written but not deployed (see `docs/notifications/`).
 | Module | Status | API | Notes |
 |---|---|---|---|
 | Children | IMPLEMENTED | `GET /suite/reports/attendance`, `GET /suite/allocations` | Linked children with class. |
-| Attendance | PARTIAL | `GET /suite/reports/attendance?month=` | Monthly totals per child. Day-by-day detail: BLOCKED BY API (the daily register is staff-only). |
+| Attendance | IMPLEMENTED | `GET /suite/reports/attendance?month=`, `GET /suite/reports/attendance/days` | Monthly totals per child, plus each marked day with the reason the school recorded (absent, late and excused days first; "show all" for the month). |
 | Homework | PARTIAL | `GET /suite/records/homework`, `submissions` | List, detail, handed-in status. Parents cannot hand in from the app; attachments not shown. |
 | Timetable | IMPLEMENTED | `GET /suite/records/timetable`, `GET /suite/options` | Weekly, by day. |
 | Results | IMPLEMENTED | `GET /suite/report-cards/{student}` | Published exams, overall percent and grade. Printable report card: FUTURE. |
@@ -50,7 +50,7 @@ backend code that is written but not deployed (see `docs/notifications/`).
 | Module | Status | API | Notes |
 |---|---|---|---|
 | My classes | IMPLEMENTED | `GET /suite/records/classes` | Tap a class to open its register. Shows the first 20 (API page size). |
-| Mark attendance | IMPLEMENTED | `GET`/`POST /suite/student-attendance` | Per-student status, "mark the rest present", saves only changes. |
+| Mark attendance | IMPLEMENTED | `GET`/`POST /suite/student-attendance`, `GET /suite/student-attendance/registers` | Per-student status, "mark the rest present", structured reason per student, submit the class register, correction with a reason once submitted, register state badge. REQUIRES DEVICE TEST. |
 | Attendance history | PARTIAL | same | The last 7 days can be opened and corrected. Older days and monthly staff reports: FUTURE. |
 | Homework | PARTIAL | `GET /suite/records/homework` | View. Setting homework and giving feedback from the app: FUTURE (API exists). |
 | Timetable | IMPLEMENTED | `GET /suite/records/timetable` | |
@@ -65,7 +65,7 @@ backend code that is written but not deployed (see `docs/notifications/`).
 |---|---|---|---|
 | Timetable | IMPLEMENTED | as above | |
 | Homework | PARTIAL | `homework`, `submissions` records, `POST /suite/records/submissions` | List, detail, hand in a written response before the due date. Attachments and editing a submission: FUTURE (document API exists). |
-| Attendance | PARTIAL | `GET /suite/reports/attendance` | Monthly totals. Day-by-day: BLOCKED BY API. |
+| Attendance | IMPLEMENTED | `GET /suite/reports/attendance`, `GET /suite/reports/attendance/days` | Monthly totals and each marked day with its reason. |
 | Results | IMPLEMENTED | `GET /suite/report-cards/{student}` | |
 | Notices, calendar | PARTIAL / IMPLEMENTED | as Parent | |
 | Exams | IMPLEMENTED | `GET /suite/records/exams` | Published exams only (server rule). |
@@ -75,7 +75,7 @@ backend code that is written but not deployed (see `docs/notifications/`).
 | Module | Status | API | Notes |
 |---|---|---|---|
 | School overview | IMPLEMENTED | `GET /operations/overview` | Enrolment, staff, today's attendance, by class. |
-| Attendance overview | IMPLEMENTED | `GET`/`POST /suite/student-attendance` | Whole-school register by class and day; can mark where the role may. |
+| Attendance overview | IMPLEMENTED | `GET`/`POST /suite/student-attendance`, `GET /suite/student-attendance/registers` | Whole-school register by class and day; today's registers (submitted, in progress, not started) on the Overview screen; corrections with a reason. REQUIRES DEVICE TEST. |
 | Academics | PARTIAL | `GET /suite/records/exams` | Exam list. Result analysis (`/suite/reports/marks`): FUTURE. |
 | Fee overview | IMPLEMENTED (view) | `GET /suite/fees` | Totals and charges. Issuing charges and recording payments stay on the web. |
 | Leave approvals | IMPLEMENTED | `PUT /suite/records/leave-requests/{id}` | Approve or reject with a remark; version-checked. |
@@ -86,7 +86,6 @@ backend code that is written but not deployed (see `docs/notifications/`).
 
 | Gap | Effect on mobile |
 |---|---|
-| No day-by-day attendance for families | Only monthly totals for parents and students. |
 | No "my acknowledgement" on circulars | Acknowledged state is not remembered between sessions. |
 | No online fee payment | Fees are view only. |
 | No self-service password change | Not offered in Profile. |
@@ -116,6 +115,8 @@ reviewed account links.
 | `GET /suite/home/images/{id}` | Original size | A sized variant, later |
 
 ## Verification
+
+- 2026-10-05 (Smart Attendance): `npm run typecheck` clean; `npm test` 56 passing (register entries with reasons, correction detection, notification routes). Register, Children and Overview changes are not yet seen on a device.
 
 - 2026-10-03 (layout and profile pass): the Home identity block (avatar, greeting, name, role) opens Profile for every role; sheet actions (Approve, Reject) sit side by side; Profile shows sign-in name, email, school and role in label and value rows; the account-type choice on Create account wraps instead of scrolling sideways. Marker is now "Build 5". Typecheck clean, 53 tests passing; not yet confirmed on the device. On the web the same pass added My account (`/account`, `/super-admin/account`) behind the header identity, and tables that become labelled cards below 900px; `frontend/audit-responsive.mjs` re-checks every role at a given width against the live API (read-only).
 - 2026-10-03 (sign-in parity): Create account and Reset password screens added; sign-in screen links to them. `npm run typecheck` clean; `npm test` 53 passing (request payload and endpoint, account types, school code, password rule, recovery code, refusals, disabled account and school messages, no admin-only route or call in the app). Metro serves it as "Build 4". Not yet confirmed on the device.

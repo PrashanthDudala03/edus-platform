@@ -12,7 +12,13 @@ export interface CalendarEvent { id: string, title: string, startsOn: string, en
 export interface Message { id: string, title: string, message: string, createdAt: string }
 export interface Leave { id: string, version: number, teacherId: string, fromDate: string, toDate: string, reason: string, status: string, approvalRemark: string }
 export interface Charge { id: string, studentId: string, student: string, description: string, dueDate: string, gross: number, concession: number, paid: number, balance: number, currency: string }
-export interface RegisterRow { id: string, code: string, name: string, className: string, status: AttendanceStatus | '' }
+export interface RegisterRow { id: string, code: string, name: string, className: string, status: AttendanceStatus | '', reason?: string, remark?: string }
+/** Structured reasons the school can record with Absent, Late or Excused. The list itself comes from the server; this is the fallback. */
+export const REASONS = ['Sick', 'Approved leave', 'Transport delay', 'Medical', 'School activity', 'Family', 'Other']
+export interface Reason { reason: string, remark: string }
+export interface ClassRegister { className: string, expected: number, marked: number, present: number, absent: number, late: number, excused: number, state: string, teacher: string, submittedAt: string }
+export interface RegisterTotals { expected: number, marked: number, present: number, absent: number, late: number, excused: number, completed: number, pending: number, percent: number }
+export interface DayRecord { day: string, status: AttendanceStatus, reason: string, remark: string }
 export interface ReportCard { results: { exam: string, subject: string, score: number, maximum: number, pass: boolean, remarks: string }[], obtained: number, maximum: number, percent: number, grade: string }
 
 const day = (value: string) => String(value ?? '').slice(0, 10)
@@ -51,6 +57,21 @@ export function markRestPresent(rows: RegisterRow[], draft: Record<string, Atten
   for (const row of rows) if (!row.status && !next[row.id]) next[row.id] = 'Present'
   return next
 }
+/** A reason can accompany Absent, Late or Excused; Present never carries one. */
+export const mayHaveReason = (status: AttendanceStatus | '') => status === 'Absent' || status === 'Late' || status === 'Excused'
+/** What is sent: every changed status, with the reason chosen for it (or the saved one) when the status can carry one. */
+export function registerEntries(rows: RegisterRow[], draft: Record<string, AttendanceStatus>, reasons: Record<string, Reason> = {}) {
+  return rows.flatMap(row => {
+    const status = draft[row.id]; if (!status) return []
+    const chosen = reasons[row.id], reason = mayHaveReason(status) ? (chosen?.reason ?? row.reason ?? '') : '', remark = mayHaveReason(status) ? (chosen?.remark ?? row.remark ?? '') : ''
+    if (status === row.status && reason === (row.reason ?? '') && remark === (row.remark ?? '')) return []
+    return [{ studentId: row.id, status, reason, remark }]
+  })
+}
+/** Classes whose register was submitted: the next change to them is a correction and needs a reason. */
+export const submittedClasses = (registers: ClassRegister[]) => new Set(registers.filter(r => r.state === 'Submitted' || r.state === 'Corrected').map(r => r.className))
+export const isCorrection = (rows: RegisterRow[], draft: Record<string, AttendanceStatus>, submitted: Set<string>) => registerEntries(rows, draft).some(e => submitted.has(rows.find(r => r.id === e.studentId)?.className ?? ''))
+export const registerDone = (state: string) => state === 'Submitted' || state === 'Corrected'
 export const classesOf = (rows: RegisterRow[]) => [...new Set(rows.map(row => row.className).filter(Boolean))].sort()
 
 /** Inclusive number of days in a leave request, or 0 when the dates are not usable. */

@@ -5,7 +5,7 @@ import type { User } from '../session/types.ts'
 // after checking who is signed in, so a tap can never open a screen the person may not see. The same function will
 // serve push taps and deep links when push arrives; device registration is still only a seam.
 export type NotificationType =
-  | 'attendance.absent' | 'homework.assigned' | 'homework.due' | 'result.published' | 'fee.due' | 'fee.overdue' | 'circular.published'
+  | 'attendance.absent' | 'attendance.late' | 'attendance.corrected' | 'homework.assigned' | 'homework.due' | 'result.published' | 'fee.due' | 'fee.overdue' | 'circular.published'
   | 'message.received' | 'leave.requested' | 'leave.approved' | 'leave.rejected' | 'timetable.changed' | 'school-home.published'
 
 /** What a notification will carry. Ids are opaque; the server authorises them again when the screen loads. */
@@ -15,6 +15,8 @@ export interface NotificationPayload { type: string, entityId?: string, studentI
 // Each type lists the screens it may open, most specific first; the first one the account can open is used.
 const DESTINATIONS: Record<NotificationType, Destination[]> = {
   'attendance.absent': ['/children', '/register'],
+  'attendance.late': ['/children', '/register'],
+  'attendance.corrected': ['/children', '/register'],
   'homework.assigned': ['/homework'],
   'homework.due': ['/homework'],
   'result.published': ['/results'],
