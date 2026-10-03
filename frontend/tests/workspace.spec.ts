@@ -14,6 +14,17 @@ const sql=(query:string)=>execFileSync('docker',['compose','exec','-T','postgres
 const headers=()=>({Authorization:'Bearer '+token})
 // nginx limits login to 10/min per client (burst 10); wait out a 429 when earlier specs used the budget.
 async function throttled(send:()=>Promise<APIResponse>){for(let i=0;;i++){const r=await send();if(r.status()!==429||i>=15)return r;await new Promise(f=>setTimeout(f,6500))}}
+// The browser signs in through the same nginx login limit as the API helper above (10/min per client, shared by every spec in
+// the run); when the budget is spent, the page says so and the attempt is repeated after the window, not failed.
+async function signIn(page:import('@playwright/test').Page){
+ for(let i=0;;i++){
+  await page.getByRole('button',{name:'Sign in to workspace'}).click()
+  const limited=page.getByText('Too many sign-in attempts')
+  await Promise.race([expect(page.getByRole('heading',{name:/Good .*QA/})).toBeVisible({timeout:20000}).catch(()=>{}),expect(limited).toBeVisible({timeout:20000}).catch(()=>{})])
+  if(!(await limited.isVisible())||i>=15)return
+  await new Promise(f=>setTimeout(f,6500))
+ }
+}
 const student={schoolId,rollNumber:'QA-001',firstName:'Aarav',lastName:'TestStudent',email:'aarav@example.test',phoneNumber:'9000000001',currentClass:'Grade 6 - A',dateOfBirth:'2014-03-12T00:00:00Z'}
 const date=new Date().toISOString().slice(0,10)
 test.describe.serial('School workspace against real Docker services',()=>{
@@ -104,7 +115,7 @@ test.describe.serial('School workspace against real Docker services',()=>{
   await page.goto('/login');await page.getByLabel('Email or username',{exact:true}).fill('qa.admin')
   await page.getByLabel('Password',{exact:true}).fill(password)
   await page.getByText('Signing in to another school?').click();await page.getByLabel('School ID',{exact:true}).fill(schoolId)
-  await page.getByRole('button',{name:'Sign in to workspace'}).click()
+  await signIn(page)
   await expect(page.getByRole('heading',{name:/Good .*QA/})).toBeVisible()
   await expect(page.getByText('Total students',{exact:true})).toBeVisible()
   mkdirSync(path.join(root,'.local/screenshots'),{recursive:true})
@@ -127,7 +138,7 @@ test.describe.serial('School workspace against real Docker services',()=>{
   await page.setViewportSize({width:390,height:844})
   await page.goto('/login');await page.getByLabel('Email or username',{exact:true}).fill('qa.admin');await page.getByLabel('Password',{exact:true}).fill(password)
   await page.getByText('Signing in to another school?').click();await page.getByLabel('School ID',{exact:true}).fill(schoolId)
-  await page.getByRole('button',{name:'Sign in to workspace'}).click();await expect(page.getByRole('heading',{name:/Good .*QA/})).toBeVisible()
+  await signIn(page);await expect(page.getByRole('heading',{name:/Good .*QA/})).toBeVisible()
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy()
   await page.screenshot({path:path.join(root,'.local/screenshots/dashboard-mobile.png'),fullPage:true})
   await page.getByRole('button',{name:'Open navigation'}).click();await page.getByRole('link',{name:'Student records',exact:true}).click()

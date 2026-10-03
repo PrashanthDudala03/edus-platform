@@ -20,6 +20,8 @@ const list=async(kind:string,role='Administrator')=>(await good('GET','/suite/re
 async function throttled(send:()=>Promise<APIResponse>){for(let i=0;;i++){const r=await send();if(r.status()!==429||i>=15)return r;await new Promise(f=>setTimeout(f,6500))}}
 async function login(role:string,pw=password){const r=await throttled(()=>api.post('/api/v1/auth/login',{data:{schoolId,username:'suite.'+role.toLowerCase(),password:pw}}));expect(r.status(),await r.text()).toBe(200);sessions[role]=(await r.json()).data}
 async function browserSession(page:Page,role='Administrator'){await page.addInitScript(s=>{localStorage.setItem('accessToken',s.accessToken);localStorage.setItem('refreshToken',s.refreshToken);localStorage.setItem('user',JSON.stringify(s.user))},sessions[role])}
+// Every module the suite serves, in catalog order. A new kind is a deliberate contract change: add it here with its feature.
+const CATALOG=['academic-years','classes','subjects','teaching-assignments','admissions','staff-attendance','leave-requests','fee-structures','assessment-schemes','exams','marks','circulars','calendar','messages','homework','submissions','timetable','certificates','account-links','school-config']
 test.describe.serial('Complete school suite',()=>{
  test.beforeAll(async({playwright})=>{
   test.setTimeout(180000)
@@ -40,7 +42,7 @@ test.describe.serial('Complete school suite',()=>{
   for(const id of docs)execFileSync('docker',['compose','exec','-T','school-service','rm','--','/app/documents/'+id.replaceAll('-','')+'.bin'],{cwd:root,stdio:'pipe'})
  })
  test('sets up academics and admits a student once, with class and guardian records',async()=>{
-  expect((await good('GET','/suite/catalog')).length).toBe(19)
+  expect((await good('GET','/suite/catalog')).map((m:any)=>m.kind)).toEqual(CATALOG)
   year=await create('academic-years',{name:'2026-27',startsOn:'2026-04-01',endsOn:'2027-03-31',status:'Current'})
   expect((await req('POST','/suite/records/academic-years',{name:'Conflict',startsOn:'2026-04-01',endsOn:'2027-03-31',status:'Current'})).status()).toBe(409)
   teacher=(await good('POST','/teachers',{schoolId,employeeCode:'ST-1',firstName:'Maya',lastName:'Teacher',email:'maya'+schoolId+'@example.test',phoneNumber:'9000000002',department:'Science'},'Administrator',201)).id
@@ -67,7 +69,7 @@ test.describe.serial('Complete school suite',()=>{
   expect((await good('GET','/suite/options',undefined,'Parent')).students.map((s:any)=>s.id)).toEqual([student])
   expect((await req('GET','/suite/report-cards/'+randomUUID(),undefined,'Parent')).status()).toBe(403)
   expect((await req('POST','/suite/records/subjects',{name:{nested:'bad'},code:'INVALID'})).status()).toBe(400)
-  expect((await good('GET','/suite/catalog',undefined,'Principal')).length).toBe(19)
+  expect((await good('GET','/suite/catalog',undefined,'Principal')).map((m:any)=>m.kind)).toEqual(CATALOG)
  })
  test('checks assignments, timetable collisions, attendance, staff leave and notices',async()=>{
   const slot={classId:cl,subjectId:subject,teacherId:teacher,day:'Monday',startsAt:'09:00',endsAt:'09:45',room:'101'}
