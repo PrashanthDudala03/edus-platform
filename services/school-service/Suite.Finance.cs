@@ -26,7 +26,9 @@ public static partial class Suite
             var id=Guid.NewGuid();
             await E(c,"INSERT INTO suite.charges(id,school_id,student_id,structure_id,description,due_date,gross,concession,currency,created_by) VALUES(@id,@s,@student,@structure,@desc,@due,@gross,@concession,@currency,@user)",
                 ("id",id),("s",a.School),("student",student),("structure",Id(d,"structureId")),("desc",Text(structure,"name")+" · "+Text(structure,"installment")),("due",Day(structure,"dueDate")),("gross",gross),("concession",concession),("currency",currency),("user",a.User));
-            await tx.CommitAsync();return Results.Json(new{data=new{id}},statusCode:201);
+            await tx.CommitAsync();
+            // Issuing a charge is the event that makes a fee due; the family is told once per charge, after it is stored.
+            await AnnounceCharge(a,id,student,gross-concession,currency,Day(structure,"dueDate"));return Results.Json(new{data=new{id}},statusCode:201);
         });
         group.MapPost("/fees/payments",async(JsonObject d,HttpContext http)=>{
             await using var c=await Open();var a=await Access(http,c);Require(a.Admin,"Only administrators may record payments.",403);

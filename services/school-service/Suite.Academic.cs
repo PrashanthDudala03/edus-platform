@@ -78,11 +78,13 @@ public static partial class Suite
             await using var c=await Open();var a=await Access(http,c);Require(a.SchoolWide||a.Role=="Teacher","Register access denied.",403);var day=Day(d,"day");
             Require(day<=DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)),"Attendance cannot be in the future.");
             Require(d["entries"] is JsonArray,"Entries must be an array.");var entries=d["entries"]?.AsArray();Require(entries is not null&&entries.Count is >0 and <=500,"Save 1–500 attendance entries.");
-            await using var tx=await c.BeginTransactionAsync();var unique=new HashSet<Guid>();
+            await using var tx=await c.BeginTransactionAsync();var unique=new HashSet<Guid>();var absent=new List<Guid>();
             foreach(var item in entries!){Require(item is JsonObject,"Each attendance entry must be an object.");var entry=item!.AsObject();var student=Id(entry,"studentId");Require(unique.Add(student),"Duplicate student.");Require(a.SchoolWide||a.Students.Contains(student.ToString()),"A student is outside your assigned classes.",403);
                 var status=Text(entry,"status");Require(new[]{"Present","Absent","Late","Excused"}.Contains(status),"Invalid attendance status.");
-                var changed=await E(c,"INSERT INTO school_db.attendance(school_id,student_id,day,status) SELECT @s,id,@day,@status FROM student_db.students WHERE id=@id AND school_id=@s AND status='Active' AND deleted_at IS NULL ON CONFLICT(school_id,student_id,day) DO UPDATE SET status=excluded.status,updated_at=now()",("s",a.School),("id",student),("day",day),("status",status));Require(changed==1,"Student is not active.");
-            }await tx.CommitAsync();return Results.Ok(new{message="Attendance saved."});
+                var changed=await E(c,"INSERT INTO school_db.attendance(school_id,student_id,day,status) SELECT @s,id,@day,@status FROM student_db.students WHERE id=@id AND school_id=@s AND status='Active' AND deleted_at IS NULL ON CONFLICT(school_id,student_id,day) DO UPDATE SET status=excluded.status,updated_at=now()",("s",a.School),("id",student),("day",day),("status",status));Require(changed==1,"Student is not active.");if(status=="Absent")absent.Add(student);
+            }await tx.CommitAsync();
+            // Only after the register is stored: guardians of students marked absent are told, once per student and day.
+            await AnnounceAbsences(a,day,absent);return Results.Ok(new{message="Attendance saved."});
         });
         group.MapPost("/admissions/{id:guid}/accept",async(Guid id,HttpContext http)=>{
             await using var c=await Open();var a=await Access(http,c);Require(a.Admin,"Only administrators can accept admissions.",403);

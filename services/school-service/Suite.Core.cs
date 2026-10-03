@@ -202,7 +202,10 @@ public static partial class Suite
             await E(c,"UPDATE auth_db.refresh_tokens SET revoked_at=now() WHERE user_id=@id AND school_id=@s AND revoked_at IS NULL",("id",Id(d,"userId")),("s",a.School));
             await E(c,"INSERT INTO auth_db.iam_audit(school_id,actor_id,actor_role,action,target_id,old_value,new_value) VALUES(@s,@u,@r,'profile.linked',@id,@old::jsonb,@new::jsonb)",("s",a.School),("u",a.User),("r",http.GetTenant().Role),("id",Id(d,"userId")),("old",old?.ToJsonString()??"null"),("new",d.ToJsonString()));
         }
-        await tx.CommitAsync();return Results.Json(new{data=new{id}},statusCode:old is null?201:200);
+        await tx.CommitAsync();
+        // Notifications follow the committed record; they can never undo or block the save.
+        await Announce(kind,id.Value,d,old,a);
+        return Results.Json(new{data=new{id}},statusCode:old is null?201:200);
     }
     static async Task Reference(NpgsqlConnection c,SchoolAccess a,string source,string value){
         Require(Guid.TryParse(value,out var id),"Select a valid "+source+" record.");

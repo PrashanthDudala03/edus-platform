@@ -33,6 +33,14 @@ Run step 3 only after the old auth-service is running; the new one re-applies th
 
 **Rollback.** Stop ai-service, then in the AI database: `DROP SCHEMA ai CASCADE; DROP ROLE ai_app;`. Nothing outside the AI database depends on it.
 
+## Notifications and notification wording (2026-10-02, prepared, not applied)
+
+**What it does.** school-service creates schema `notify` with six new tables (`notifications`, `recipients`, `deliveries`, `preferences`, `template_overrides`, `devices`). Nothing existing is altered and no data is moved. Once only, auth-service grants the new `notifications.manage` permission to the Administrator role of existing schools and adds it to every school's boundary; those accounts get `token_version + 1` and sign in again. New installations receive it from the Administrator template defaults.
+
+**Applied by** school-service on start (idempotent): `services/school-service/NotificationSchema.sql`; auth-service on start (once): `services/auth-service/Migrations/20261002_03_notification_templates.sql`, recorded in `auth_db.schema_migrations`. The gateway must be rebuilt with them, because the route and the endpoint-to-permission map live there.
+
+**Rollback.** Deploy the previous commit. Optionally `DROP SCHEMA notify CASCADE; DELETE FROM auth_db.role_permissions WHERE permission_key='notifications.manage'; DELETE FROM auth_db.schema_migrations WHERE id='20261002_03_notification_templates';`.
+
 ## School Home (2026-10-02)
 
 **What it does.** Adds no tables. School Home content is one `suite.records` row per school (kind `school-home`) and its images are `suite.documents` rows, both created on first use. Once only, the migration grants the new `school-home.manage` permission to the Administrator role of existing schools; those accounts get `token_version + 1` and sign in again. New installations receive it from the Administrator template defaults.

@@ -18,6 +18,9 @@ public static class PermissionAccess
         if (resource == "ai") return p.ElementAtOrDefault(3) switch {
             "health" => null, "status" or "assistant" => "ai.assistant.use", "knowledge" => "ai.knowledge.manage",
             "usage" => "ai.usage.view", "admin" => "ai.platform.manage", _ => "unsupported" };
+        // A person's own notification inbox, read state and preferences; the service binds every query to the caller.
+        // Devices are the caller's own too. A school's wording and its delivery history are management areas.
+        if (resource == "notifications") return p.ElementAtOrDefault(3) is "templates" or "history" ? "notifications.manage" : null;
         if (resource == "roles") return "roles.view";
         if (resource == "users") return read ? "users.view" : method == "DELETE" ? "users.disable" : method == "POST" && p.Length == 3 ? "users.create" : "users.update";
         if (resource is "students" or "teachers" or "parents") return resource + (read ? ".view" : method == "POST" ? ".create" : method == "DELETE" ? ".archive" : ".update");

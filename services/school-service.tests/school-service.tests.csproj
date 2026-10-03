@@ -8,24 +8,21 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <FrameworkReference Include="Microsoft.AspNetCore.App" />
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="xunit" Version="2.7.0" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.4">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.9.0" />
-    <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="9.0.0" />
-    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.0.1" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../EduOS.ServiceAuth/EduOS.ServiceAuth.csproj" />
-    <!-- Read by FeatureCatalogueTests, which checks every feature is made of real permission keys. -->
-    <None Include="../../auth-service/PermissionCatalogue.json" Link="PermissionCatalogue.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Read by NotificationTenancyTests, which checks that every notification statement names the school. -->
+    <None Include="../school-service/Suite.Notification*.cs;../school-service/NotificationSchema.sql" Link="Sources/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../school-service/school-service.csproj" />
   </ItemGroup>
 
 </Project>

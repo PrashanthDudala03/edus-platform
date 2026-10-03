@@ -146,7 +146,8 @@ public static partial class Suite
 
     static void MapHome(RouteGroupBuilder group){
         group.MapGet("/home",async(HttpContext http)=>{
-            await using var c=await Open();var a=await Access(http,c);var home=await HomeLoad(c,a.School);
+            // A school whose boundary does not include School Home has none, exactly like a school that published nothing.
+            await using var c=await Open();var a=await Access(http,c);var home=await FeatureEnabled(c,a.School,"school-home")?await HomeLoad(c,a.School):null;
             return Results.Ok(new{data=new{home=home?.Data["published"] is JsonObject published?await HomeView(c,a,published):null,canManage=a.Can(HomeManage)}});
         });
         group.MapGet("/home/manage",async(HttpContext http)=>{
@@ -193,7 +194,7 @@ public static partial class Suite
         });
         // Readers receive only images the published page uses; an editor also sees images of the draft.
         group.MapGet("/home/images/{id:guid}",async(Guid id,HttpContext http)=>{
-            await using var c=await Open();var a=HomeCaller(http);var home=await HomeLoad(c,a.School);
+            await using var c=await Open();var a=HomeCaller(http);var home=await FeatureEnabled(c,a.School,"school-home")?await HomeLoad(c,a.School):null;
             Require(home is not null&&(a.Can(HomeManage)||HomeImages(home.Data["published"] as JsonObject).Contains(id.ToString())),"Image not found.",404);
             var rows=await Q(c,"SELECT content_type FROM suite.documents WHERE id=@id AND school_id=@s AND record_id=@r",("id",id),("s",a.School),("r",home!.Id));Require(rows.Count==1,"Image not found.",404);
             var file=Path.Combine(DocumentRoot,id.ToString("N")+".bin");Require(File.Exists(file),"Image not found.",404);

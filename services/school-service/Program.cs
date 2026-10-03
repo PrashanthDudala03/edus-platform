@@ -83,6 +83,8 @@ await Operations.Initialize(connectionString);
 Operations.Map(app, connectionString);
 await Suite.Initialize(connectionString);
 Suite.Map(app);
+await Suite.InitializeNotifications();
+Suite.MapNotifications(app);
 app.Run();
 
 #region Models
