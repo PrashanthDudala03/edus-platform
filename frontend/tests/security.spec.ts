@@ -95,9 +95,9 @@ test.describe.serial('Security boundaries against real Docker services',()=>{
 
  test('timetable, leave and substitutions stay inside the school and leave reasons stay with staff',async()=>{
   // Another school's period, teacher or leave is unknown here: refused before any rule runs, with nothing learned.
-  await denied(A,'Administrator','POST','/suite/records/substitutions',{date:'2030-03-04',timetableId:B.period,teacherId:A.teacher},undefined,404)
-  await denied(A,'Administrator','POST','/suite/records/substitutions',{date:'2030-03-04',timetableId:A.period,teacherId:B.teacher},undefined,400)
-  await denied(A,'Administrator','POST','/suite/records/timetable',{classId:A.cl,subjectId:A.subject,teacherId:B.teacher,day:'Tuesday',slotId:A.slot},undefined,400)
+  await denied(A,'Administrator','POST','/suite/records/substitutions',{date:'2030-03-04',timetableId:B.period,teacherId:A.teacher},404)
+  await denied(A,'Administrator','POST','/suite/records/substitutions',{date:'2030-03-04',timetableId:A.period,teacherId:B.teacher},400)
+  await denied(A,'Administrator','POST','/suite/records/timetable',{classId:A.cl,subjectId:A.subject,teacherId:B.teacher,day:'Tuesday',slotId:A.slot},400)
   await denied(A,'Administrator','GET','/suite/leave/'+B.leave+'/impact',undefined,404)
   await denied(A,'Administrator','POST','/suite/leave/'+B.leave+'/decision',{decision:'Approved',remark:'x'},404)
   await denied(A,'Administrator','GET','/suite/timetable/candidates?timetableId='+B.period+'&date=2030-03-04',undefined,404)

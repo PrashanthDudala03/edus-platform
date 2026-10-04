@@ -100,14 +100,15 @@ test.describe.serial('Complete school suite',()=>{
   await create('account-links',{userId:users.Teacher2,teacherId:teacher2});await login('Teacher2')
   const cl2=await create('classes',{name:'Grade 7',section:'B',yearId:year,teacherId:teacher2,capacity:30})
   await create('teaching-assignments',{classId:cl2,subjectId:subject,teacherId:teacher2});await create('teaching-assignments',{classId:cl2,subjectId:subject,teacherId:teacher})
-  // Lessons placed by period: the first teacher takes Grade 6 in period 1 on that weekday; a clash with the room is named.
+  // Lessons placed by period: the first teacher takes Grade 6 in period 1 on that weekday, next to the 09:00 Monday lesson the
+  // earlier test placed for the same class and teacher; a clash with the room is named.
   const weekday=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][monday.getDay()]
   const lesson=await create('timetable',{classId:cl,subjectId:subject,teacherId:teacher,day:weekday,slotId:slot1,room:'Lab 1'})
   expect((await req('POST','/suite/records/timetable',{classId:cl2,subjectId:subject,teacherId:teacher2,day:weekday,slotId:slot1,room:'lab 1'})).status()).toBe(409)
   expect((await req('POST','/suite/records/timetable',{classId:cl2,subjectId:subject,teacherId:teacher,day:weekday,startsAt:'08:10',endsAt:'08:30'})).status()).toBe(409)
   expect((await req('POST','/suite/records/timetable',{classId:cl2,subjectId:subject,teacherId:teacher2,day:weekday,startsAt:'10:00',endsAt:'09:00'})).status()).toBe(400)
   const week=await good('GET','/suite/timetable/week?classId='+cl+'&date='+date,undefined,'Student')
-  expect(week.periods.map((p:any)=>[p.startsAt,p.subjectName,p.teacherName,p.substituted])).toEqual([['08:00','Science','Maya Teacher',false]]);expect(week.office).toBe(false);expect(week.slots.length).toBe(2)
+  expect(week.periods.map((p:any)=>[p.startsAt,p.subjectName,p.teacherName,p.substituted])).toEqual([['08:00','Science','Maya Teacher',false],['09:00','Science','Maya Teacher',false]]);expect(week.office).toBe(false);expect(week.slots.length).toBe(2)
   expect((await req('GET','/suite/timetable/week?teacherId='+teacher,undefined,'Student')).status()).toBe(403)
   expect((await req('GET','/suite/timetable/week?room=Lab 1',undefined,'Teacher')).status()).toBe(403)
   expect((await good('GET','/suite/timetable/week?room=Lab 1&date='+date)).periods.length).toBe(1)
@@ -116,11 +117,11 @@ test.describe.serial('Complete school suite',()=>{
   const leave=await create('leave-requests',{teacherId:teacher,typeId:casual,fromDate:date,toDate:date,reason:'Family function',status:'Pending'},'Teacher')
   const before=await good('GET','/suite/leave/balances',undefined,'Teacher');expect(before.balances.map((b:any)=>[b.code,b.allowance,b.pending,b.remaining])).toEqual([['CL',2,1,2]])
   expect((await req('POST','/suite/records/leave-requests',{teacherId:teacher,typeId:casual,fromDate:'2030-01-01',toDate:'2030-01-03',reason:'Too long',status:'Pending'},'Teacher')).status()).toBe(409)
-  const impact=await good('GET','/suite/leave/'+leave+'/impact',undefined,'Teacher');expect(impact.summary).toEqual({affected:1,covered:0,uncovered:1});expect(impact.periods[0].className).toBe('Grade 6 - A')
+  const impact=await good('GET','/suite/leave/'+leave+'/impact',undefined,'Teacher');expect(impact.summary).toEqual({affected:2,covered:0,uncovered:2});expect(impact.periods[0].className).toBe('Grade 6 - A')
   expect((await req('POST','/suite/leave/'+leave+'/decision',{decision:'Approved',remark:'ok'},'Teacher')).status()).toBe(403)
   for(const role of ['Student','Parent']){expect((await req('GET','/suite/leave/queue',undefined,role)).status()).toBe(403);expect((await req('GET','/suite/timetable/operations?date='+date,undefined,role)).status()).toBe(403);expect((await req('GET','/suite/leave/'+leave+'/impact',undefined,role)).status()).toBe(403)}
   expect((await req('GET','/suite/timetable/operations?date='+date,undefined,'Teacher')).status()).toBe(403)
-  const queue=await good('GET','/suite/leave/queue',undefined,'Principal');const item=queue.items.find((i:any)=>i.id===leave);expect([item.typeName,item.days,item.remaining,item.impact.uncovered]).toEqual(['Casual leave',1,2,1])
+  const queue=await good('GET','/suite/leave/queue',undefined,'Principal');const item=queue.items.find((i:any)=>i.id===leave);expect([item.typeName,item.days,item.remaining,item.impact.uncovered]).toEqual(['Casual leave',1,2,2])
   expect((await req('POST','/suite/leave/'+leave+'/decision',{decision:'Rejected',remark:''},'Principal')).status()).toBe(400)
   await good('POST','/suite/leave/'+leave+'/decision',{decision:'Approved',remark:'Enjoy'},'Principal')
   const after=await good('GET','/suite/leave/balances',undefined,'Teacher');expect(after.balances[0].used).toBe(1);expect(after.balances[0].remaining).toBe(1);expect(after.balances[0].pending).toBe(0)
@@ -129,7 +130,7 @@ test.describe.serial('Complete school suite',()=>{
   expect((await req('PUT','/suite/records/leave-requests/'+leave,{...approved,reason:'Changed'},'Teacher')).status()).toBe(403)
   expect((await req('PUT','/suite/records/leave-requests/'+leave,{...approved,toDate:'2030-01-01'},'Principal')).status()).toBe(409)
   // The day's operations show the uncovered lesson; the candidate list knows who is free; a busy substitute is refused.
-  const ops=await good('GET','/suite/timetable/operations?date='+date,undefined,'Principal');expect(ops.summary).toEqual({away:1,affected:1,covered:0,uncovered:1});expect(ops.periods[0].status).toBe('uncovered')
+  const ops=await good('GET','/suite/timetable/operations?date='+date,undefined,'Principal');expect(ops.summary).toEqual({away:1,affected:2,covered:0,uncovered:2});expect(ops.periods[0].status).toBe('uncovered')
   const candidates=await good('GET','/suite/timetable/candidates?timetableId='+lesson+'&date='+date,undefined,'Principal');expect(candidates.candidates.find((c:any)=>c.teacherId===teacher2).free).toBe(true)
   const busyLesson=await create('timetable',{classId:cl2,subjectId:subject,teacherId:teacher2,day:weekday,startsAt:'08:20',endsAt:'09:20'})
   expect((await req('POST','/suite/records/substitutions',{date,timetableId:lesson,teacherId:teacher2},'Principal')).status()).toBe(409)
@@ -138,7 +139,7 @@ test.describe.serial('Complete school suite',()=>{
   expect((await req('POST','/suite/records/substitutions',{date:'2030-01-01',timetableId:lesson,teacherId:teacher2},'Principal')).status()).toBe(400)
   const substitution=await create('substitutions',{date,timetableId:lesson,teacherId:teacher2,note:'Worksheet on the desk'},'Principal')
   expect((await req('POST','/suite/records/substitutions',{date,timetableId:lesson,teacherId:teacher2},'Principal')).status()).toBe(409)
-  expect((await good('GET','/suite/timetable/operations?date='+date,undefined,'Principal')).summary).toEqual({away:1,affected:1,covered:1,uncovered:0})
+  expect((await good('GET','/suite/timetable/operations?date='+date,undefined,'Principal')).summary).toEqual({away:1,affected:2,covered:1,uncovered:1})
   // The substitute sees the period they cover; the absent teacher sees it covered; the family sees the substitute and nothing about leave.
   const covering=await good('GET','/suite/timetable/today?date='+date,undefined,'Teacher2');expect(covering.periods.map((p:any)=>[p.covering,p.originalTeacherName,p.className])).toEqual([[true,'Maya Teacher','Grade 6 - A']])
   const own=await good('GET','/suite/timetable/today?date='+date,undefined,'Teacher');expect(own.away).toBe(true);expect(own.periods[0].status).toBe('covered');expect(own.periods[0].substitution.teacherName).toBe('Nila Cover')
