@@ -363,6 +363,78 @@
     ]
   },
   {
+    "kind": "leave-types",
+    "title": "Leave types",
+    "group": "Attendance",
+    "fields": [
+      {
+        "key": "name",
+        "label": "Leave type",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "code",
+        "label": "Code",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "paid",
+        "label": "Pay",
+        "type": "select",
+        "required": true,
+        "source": null,
+        "options": [
+          "Paid",
+          "Unpaid"
+        ]
+      },
+      {
+        "key": "yearlyAllowance",
+        "label": "Days per year",
+        "type": "number",
+        "required": false,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "tracksBalance",
+        "label": "Track balance",
+        "type": "select",
+        "required": true,
+        "source": null,
+        "options": [
+          "Yes",
+          "No"
+        ]
+      },
+      {
+        "key": "active",
+        "label": "Active",
+        "type": "select",
+        "required": true,
+        "source": null,
+        "options": [
+          "Yes",
+          "No"
+        ]
+      }
+    ],
+    "read": [
+      "Administrator",
+      "Principal",
+      "Teacher"
+    ],
+    "write": [
+      "Administrator"
+    ]
+  },
+  {
     "kind": "leave-requests",
     "title": "Leave requests",
     "group": "Attendance",
@@ -373,6 +445,14 @@
         "type": "reference",
         "required": true,
         "source": "teachers",
+        "options": null
+      },
+      {
+        "key": "typeId",
+        "label": "Leave type",
+        "type": "reference",
+        "required": false,
+        "source": "leave-types",
         "options": null
       },
       {
@@ -392,6 +472,18 @@
         "options": null
       },
       {
+        "key": "halfDay",
+        "label": "Half day",
+        "type": "select",
+        "required": false,
+        "source": null,
+        "options": [
+          "No",
+          "First half",
+          "Second half"
+        ]
+      },
+      {
         "key": "reason",
         "label": "Reason",
         "type": "textarea",
@@ -408,7 +500,8 @@
         "options": [
           "Pending",
           "Approved",
-          "Rejected"
+          "Rejected",
+          "Cancelled"
         ]
       },
       {
@@ -429,6 +522,72 @@
       "Administrator",
       "Principal",
       "Teacher"
+    ]
+  },
+  {
+    "kind": "leave-adjustments",
+    "title": "Leave balance adjustments",
+    "group": "Attendance",
+    "fields": [
+      {
+        "key": "teacherId",
+        "label": "Staff member",
+        "type": "reference",
+        "required": true,
+        "source": "teachers",
+        "options": null
+      },
+      {
+        "key": "typeId",
+        "label": "Leave type",
+        "type": "reference",
+        "required": true,
+        "source": "leave-types",
+        "options": null
+      },
+      {
+        "key": "direction",
+        "label": "Direction",
+        "type": "select",
+        "required": true,
+        "source": null,
+        "options": [
+          "Add",
+          "Deduct"
+        ]
+      },
+      {
+        "key": "days",
+        "label": "Days",
+        "type": "number",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "effectiveOn",
+        "label": "Effective on",
+        "type": "date",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "reason",
+        "label": "Reason",
+        "type": "textarea",
+        "required": true,
+        "source": null,
+        "options": null
+      }
+    ],
+    "read": [
+      "Administrator",
+      "Principal"
+    ],
+    "write": [
+      "Administrator",
+      "Principal"
     ]
   },
   {
@@ -1192,8 +1351,72 @@
     ]
   },
   {
+    "kind": "period-slots",
+    "title": "Period structure",
+    "group": "Learning",
+    "fields": [
+      {
+        "key": "name",
+        "label": "Period",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "order",
+        "label": "Order",
+        "type": "number",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "startsAt",
+        "label": "Starts",
+        "type": "time",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "endsAt",
+        "label": "Ends",
+        "type": "time",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "type",
+        "label": "Type",
+        "type": "select",
+        "required": true,
+        "source": null,
+        "options": [
+          "Teaching",
+          "Break",
+          "Lunch",
+          "Assembly",
+          "Activity",
+          "Free"
+        ]
+      }
+    ],
+    "read": [
+      "Administrator",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ],
+    "write": [
+      "Administrator"
+    ]
+  },
+  {
     "kind": "timetable",
-    "title": "Weekly timetable",
+    "title": "Timetable",
     "group": "Learning",
     "fields": [
       {
@@ -1237,10 +1460,18 @@
         ]
       },
       {
+        "key": "slotId",
+        "label": "Period",
+        "type": "reference",
+        "required": false,
+        "source": "period-slots",
+        "options": null
+      },
+      {
         "key": "startsAt",
         "label": "Starts",
         "type": "time",
-        "required": true,
+        "required": false,
         "source": null,
         "options": null
       },
@@ -1248,7 +1479,7 @@
         "key": "endsAt",
         "label": "Ends",
         "type": "time",
-        "required": true,
+        "required": false,
         "source": null,
         "options": null
       },
@@ -1259,6 +1490,14 @@
         "required": false,
         "source": null,
         "options": null
+      },
+      {
+        "key": "yearId",
+        "label": "Academic year",
+        "type": "reference",
+        "required": false,
+        "source": "academic-years",
+        "options": null
       }
     ],
     "read": [
@@ -1267,6 +1506,62 @@
       "Teacher",
       "Parent",
       "Student"
+    ],
+    "write": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "kind": "substitutions",
+    "title": "Substitutions",
+    "group": "Learning",
+    "fields": [
+      {
+        "key": "date",
+        "label": "Date",
+        "type": "date",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "timetableId",
+        "label": "Period",
+        "type": "reference",
+        "required": true,
+        "source": "timetable",
+        "options": null
+      },
+      {
+        "key": "teacherId",
+        "label": "Substitute teacher",
+        "type": "reference",
+        "required": true,
+        "source": "teachers",
+        "options": null
+      },
+      {
+        "key": "leaveId",
+        "label": "Leave",
+        "type": "reference",
+        "required": false,
+        "source": "leave-requests",
+        "options": null
+      },
+      {
+        "key": "note",
+        "label": "Note",
+        "type": "textarea",
+        "required": false,
+        "source": null,
+        "options": null
+      }
+    ],
+    "read": [
+      "Administrator",
+      "Principal",
+      "Teacher"
     ],
     "write": [
       "Administrator",

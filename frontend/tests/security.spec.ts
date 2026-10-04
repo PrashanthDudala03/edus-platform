@@ -10,8 +10,8 @@ const root=path.resolve(import.meta.dirname,'../..')
 const env=Object.fromEntries(readFileSync(path.join(root,'.env'),'utf8').split(/\r?\n/).filter(x=>x&&!x.startsWith('#')).map(x=>{const i=x.indexOf('=');return[x.slice(0,i),x.slice(i+1)]}))
 const password=env.EDUOS_BOOTSTRAP_ADMIN_PASSWORD,day=new Date().toISOString().slice(0,10)
 const sql=(query:string)=>execFileSync('docker',['compose','exec','-T','postgres','psql','-U',env.POSTGRES_USER,'-d',env.POSTGRES_DB,'-v','ON_ERROR_STOP=1','-c',query],{cwd:root,encoding:'utf8',stdio:['pipe','pipe','pipe']})
-type School={id:string,tag:string,adminId:string,tokens:Record<string,any>,users:Record<string,string>,year:string,cl:string,subject:string,scheme:string,head:string,teacher:string,admission:string,student:string,circular:string,homework:string,document:string,certificate:string}
-const school=(tag:string):School=>({id:randomUUID(),tag,adminId:randomUUID(),tokens:{},users:{},year:'',cl:'',subject:'',scheme:'',head:'',teacher:'',admission:'',student:'',circular:'',homework:'',document:'',certificate:''})
+type School={id:string,tag:string,adminId:string,tokens:Record<string,any>,users:Record<string,string>,year:string,cl:string,subject:string,scheme:string,head:string,teacher:string,admission:string,student:string,circular:string,homework:string,document:string,certificate:string,slot:string,leaveType:string,period:string,leave:string}
+const school=(tag:string):School=>({id:randomUUID(),tag,adminId:randomUUID(),tokens:{},users:{},year:'',cl:'',subject:'',scheme:'',head:'',teacher:'',admission:'',student:'',circular:'',homework:'',document:'',certificate:'',slot:'',leaveType:'',period:'',leave:''})
 const A=school('a'),B=school('b'),lower=['Teacher','Parent','Student']
 let api:APIRequestContext
 const bearer=(s:School,role:string)=>({Authorization:'Bearer '+s.tokens[role].accessToken})
@@ -42,6 +42,9 @@ async function bootstrap(s:School,signInRoles:string[]){
  s.head=await create('fee-heads',{name:'Tuition',code:'TUI',active:'Yes'})
  s.scheme=await create('assessment-schemes',{name:'Theory and practical',type:'Components',components:'Theory:70:28, Practical:30',grades:'A:90, B:75, C:60, D:40, E:0'})
  await create('teaching-assignments',{classId:s.cl,subjectId:s.subject,teacherId:s.teacher})
+ s.slot=await create('period-slots',{name:'Period 1',order:1,startsAt:'09:00',endsAt:'09:45',type:'Teaching'})
+ s.period=await create('timetable',{classId:s.cl,subjectId:s.subject,teacherId:s.teacher,day:'Monday',slotId:s.slot,room:'R1'})
+ s.leaveType=await create('leave-types',{name:'Casual leave',code:'CL',paid:'Paid',yearlyAllowance:12,tracksBalance:'Yes',active:'Yes'})
  s.admission=await create('admissions',{admissionNumber:'SEC-'+s.tag+'-001',firstName:'Riya',lastName:'Learner',dateOfBirth:'2014-05-01',gender:'Female',email:'riya-'+s.id+'@example.test',phoneNumber:'9000000003',guardianName:'Kiran Guardian',guardianEmail:'kiran-'+s.id+'@example.test',guardianPhone:'9'+Date.now().toString().slice(-9),address:'1 School Lane',classId:s.cl,status:'Submitted'})
  s.student=(await ok(s,'Administrator','POST','/suite/admissions/'+s.admission+'/accept')).studentId
  await create('account-links',{userId:s.users.Teacher,teacherId:s.teacher})
@@ -50,6 +53,7 @@ async function bootstrap(s:School,signInRoles:string[]){
  for(const role of signInRoles.filter(r=>r!=='Administrator'))await login(s,role)
  s.circular=await create('circulars',{title:'Notice '+s.tag,message:'Read and acknowledge.',audience:'All',dueDate:day})
  s.homework=await create('homework',{title:'Fractions',classId:s.cl,subjectId:s.subject,dueDate:day,instructions:'Solve the worksheet.'},signInRoles.includes('Teacher')?'Teacher':'Administrator')
+ s.leave=await create('leave-requests',{teacherId:s.teacher,typeId:s.leaveType,fromDate:'2030-03-04',toDate:'2030-03-04',reason:'Private reason '+s.tag,status:'Pending'},signInRoles.includes('Teacher')?'Teacher':'Administrator')
  s.certificate=await create('certificates',{studentId:s.student,type:'Bonafide certificate',issuedOn:day,remarks:'Verification.'})
  const upload=await api.post('/api/v1/suite/documents?recordId='+s.admission,{headers:bearer(s,'Administrator'),multipart:{file:{name:'form.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4\nSecurity QA '+s.tag+'\n%%EOF')}}})
  expect(upload.status(),await upload.text()).toBe(201);s.document=(await upload.json()).data.id
@@ -89,6 +93,28 @@ test.describe.serial('Security boundaries against real Docker services',()=>{
   await ok(A,'Parent','GET','/suite/fees');await ok(A,'Student','GET','/suite/fees')
  })
 
+ test('timetable, leave and substitutions stay inside the school and leave reasons stay with staff',async()=>{
+  // Another school's period, teacher or leave is unknown here: refused before any rule runs, with nothing learned.
+  await denied(A,'Administrator','POST','/suite/records/substitutions',{date:'2030-03-04',timetableId:B.period,teacherId:A.teacher},404)
+  await denied(A,'Administrator','POST','/suite/records/substitutions',{date:'2030-03-04',timetableId:A.period,teacherId:B.teacher},400)
+  await denied(A,'Administrator','POST','/suite/records/timetable',{classId:A.cl,subjectId:A.subject,teacherId:B.teacher,day:'Tuesday',slotId:A.slot},400)
+  await denied(A,'Administrator','GET','/suite/leave/'+B.leave+'/impact',undefined,404)
+  await denied(A,'Administrator','POST','/suite/leave/'+B.leave+'/decision',{decision:'Approved',remark:'x'},404)
+  await denied(A,'Administrator','GET','/suite/timetable/candidates?timetableId='+B.period+'&date=2030-03-04',undefined,404)
+  await denied(A,'Administrator','GET','/suite/leave/balances?teacherId='+B.teacher,undefined,404)
+  expect((await ok(A,'Administrator','GET','/suite/timetable/week?classId='+B.cl+'&date=2030-03-04')).periods).toEqual([])
+  expect((await ok(A,'Administrator','GET','/suite/records/substitutions')).data).toEqual([])
+  // Only an approver decides, and only for their own school; a teacher never decides, not even their own request.
+  await denied(A,'Teacher','POST','/suite/leave/'+A.leave+'/decision',{decision:'Approved',remark:'self'})
+  for(const role of lower){await denied(A,role,'GET','/suite/leave/queue');await denied(A,role,'GET','/suite/timetable/operations');await denied(A,role,'POST','/suite/records/substitutions',{date:'2030-03-04',timetableId:A.period,teacherId:A.teacher})}
+  for(const role of ['Parent','Student']){await denied(A,role,'GET','/suite/records/leave-requests');await denied(A,role,'GET','/suite/leave/'+A.leave+'/impact');await denied(A,role,'GET','/suite/leave/balances')
+   const family=await ok(A,role,'GET','/suite/timetable/week?date=2030-03-04');expect(JSON.stringify(family)).not.toContain('Private reason');expect(family.office).toBe(false)}
+  // A teacher reads their own leave, balance and impact, and nobody else's balance.
+  expect((await ok(A,'Teacher','GET','/suite/leave/'+A.leave+'/impact')).teacherId).toBe(A.teacher)
+  expect((await ok(A,'Teacher','GET','/suite/leave/balances')).teacherId).toBe(A.teacher)
+  await denied(A,'Teacher','GET','/suite/leave/balances?teacherId='+B.teacher)
+  await denied(A,'Teacher','GET','/suite/timetable/week?teacherId='+B.teacher)
+ })
  test('fees stay with the office and the linked family: ledgers, receipts, concessions, reversals and provider events',async()=>{
   const structure=(await ok(A,'Administrator','POST','/suite/records/fee-structures',{name:'Tuition',classId:A.cl,amount:1000,installment:'Term 1',dueDate:day},201)).id
   const charge=(await ok(A,'Administrator','POST','/suite/fees/charges',{studentId:A.student,structureId:structure,concession:'0'},201)).id
@@ -140,10 +166,10 @@ test.describe.serial('Security boundaries against real Docker services',()=>{
 
  test('teacher, parent and student are refused every administrative operation',async()=>{
   const catalog=await ok(A,'Administrator','GET','/suite/catalog')
-  const refs={'academic-years':A.year,classes:A.cl,subjects:A.subject,'assessment-schemes':A.scheme,'fee-heads':A.head,teachers:A.teacher,students:A.student,users:A.users.Student}
+  const refs={'academic-years':A.year,classes:A.cl,subjects:A.subject,'assessment-schemes':A.scheme,'fee-heads':A.head,teachers:A.teacher,students:A.student,users:A.users.Student,'period-slots':A.slot,timetable:A.period,'leave-types':A.leaveType,'leave-requests':A.leave}
   // Modules whose references can all be satisfied with school A records; anything else would fail field validation first.
   const modules=catalog.filter((m:any)=>!m.fields.some((f:any)=>f.type==='reference'&&!(f.source in refs)))
-  expect(modules.map((m:any)=>m.kind)).toEqual(expect.arrayContaining(['school-config','fee-heads','fee-structures','academic-years','classes','subjects','teaching-assignments','assessment-schemes','exams','timetable','circulars','calendar','certificates','account-links','admissions']))
+  expect(modules.map((m:any)=>m.kind)).toEqual(expect.arrayContaining(['school-config','fee-heads','fee-structures','academic-years','classes','subjects','teaching-assignments','assessment-schemes','exams','timetable','period-slots','substitutions','leave-types','leave-requests','leave-adjustments','circulars','calendar','certificates','account-links','admissions']))
   const teacherWritable=['leave-requests','marks','messages','homework','submissions']
   for(const role of lower){
    for(const m of modules){

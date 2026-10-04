@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { BookOpen, CalendarCheck, ClipboardList, FileText, Printer, Search, Users, Wallet } from 'lucide-react'
+import { ArrowUpRight, BookOpen, CalendarCheck, ClipboardList, FileText, Printer, Search, Users, Wallet } from 'lucide-react'
 import client, { errorMessage } from '../api/client'
 import { useAuthStore } from '../store/auth'
 import { Empty, ErrorBox, Loading, PageHeader, today } from '../components/UI'
@@ -66,7 +66,7 @@ function Card({ title, value, note, icon: Icon, tone, onClick }: { title: string
 }
 
 function Overview({ v, id, pick }: { v: Student360, id: string, pick: (t: Tab) => void }) {
-  const a = v.attendance.thisMonth, h = v.homework, e = v.exams, f = v.fees
+  const a = v.attendance.thisMonth, h = v.homework, e = v.exams, f = v.fees, t = v.timetable
   return <>
     <div className="stats-grid s360-grid">
       <Card title="Attendance this month" value={pct(a.percent)} note={attendanceNote(a)} icon={CalendarCheck} tone="teal" onClick={() => pick('attendance')} />
@@ -75,6 +75,8 @@ function Overview({ v, id, pick }: { v: Student360, id: string, pick: (t: Tab) =
       {f.available ? <Card title="Outstanding fees" value={f.charges ? money(f.currency, f.outstanding) : '—'} note={feesNote(f)} icon={Wallet} tone="purple" onClick={() => pick('fees')} /> : <div className="stat-card s360-card"><span className="stat-icon purple"><Wallet size={18} /></span><strong>—</strong><h2>Fees</h2><p>{f.reason}</p></div>}
     </div>
     <div className="dashboard-grid">
+      {t && <section className="panel"><div className="panel-heading"><div><h2>Today’s timetable</h2><p>{t!.periods.length ? t!.day + (t!.className ? " · " + t!.className : "") : "No periods today"}</p></div><Link className="text-link" to="/suite/timetable">Full week <ArrowUpRight size={15} /></Link></div>
+        {!t!.periods.length ? <Empty title="Nothing on the timetable today" description="The class timetable for today appears here." /> : <ul className="dash-list">{t!.periods.map(p => <li key={p.id}><span className="stat-icon teal"><CalendarCheck size={17} /></span><div><strong>{p.startsAt}–{p.endsAt} · {p.subjectName}</strong><small>{p.effectiveTeacherName || p.teacherName}{p.substituted ? " (substitute)" : ""}{p.room ? " · " + p.room : ""}</small></div></li>)}</ul>}</section>}
       <section className="panel"><div className="panel-heading"><div><h2>Upcoming exams</h2><p>{e.upcoming.length ? 'Next on the timetable' : 'Nothing scheduled'}</p></div><Link className="text-link" to="/suite/exams">All exams</Link></div>
         {!e.upcoming.length ? <Empty title="No upcoming exams" description="Scheduled exams for the class appear here." /> : <ul className="dash-list">{e.upcoming.map(x => <li key={x.id}><span className="stat-icon peach"><ClipboardList size={17} /></span><div><strong>{x.name} · {x.subjectName}</strong><small>{dayLabel(x.date)}{x.startsAt ? ' · ' + x.startsAt : ''}{x.room ? ' · ' + x.room : ''}</small></div></li>)}</ul>}</section>
       <section className="panel"><div className="panel-heading"><div><h2>Homework due</h2><p>{h.due.length ? 'Soonest first' : 'Nothing due'}</p></div><Link className="text-link" to="/suite/homework">All homework</Link></div>

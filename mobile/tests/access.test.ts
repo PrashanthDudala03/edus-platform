@@ -11,7 +11,7 @@ const person = (dataScope: string, permissions: string[], roles = ['Custom role'
 const parent = person('parent', ['reports.view', 'homework.view', 'timetable.view', 'fees.view', 'circulars.view', 'exams.view'])
 const teacher = person('teacher', ['classes.view', 'timetable.view', 'attendance.view', 'attendance.mark', 'homework.view', 'exams.view', 'leave-requests.view', 'circulars.view'])
 const student = person('student', ['timetable.view', 'homework.view', 'reports.view', 'exams.view', 'circulars.view'])
-const leader = person('school', ['overview.view', 'attendance.view', 'exams.view', 'fees.view', 'leave-requests.view', 'circulars.view'], ['Administrator'])
+const leader = person('school', ['overview.view', 'attendance.view', 'exams.view', 'fees.view', 'leave-requests.view', 'timetable.view', 'circulars.view'], ['Administrator'])
 
 test('the experience follows the data scope, not the role name', () => {
   assert.deepEqual([parent, teacher, student, leader].map(experienceFor), ['parent', 'teacher', 'student', 'principal'])
@@ -25,7 +25,7 @@ test('each role gets its agreed navigation, in order', () => {
   assert.deepEqual(labels(parent), ['Children', 'Homework', 'Notices', 'Timetable', 'Results', 'Fees', 'Exams', 'Student 360'])
   assert.deepEqual(labels(teacher), ['Classes', 'Attendance', 'Timetable', 'Homework', 'Exams', 'My leave', 'Notices'])
   assert.deepEqual(labels(student), ['Timetable', 'Homework', 'Results', 'Attendance', 'Exams', 'Notices', 'My school profile'])
-  assert.deepEqual(labels(leader), ['Overview', 'Attendance', 'Leave', 'Academics', 'Fees', 'Notices'])
+  assert.deepEqual(labels(leader), ['Overview', 'Attendance', 'Leave', 'Timetable', 'Academics', 'Fees', 'Notices'])
   for (const user of [parent, teacher, student, leader]) assert.ok(navigationFor(user).every(entry => entry.route), 'every entry now opens a real screen')
 })
 
@@ -66,6 +66,8 @@ test('a notification leads only where the signed-in account may go', () => {
   assert.deepEqual(resolveNotificationRoute({ type: 'leave.requested' }, leader), { route: '/leave', reason: 'opened' })
   assert.deepEqual(resolveNotificationRoute({ type: 'homework.assigned' }, student), { route: '/homework', reason: 'opened' })
   assert.deepEqual(resolveNotificationRoute({ type: 'timetable.changed' }, teacher), { route: '/timetable', reason: 'opened' })
+  assert.deepEqual(resolveNotificationRoute({ type: 'substitution.assigned' }, teacher), { route: '/timetable', reason: 'opened' })
+  assert.deepEqual(resolveNotificationRoute({ type: 'substitution.changed' }, leader), { route: '/timetable', reason: 'opened' })
   assert.deepEqual(resolveNotificationRoute({ type: 'school-home.published' }, leader), { route: '/welcome', reason: 'opened' })
   assert.deepEqual(resolveNotificationRoute({ type: 'something.new' }, parent), { route: '/home', reason: 'unknown-type' })
   assert.deepEqual(resolveNotificationRoute({ type: '__proto__' }, parent), { route: '/home', reason: 'unknown-type' })

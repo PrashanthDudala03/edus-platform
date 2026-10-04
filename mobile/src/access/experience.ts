@@ -80,6 +80,7 @@ export const NAVIGATION: Record<Experience, NavItem[]> = {
     item('overview', 'Overview', 'Enrolment, staff and today’s attendance', 'stats-chart-outline', 'overview.view', '/overview', true),
     item('attendance', 'Attendance', 'Today’s register across the school', 'checkbox-outline', 'attendance.view', '/register', true),
     item('leave', 'Leave', 'Staff leave waiting for a decision', 'document-text-outline', 'leave-requests.view', '/leave', true),
+    item('timetable', 'Timetable', 'Today’s cover and the week by class', 'time-outline', 'timetable.view', '/timetable'),
     item('academics', 'Academics', 'Exams across the school', 'school-outline', 'exams.view', '/exams'),
     item('fees', 'Fees', 'Billed, received and outstanding', 'wallet-outline', 'fees.view', '/fees'),
     item('notices', 'Notices', 'Circulars, events and messages', 'megaphone-outline', 'circulars.view', '/notices'),

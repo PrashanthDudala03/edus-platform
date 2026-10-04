@@ -38,6 +38,11 @@ public static class PermissionAccess
             // Assessment schemes are configuration of the exams module and share its permission.
             "records" => (p.ElementAtOrDefault(4) == "assessment-schemes" ? "exams" : p.ElementAtOrDefault(4) == "fee-heads" ? "fee-structures" : p.ElementAtOrDefault(4)) + (read ? ".view" : method == "DELETE" ? ".archive" : ".manage"),
             "student-attendance" => read ? "attendance.view" : "attendance.mark",
+            // Timetable: everyone reads the effective timetable they are scoped to; the office's daily operations view and
+            // substitute candidates belong to substitutions; copying a day edits the timetable.
+            "timetable" => p.ElementAtOrDefault(4) switch { "operations" => "substitutions.view", "candidates" => "substitutions.manage", "copy" => "timetable.manage", _ => read ? "timetable.view" : "timetable.manage" },
+            // Leave: balances, the queue and impact are read with leave-requests.view (the service narrows a teacher to their own); a decision needs approve; cancelling is an edit.
+            "leave" => read ? "leave-requests.view" : p.ElementAtOrDefault(5) == "decision" ? "leave-requests.approve" : "leave-requests.manage",
             "homework" => read ? "homework.view" : "homework.manage",
             // Timetable, overview and marksheets are read with exams.view; marks entry needs marks.manage and the lifecycle call is checked per role by the service.
             "exams" => read ? "exams.view" : p.ElementAtOrDefault(5) == "marksheet" ? "marks.manage" : "exams.view",

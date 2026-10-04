@@ -82,7 +82,7 @@ export const examActions = (status: ExamStatus, who: { leadership: boolean, teac
 export interface Circular { id: string, title: string, message: string, audience: string, classId: string, dueDate: string, createdAt: string }
 export interface CalendarEvent { id: string, title: string, startsOn: string, endsOn: string, description: string }
 export interface Message { id: string, title: string, message: string, createdAt: string }
-export interface Leave { id: string, version: number, teacherId: string, fromDate: string, toDate: string, reason: string, status: string, approvalRemark: string }
+export interface Leave { id: string, version: number, teacherId: string, typeId: string, fromDate: string, toDate: string, halfDay: string, reason: string, status: string, approvalRemark: string, days?: number }
 export interface Charge { id: string, studentId: string, student: string, description: string, dueDate: string, gross: number, concession: number, paid: number, balance: number, currency: string }
 export interface RegisterRow { id: string, code: string, name: string, className: string, status: AttendanceStatus | '', reason?: string, remark?: string }
 /** Structured reasons the school can record with Absent, Late or Excused. The list itself comes from the server; this is the fallback. */
@@ -204,3 +204,5 @@ export function shiftDay(value: string, by: number) {
 }
 /** The last `count` days ending today, oldest first, for a horizontal day picker. */
 export const recentDays = (today: string, count: number) => Array.from({ length: count }, (_, i) => shiftDay(today, i - count + 1))
+/** Calendar days inclusive; a half day is half of one. The server's figure is the one of record. */
+export const leaveDaysOf = (fromDate: string, toDate: string, halfDay = 'No') => halfDay === 'First half' || halfDay === 'Second half' ? 0.5 : leaveDays(fromDate, toDate)

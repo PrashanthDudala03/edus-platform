@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { can } from '@/access/experience'
 import { api, useSession } from '@/services'
 import { isoMonth } from '@/utils/format'
+import type { Candidate, Operations, Period, Substitution, TimetableDay } from './timetable'
 import type { Assignment, AttendanceStatus, BoardItem, CalendarEvent, Charge, ChargeState, Child, Circular, ClassRegister, DayRecord, Exam, ExamOverview, ExamStatus, FeeSummary, LedgerTotals, StudentLedger, Homework, HomeworkGroup, HomeworkSubmission, Leave, MarkStatus, Marksheet, Message, OverviewItem, RegisterRow, RegisterTotals, ReportCard, ReportResult, ReviewRow, S360Timeline, Scheme, SheetMark, Student360, Submission, TimetableExam } from './logic'
 
 // Every request the core modules make, in one place. Each is an existing EduOS endpoint that already limits rows to
@@ -34,7 +35,7 @@ export const useExams = (enabled = true) => useRecords<Exam>('exams', r => ({ id
 export const useCirculars = (enabled = true) => useRecords<Circular>('circulars', r => ({ id: s(r.id), title: s(r.title), message: s(r.message), audience: s(r.audience), classId: s(r.classId), dueDate: s(r.dueDate).slice(0, 10), createdAt: s(r.createdAt) }), enabled)
 export const useCalendar = (enabled = true) => useRecords<CalendarEvent>('calendar', r => ({ id: s(r.id), title: s(r.title), startsOn: s(r.startsOn).slice(0, 10), endsOn: s(r.endsOn).slice(0, 10), description: s(r.description) }), enabled)
 export const useMessages = (enabled = true) => useRecords<Message>('messages', r => ({ id: s(r.id), title: s(r.title), message: s(r.message), createdAt: s(r.createdAt) }), enabled)
-export const useLeave = (enabled = true) => useRecords<Leave>('leave-requests', r => ({ id: s(r.id), version: n(r.version), teacherId: s(r.teacherId), fromDate: s(r.fromDate).slice(0, 10), toDate: s(r.toDate).slice(0, 10), reason: s(r.reason), status: s(r.status), approvalRemark: s(r.approvalRemark) }), enabled)
+export const useLeave = (enabled = true) => useRecords<Leave>('leave-requests', r => ({ id: s(r.id), version: n(r.version), teacherId: s(r.teacherId), typeId: s(r.typeId), halfDay: s(r.halfDay) || 'No', days: r.days === undefined || r.days === null ? undefined : n(r.days), fromDate: s(r.fromDate).slice(0, 10), toDate: s(r.toDate).slice(0, 10), reason: s(r.reason), status: s(r.status), approvalRemark: s(r.approvalRemark) }), enabled)
 
 type Options = Record<string, { id: string, label: string }[] | undefined>
 /** Names for the ids in records (subjects, classes, teachers, students, exams), from the existing options call. */
@@ -215,12 +216,55 @@ export function useSubmitHomework() {
 }
 export function useRequestLeave() {
   const cache = useQueryClient()
-  return useMutation({ mutationFn: (input: { teacherId: string, fromDate: string, toDate: string, reason: string }) => api.post('/suite/records/leave-requests', { ...input, status: 'Pending', approvalRemark: '' }), onSuccess: () => cache.invalidateQueries({ queryKey: ['records', 'leave-requests'] }) })
+  return useMutation({ mutationFn: (input: { teacherId: string, typeId: string, fromDate: string, toDate: string, halfDay: string, reason: string }) => api.post('/suite/records/leave-requests', { ...input, status: 'Pending', approvalRemark: '' }), onSuccess: () => { cache.invalidateQueries({ queryKey: ['records', 'leave-requests'] }); cache.invalidateQueries({ queryKey: ['leave'] }) } })
 }
-/** Approve or reject. The record's version is sent, so a request someone else already decided is refused, not overwritten. */
+/** Approve or reject through the decision call, which needs the approve permission. The record's version is sent, so a request someone else already decided is refused, not overwritten. */
 export function useDecideLeave() {
   const cache = useQueryClient()
-  return useMutation({ mutationFn: ({ leave, status, remark }: { leave: Leave, status: 'Approved' | 'Rejected', remark: string }) =>
-    api.put('/suite/records/leave-requests/' + leave.id, { teacherId: leave.teacherId, fromDate: leave.fromDate, toDate: leave.toDate, reason: leave.reason, status, approvalRemark: remark, version: leave.version }),
-    onSettled: () => cache.invalidateQueries({ queryKey: ['records', 'leave-requests'] }) })
+  return useMutation({ mutationFn: ({ id, version, decision, remark }: { id: string, version: number, decision: 'Approved' | 'Rejected', remark: string }) => api.post('/suite/leave/' + id + '/decision', { decision, remark, version }),
+    onSettled: () => { cache.invalidateQueries({ queryKey: ['records', 'leave-requests'] }); cache.invalidateQueries({ queryKey: ['leave'] }); cache.invalidateQueries({ queryKey: ['timetable'] }) } })
+}
+/** A staff member withdraws a pending request (leadership may cancel approved leave with a remark). */
+export function useCancelLeave() {
+  const cache = useQueryClient()
+  return useMutation({ mutationFn: ({ leave, remark = '' }: { leave: Leave, remark?: string }) => api.post('/suite/leave/' + leave.id + '/cancel', { remark, version: leave.version }),
+    onSettled: () => { cache.invalidateQueries({ queryKey: ['records', 'leave-requests'] }); cache.invalidateQueries({ queryKey: ['leave'] }) } })
+}
+
+// Timetable 2.0 and Leave 2.0: the effective day, balances, the approval queue, impact, the office's cover view.
+/** One day as the caller lives it; a parent passes the child whose class to show. */
+export function useTimetableDay(date: string, studentId?: string, enabled = true) {
+  const allowed = usePermission('timetable.view')
+  return useQuery({ queryKey: ['timetable', 'today', date, studentId ?? ''], enabled: enabled && allowed, staleTime: 60_000, queryFn: () => get<TimetableDay>('/suite/timetable/today', { date, ...(studentId ? { studentId } : {}) }) })
+}
+export interface LeaveBalance { typeId: string, name: string, code: string, paid: string, tracksBalance: boolean, active: boolean, allowance: number, added: number, deducted: number, used: number, pending: number, remaining: number | null, afterPending: number | null }
+export interface LeaveBalances { teacherId: string, teacherName: string, year: { name: string, from: string, to: string }, balances: LeaveBalance[] }
+export function useLeaveBalances(enabled = true) {
+  const allowed = usePermission('leave-requests.view'), staff = useSession(state => state.user?.dataScope === 'teacher')
+  return useQuery({ queryKey: ['leave', 'balances'], enabled: enabled && allowed && staff, staleTime: 60_000, queryFn: () => get<LeaveBalances>('/suite/leave/balances') })
+}
+export interface QueueItem extends Leave { teacherName: string, typeName: string, remaining: number | null, tracksBalance: boolean, impact: { affected: number, covered: number, uncovered: number } }
+export function useLeaveQueue(enabled = true) {
+  const allowed = usePermission('leave-requests.view'), office = useSession(state => state.user?.dataScope === 'school')
+  return useQuery({ queryKey: ['leave', 'queue'], enabled: enabled && allowed && office, staleTime: 30_000, queryFn: () => get<{ items: QueueItem[], total: number, canApprove: boolean }>('/suite/leave/queue') })
+}
+export interface LeaveImpact { leaveId: string, teacherName: string, days: number, summary: { affected: number, covered: number, uncovered: number }, periods: { id: string, date: string, startsAt: string, endsAt: string, className: string, subjectName: string, status: 'covered' | 'uncovered', substitution?: { teacherName: string } }[] }
+export function useLeaveImpact(leaveId: string | undefined) {
+  const allowed = usePermission('leave-requests.view')
+  return useQuery({ queryKey: ['leave', 'impact', leaveId], enabled: allowed && !!leaveId, staleTime: 30_000, queryFn: () => get<LeaveImpact>('/suite/leave/' + leaveId + '/impact') })
+}
+export function useOperations(date: string, enabled = true) {
+  const allowed = usePermission('substitutions.view'), office = useSession(state => state.user?.dataScope === 'school')
+  return useQuery({ queryKey: ['timetable', 'operations', date], enabled: enabled && allowed && office, staleTime: 30_000, queryFn: () => get<Operations>('/suite/timetable/operations', { date }) })
+}
+export function useCandidates(timetableId: string, date: string) {
+  const allowed = usePermission('substitutions.manage')
+  return useQuery({ queryKey: ['timetable', 'candidates', timetableId, date], enabled: allowed, staleTime: 30_000, queryFn: () => get<{ period: Period, candidates: Candidate[] }>('/suite/timetable/candidates', { timetableId, date }) })
+}
+/** Assign or change the substitute for one period on one date; the server refuses a teacher who is busy or away. */
+export function useAssignSubstitute() {
+  const cache = useQueryClient()
+  return useMutation({ mutationFn: async ({ date, timetableId, teacherId, existing }: { date: string, timetableId: string, teacherId: string, existing?: Substitution }): Promise<unknown> =>
+    existing ? api.put('/suite/records/substitutions/' + existing.id, { date, timetableId, teacherId, note: existing.note, version: existing.version }) : api.post('/suite/records/substitutions', { date, timetableId, teacherId }),
+    onSettled: () => { cache.invalidateQueries({ queryKey: ['timetable'] }); cache.invalidateQueries({ queryKey: ['leave'] }) } })
 }

@@ -5,6 +5,7 @@ import { ArrowUpRight, CalendarCheck, ClipboardList, Megaphone, Wallet, Check, t
 import client, { errorMessage } from '../../api/client'
 import { Empty, ErrorBox, Loading, today } from '../../components/UI'
 import { data, label, type Options, type Row } from '../suite/helpers'
+import { type Day as TimetableDay, gridRows, teacherShown } from '../suite/timetable'
 
 // Dashboard building blocks. Every figure is read from an existing endpoint, which already limits
 // the rows to what the signed-in role may see; nothing here is computed from invented data.
@@ -52,12 +53,14 @@ export function UpcomingExams({ classId, link, title = 'Upcoming exams' }: { cla
   </Panel>
 }
 
-export function TodayTimetable({ classIds, link }: { classIds?: string[], link?: string }) {
-  const periods = useRecords('timetable'), options = useOptions(), day = weekday()
-  const rows = (periods.data?.data || []).filter(p => p.day === day && (!classIds || classIds.includes(p.classId))).sort((a, b) => String(a.startsAt).localeCompare(String(b.startsAt)))
-  return <Panel title={"Today's timetable"} description={day} link={link} linkLabel="Full week">
-    <QueryState query={periods} empty={!rows.length} emptyText={['No periods today', 'Timetable periods for ' + day + ' will appear here.']}>
-      <ul className="dash-list">{rows.map(p => <li key={p.id}><span className="stat-icon teal"><CalendarCheck size={17} /></span><div><strong>{String(p.startsAt).slice(0, 5)}–{String(p.endsAt).slice(0, 5)} · {label(options.data, 'subjects', p.subjectId)}</strong><small>{label(options.data, 'classes', p.classId)}{p.room ? ' · Room ' + p.room : ''}</small></div></li>)}</ul>
+export function TodayTimetable({ studentId, link }: { studentId?: string, link?: string }) {
+  // The effective day from the timetable endpoint: the role's own scope, with the substitute's name where one takes a lesson.
+  const day = useQuery<TimetableDay>({ queryKey: ['suite', 'timetable', 'today', studentId ?? ''], queryFn: () => data('/timetable/today', studentId ? { studentId } : undefined) })
+  // Tolerant of an older service answering with a list: the widget then shows no periods rather than failing the dashboard.
+  const rows = day.data && Array.isArray(day.data.periods) ? gridRows(day.data.slots ?? [], day.data.periods).filter(r => r.type === 'Teaching' && r.cells[day.data!.day]?.length) : []
+  return <Panel title={"Today's timetable"} description={day.data?.day ?? weekday()} link={link} linkLabel="Full week">
+    <QueryState query={day} empty={!rows.length} emptyText={['No periods today', 'Timetable periods for ' + (day.data?.day ?? weekday()) + ' will appear here.']}>
+      <ul className="dash-list">{rows.map(r => <li key={r.key}><span className="stat-icon teal"><CalendarCheck size={17} /></span><div><strong>{r.startsAt}–{r.endsAt}{r.name ? ' · ' + r.name : ''}</strong>{r.cells[day.data!.day]!.map(p => <small key={p.id}>{p.subjectName} · {p.className} · {teacherShown(p)}{p.room ? ' · ' + p.room : ''}{p.substituted ? ' (substitute)' : ''}{p.covering ? ' (covering)' : ''}</small>)}</div></li>)}</ul>
     </QueryState>
   </Panel>
 }

@@ -27,7 +27,7 @@ export default function TeacherDashboard() {
       <StatTile label="Attendance today" value={students.length ? marked + ' / ' + students.length : '—'} note="Students marked in your classes" icon={CalendarCheck} tone="peach" to="/suite/register" />
       <StatTile label="To review" value={work.data ? workTotals.toReview : awaiting.length} note={work.data ? workTotals.missing + ' missing · ' + workTotals.late + ' handed in late' : 'Submissions without feedback'} icon={GraduationCap} tone="purple" to="/suite/homework" />
     </div>
-    <div className="dashboard-grid"><TodayTimetable classIds={classIds} link="/suite/timetable" />
+    <div className="dashboard-grid"><TodayTimetable link="/suite/timetable" />
       <Panel title="Homework due" description="Assignments for your classes" link="/suite/homework">
         <QueryState query={homework} empty={!upcomingHomework.length} emptyText={['No homework due', 'Create homework for your assigned classes.']}>
           <ul className="dash-list">{upcomingHomework.map(h => <li key={h.id}><span className="stat-icon teal"><BookOpen size={17} /></span><div><strong>{h.title}</strong><small>{label(options.data, 'classes', h.classId)} · {label(options.data, 'subjects', h.subjectId)}</small></div><span className="tag">Due {String(h.dueDate).slice(0, 10)}</span></li>)}</ul>

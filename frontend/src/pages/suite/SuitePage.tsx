@@ -11,6 +11,8 @@ import { ReportsPage, AllocationPage } from './SuiteTools'
 import FeesPage from './FeesPage'
 import HomeworkPage from './HomeworkPage'
 import ExamsPage from './ExamsPage'
+import TimetablePage from './TimetablePage'
+import LeavePage from './LeavePage'
 import { RegisterPage } from './AttendancePages'
 import { ForbiddenPage } from '../ForbiddenPage'
 import { canVisit } from '../../access'
@@ -26,7 +28,7 @@ export function SchoolModules(){
 }
 // Connected tools are shown only to roles their endpoints accept; the API still decides every request.
 const toolRoles:Record<string,string[]>={fees:['Administrator','Principal','Parent','Student'],allocation:['Administrator'],register:['Administrator','Principal','Teacher'],reports:['Administrator','Principal','Teacher','Parent','Student']}
-export default function SuiteRouter(){const{kind}=useParams(),user=useAuthStore(s=>s.user);if(kind&&!canVisit(user,'/suite/'+kind))return <ForbiddenPage/>;return kind==='fees'?<FeesPage/>:kind==='reports'?<ReportsPage/>:kind==='allocation'?<AllocationPage/>:kind==='register'?<RegisterPage/>:kind==='homework'?<HomeworkPage/>:kind==='exams'||kind==='marks'?<ExamsPage key={kind} kind={kind}/>:<RecordPage key={kind} kind={kind||''}/>}
+export default function SuiteRouter(){const{kind}=useParams(),user=useAuthStore(s=>s.user);if(kind&&!canVisit(user,'/suite/'+kind))return <ForbiddenPage/>;return kind==='fees'?<FeesPage/>:kind==='reports'?<ReportsPage/>:kind==='allocation'?<AllocationPage/>:kind==='register'?<RegisterPage/>:kind==='homework'?<HomeworkPage/>:kind==='exams'||kind==='marks'?<ExamsPage key={kind} kind={kind}/>:kind==='timetable'?<TimetablePage/>:kind==='leave-requests'?<LeavePage/>:<RecordPage key={kind} kind={kind||''}/>}
 function RecordPage({kind}:{kind:string}){
  const cache=useQueryClient(),role=useAuthStore(s=>s.user?.roles[0]),admin=isAdministrator(role),leader=isLeadership(role)
  const [linkDraft,setLinkDraft]=useState<Record<string,string>>()
@@ -59,7 +61,7 @@ function RecordPage({kind}:{kind:string}){
  const sibling=catalog.data!.filter(m=>m.group===module.group)
  return <><PageHeader eyebrow={module.group.toUpperCase()} title={module.title} description="Connected to your school records, with changes recorded in the activity history.">{module.canWrite&&<button className="button primary" onClick={()=>{setError('');setLinkDraft(undefined);setEdit(null)}}><Plus size={17}/>Add record</button>}</PageHeader>
  <div className="module-tabs"><Link to="/suite">All modules</Link>{sibling.map(m=><Link key={m.kind} className={m.kind===kind?'selected':''} to={'/suite/'+m.kind}>{m.title}</Link>)}
- {module.group==='Academics'&&admin&&<Link to="/suite/allocation">Allocation & promotion</Link>}{module.group==='Fees'&&leader&&<Link to="/suite/fees">Charges & payments</Link>}{module.group==='Exams'&&<Link to="/suite/reports">Report cards</Link>}</div>
+ {module.group==='Academics'&&admin&&<Link to="/suite/allocation">Allocation & promotion</Link>}{module.group==='Fees'&&leader&&<Link to="/suite/fees">Charges & payments</Link>}{module.group==='Exams'&&<Link to="/suite/reports">Report cards</Link>}{module.group==='Learning'&&<Link to="/suite/timetable?tab=today">Cover for the day</Link>}</div>
  {kind==='admissions'&&<div className="info-box">Create the academic year and class first. Save an application as Submitted, attach documents, then accept it to create the student, guardian, and class allocation together.</div>}
  {kind==='messages'&&<div className="info-box">Messages are delivered within linked accounts in this app. No email or SMS is sent.</div>}
  {kind==='account-links'&&<div className="info-box">Create the staff, parent, or student account in School settings first. A parent can have several student links; a teacher or student account has one profile link.</div>}

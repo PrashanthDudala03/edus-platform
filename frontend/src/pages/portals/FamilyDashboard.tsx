@@ -57,7 +57,7 @@ function ChildView({ studentId, classId, role }: { studentId: string, classId?: 
       <StatTile label="Overall result" value={card.data?.maximum ? card.data.percent + '%' : '—'} note={card.data?.maximum ? 'Grade ' + card.data.grade + ' · published exams' : 'No published results yet'} icon={ClipboardList} tone="peach" to="/suite/marks" />
       <StatTile label="Documents" value={docs.length} note="Certificates issued by the school" icon={FileText} tone="purple" to="/suite/certificates" />
     </div>
-    <div className="dashboard-grid"><TodayTimetable classIds={classId ? [classId] : []} link="/suite/timetable" />
+    <div className="dashboard-grid"><TodayTimetable studentId={studentId} link="/suite/timetable" />
       <Board studentId={studentId} studentName="this student" canSubmit={role === 'Student'} compact />
       <Panel title="Homework records" description="Due from today" link="/suite/homework">
         <QueryState query={homework} empty={!due.length} emptyText={['No homework due', 'New assignments for this class will appear here.']}>

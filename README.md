@@ -22,13 +22,14 @@ The searchable sidebar exposes the workflows directly; **All school modules** gr
 | --- | --- |
 | Admissions | Application form, PDF/image attachments, admission number, guardian details, acceptance that atomically creates the student/guardian and class allocation |
 | Academics | Academic years, classes/sections, capacity, subjects, class teachers, teaching assignments, allocation and promotion |
-| Attendance | Student registers, teacher-scoped marking, corrections, staff attendance, staff leave requests/approval, monthly reports, in-app absence notices |
+| Attendance | Student registers, teacher-scoped marking, corrections, staff attendance, monthly reports, in-app absence notices |
+| Leave | Configurable leave types, server-side balances with an audited adjustment history, requests with half days, approval queue with balance and timetable impact, approver-only decisions (see docs/TIMETABLE_LEAVE.md) |
 | Fees | Class fee structures and instalments, concessions, charges, received payments, permanent numbered receipts, outstanding balances, in-app reminders |
 | Exams | Schedules, draft/published results, bounded marks, remarks, configurable grade thresholds, report cards printable or saved as PDF |
 | Communication | Administration notices, targeted circulars, acknowledgements, calendar, messages to linked accounts |
 | Homework | Class/subject assignments, due dates, attachments, parent/student submissions, teacher feedback and grades |
 | Teachers | Profiles, class/subject assignments, attendance and leave approval |
-| Timetable | Weekly periods with teacher/class overlap checks |
+| Timetable | School period structure, lessons by period with teacher, class and room clash detection, class/teacher/room weeks, effective daily timetable with substitutes, uncovered-lesson view and substitute assignment |
 | Role workspaces | Administrator, principal, teacher, parent and student; families see linked students, teachers see assigned classes |
 | Certificates | Numbered student IDs, bonafide and transfer certificates; branded browser printing / Save as PDF |
 | Excel tools | Student/staff XLSX or CSV import with preview and atomic commit; attendance, marks, admissions and fee exports |

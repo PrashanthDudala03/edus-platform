@@ -12,10 +12,7 @@ public static partial class Suite
         if(kind=="teaching-assignments")Unique("classId","subjectId","teacherId");
         if(kind=="admissions"){Require(Text(d,"admissionNumber").Length<=50&&Text(d,"firstName").Length<=100&&Text(d,"lastName").Length<=100,"Admission number or student name is too long.");Require(Text(d,"phoneNumber").Length<=20&&Text(d,"guardianPhone").Length<=20,"Phone numbers must be at most 20 characters.");Require(Text(d,"guardianName").Split(' ',2).All(part=>part.Length<=100),"Guardian name parts must be at most 100 characters.");Unique("admissionNumber");Require(Day(d,"dateOfBirth")<DateOnly.FromDateTime(DateTime.UtcNow),"Date of birth must be in the past.");Require(old is null||Text(old,"status")!="Accepted","Accepted admissions are preserved. Edit the student record instead.",409);}
         if(kind=="staff-attendance"){Unique("teacherId","day");Require(Day(d,"day")<=DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)),"Attendance cannot be entered in the future.");}
-        if(kind=="leave-requests"){
-            Require(Day(d,"fromDate")<=Day(d,"toDate"),"Leave end date must be on or after the start.");
-            Require(!peers.Any(p=>Text(p,"teacherId")==Text(d,"teacherId")&&Text(p,"status")!="Rejected"&&Text(d,"status")!="Rejected"&&Day(p,"fromDate")<=Day(d,"toDate")&&Day(p,"toDate")>=Day(d,"fromDate")),"This staff member already has an overlapping leave request.",409);
-        }
+        if(kind is "leave-types" or "leave-requests" or "leave-adjustments")await ValidateLeave(c,a,kind,d,old,id,peers);
         if(kind=="fee-heads"){Unique("name");if(Text(d,"active")=="")d["active"]="Yes";}
         if(kind=="fee-structures"){Require(Number(d,"amount")>0,"Fee amount must be positive.");Unique("name","classId","installment","studentId");if(Text(d,"studentId")!="")await InClass(c,a.School,Id(d,"studentId"),Id(d,"classId"));if(old is not null){var issued=await Q(c,"SELECT id FROM suite.charges WHERE structure_id=@id AND school_id=@s LIMIT 1",("id",id),("s",a.School));Require(issued.Count==0,"An issued fee structure is immutable. Create a new structure or instalment.",409);}}
         if(kind=="assessment-schemes"){
@@ -98,11 +95,7 @@ public static partial class Suite
             }
             if(Text(d,"status")=="")d["status"]=Text(d,"outcome")==""?"Submitted":"";
         }
-        if(kind=="timetable"){
-            Require(TimeOnly.Parse(Text(d,"startsAt"))<TimeOnly.Parse(Text(d,"endsAt")),"Period must end after it starts.");
-            foreach(var p in peers)if(Text(p,"day")==Text(d,"day")&&(Text(p,"classId")==Text(d,"classId")||Text(p,"teacherId")==Text(d,"teacherId"))&&TimeOnly.Parse(Text(p,"startsAt"))<TimeOnly.Parse(Text(d,"endsAt"))&&TimeOnly.Parse(Text(p,"endsAt"))>TimeOnly.Parse(Text(d,"startsAt")))throw new SuiteError(409,"This period overlaps an existing class or teacher timetable slot.");
-            var assignments=await Records(c,a.School,"teaching-assignments");Require(assignments.Any(x=>Text(x,"classId")==Text(d,"classId")&&Text(x,"subjectId")==Text(d,"subjectId")&&Text(x,"teacherId")==Text(d,"teacherId")),"Create the matching teacher / class / subject assignment first.");
-        }
+        if(kind is "period-slots" or "timetable" or "substitutions")await ValidateTimetable(c,a,kind,d,old,id,peers);
         if(kind=="account-links"){
             Require(old is null || Text(old,"userId")==Text(d,"userId"),"A profile link cannot be transferred to another account.");
             Require((Text(d,"studentId")!="")^(Text(d,"teacherId")!=""),"Link either one student or one teacher per access link.");
@@ -143,6 +136,8 @@ public static partial class Suite
         MapExams(group);
         MapStudent360(group);
         MapAttendance(group);
+        MapTimetable(group);
+        MapLeave(group);
         group.MapPost("/admissions/{id:guid}/accept",async(Guid id,HttpContext http)=>{
             await using var c=await Open();var a=await Access(http,c);Require(a.Admin,"Only administrators can accept admissions.",403);
             await using var tx=await c.BeginTransactionAsync();await E(c,"SELECT pg_advisory_xact_lock(hashtextextended(@s,0))",("s",a.School.ToString()));

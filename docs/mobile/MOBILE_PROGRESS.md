@@ -141,6 +141,8 @@ reviewed account links.
 - Runs in Expo Go on Android. The phone and PC share Wi-Fi; Windows Firewall must allow TCP 8081 on the private network.
 - `mobile/.env` holds the HTTPS tunnel address of the gateway (gitignored).
 
+- 2026-10-05: Timetable 2.0 and Leave 2.0: the timetable screen reads the effective day (GET /suite/timetable/today) with week navigation, now/next and substitutes; the leave screen adds balances, leave types, half days, withdraw, the approval queue with impact, decisions through POST /suite/leave/{id}/decision, and Cover today with substitute assignment; leadership gains a Timetable entry; substitution notifications open the timetable.
+
 ## Next
 
 1. Owner reviews phase 2 on the phone; fix what the device shows.

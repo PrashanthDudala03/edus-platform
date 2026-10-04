@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { GraduationCap, BookOpen, Layers, CalendarCheck, Users, ClipboardList, ArrowUpRight } from 'lucide-react'
 import client, { errorMessage } from '../../api/client'
 import { useAuthStore } from '../../store/auth'
+import { OperationsPanel } from '../suite/TimetablePage'
 import { ErrorBox, PageHeader, today } from '../../components/UI'
 import { data, type Row } from '../suite/helpers'
 import { FeeSummary, Panel, QueryState, RecentCirculars, StatTile, UpcomingExams, useRecords } from './widgets'
@@ -44,6 +45,7 @@ export default function PrincipalDashboard() {
           <div className="kpi-row"><div><span>Present or late</span><strong>{staffPresent}</strong></div><div><span>Absent or excused</span><strong>{staffToday.length - staffPresent}</strong></div><div><span>Recorded</span><strong>{staffToday.length}</strong></div></div>
         </QueryState>
       </Panel>
+      {user?.permissions.includes("substitutions.view") && <Panel title="Cover for today" description="Teachers away and the lessons that need someone" link="/suite/timetable?tab=today" linkLabel="Assign cover"><OperationsPanel date={today()} canCover={false} compact /></Panel>}
       <Panel title="Needs your attention" description="Pending school activity">
         <ul className="dash-list">
           <li><span className="stat-icon blue"><BookOpen size={17} /></span><div><strong>{work.isPending ? '…' : workTotals.published} published assignment{workTotals.published === 1 ? '' : 's'}</strong><small>{work.isPending ? '' : workTotals.missing + ' missing · ' + workTotals.toReview + ' to review'}</small></div><Link className="text-link" to="/suite/homework">Open <ArrowUpRight size={14} /></Link></li>
