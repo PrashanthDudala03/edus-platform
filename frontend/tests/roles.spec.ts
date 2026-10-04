@@ -17,9 +17,9 @@ const demo:Record<Role,{user:string,home:string,heading:RegExp,has:string[],lack
  SuperAdmin:{user:'superadmin@eduos.local',home:'/super-admin',heading:/Platform overview/,has:['Schools'],lacks:['Student records','All school modules']},
  Administrator:{user:'admin@demo.eduos.local',home:'/admin',heading:/^Good (morning|afternoon|evening), Asha\.$/,has:['School settings & accounts','Fees & collections','Fee heads','Fee structures & instalments','Class allocation & promotion'],lacks:['Schools']},
  Principal:{user:'principal@demo.eduos.local',home:'/principal',heading:/^Good (morning|afternoon|evening), Meera\.$/,has:['Staff attendance','Fees (view only)','Leave approvals','Fee structures & instalments'],lacks:['School settings & accounts','Access control','Class allocation & promotion']},
- Teacher:{user:'teacher@demo.eduos.local',home:'/teacher',heading:/^Welcome, Ravi\.$/,has:['My classes','Attendance','Marks'],lacks:['Fees & receipts','Student records','School settings & accounts']},
- Parent:{user:'parent@demo.eduos.local',home:'/parent',heading:/^Hello, Neha\.$/,has:['Fees & receipts','Results','Documents & certificates'],lacks:['Student records','Attendance','Marks']},
- Student:{user:'student@demo.eduos.local',home:'/student',heading:/^Hi, Aarav\.$/,has:['My results','My submissions','Timetable','Fees & receipts'],lacks:['Access control','Student records','Attendance']},
+ Teacher:{user:'teacher@demo.eduos.local',home:'/teacher',heading:/^Welcome, Ravi\.$/,has:['My classes','Attendance','Marks'],lacks:['Fees & receipts','Fees & collections','Fee heads','Student records','School settings & accounts']},
+ Parent:{user:'parent@demo.eduos.local',home:'/parent',heading:/^Hello, Neha\.$/,has:['Fees & receipts','Results','Documents & certificates'],lacks:['Fees & collections','Fee heads','Student records','Attendance','Marks']},
+ Student:{user:'student@demo.eduos.local',home:'/student',heading:/^Hi, Aarav\.$/,has:['My results','My submissions','Timetable','Fees & receipts'],lacks:['Fees & collections','Fee heads','Access control','Student records','Attendance']},
 }
 const roles=Object.keys(demo) as Role[]
 const forbidden='This area isn’t available for your role'

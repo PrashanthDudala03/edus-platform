@@ -62,6 +62,6 @@ export const navigation: Record<Role, NavSection[]> = {
   Student: [
     { title: 'My day', links: [['/student', 'Dashboard', LayoutDashboard], ['/student360', 'My school profile', GraduationCap], ['/home', 'School Home', School], ['/suite/timetable', 'Timetable', CalendarCheck], ['/suite/homework', 'Homework', BookOpen], ['/suite/submissions', 'My submissions', BookOpen]] },
     { title: 'Progress', links: [['/suite/exams', 'Exams', ClipboardList], ['/suite/marks', 'My results', ClipboardList], ['/suite/reports', 'Attendance & report card', ShieldCheck]] },
-    { title: 'School', links: [['/suite/circulars', 'Notices & circulars', Megaphone], ['/suite/messages', 'Messages', Megaphone], ['/suite/calendar', 'School calendar', CalendarCheck], ['/suite/certificates', 'Documents & certificates', FileText]] },
+    { title: 'School', links: [['/suite/fees', 'Fees & receipts', Wallet], ['/suite/circulars', 'Notices & circulars', Megaphone], ['/suite/messages', 'Messages', Megaphone], ['/suite/calendar', 'School calendar', CalendarCheck], ['/suite/certificates', 'Documents & certificates', FileText]] },
   ],
 }

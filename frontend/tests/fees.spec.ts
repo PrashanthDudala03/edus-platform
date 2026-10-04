@@ -158,6 +158,24 @@ test.describe('Fees & collections', () => {
     await other.close()
   })
 
+  test('each role sees the fees link under its own label: office tools for the office, Fees & receipts for the family', async ({ page, browser }) => {
+    const nav = (p: Page) => p.getByRole('navigation', { name: 'Main navigation' })
+    await mock(page)
+    await page.goto('/suite/fees')
+    for (const label of ['Fees & collections', 'Fee heads', 'Fee structures & instalments']) await expect(nav(page).getByRole('link', { name: label, exact: true })).toBeVisible()
+    await expect(nav(page).getByRole('link', { name: 'Fees & receipts', exact: true })).toHaveCount(0)
+    for (const [who, eyebrow] of [[parent, 'FAMILY'], [{ ...parent, id: '66666666-6666-4666-8666-666666666666', username: 'aarav', firstName: 'Aarav', roles: ['Student'], dataScope: 'student' }, 'MY FEES']] as const) {
+      const other = await browser.newPage(); await mock(other, who)
+      await other.goto('/suite/fees')
+      await expect(nav(other).getByRole('link', { name: 'Fees & receipts', exact: true })).toBeVisible()
+      for (const label of ['Fees & collections', 'Fee heads', 'Fee structures & instalments']) await expect(nav(other).getByRole('link', { name: label, exact: true })).toHaveCount(0)
+      await nav(other).getByRole('link', { name: 'Fees & receipts', exact: true }).click()
+      await expect(other).toHaveURL(/\/suite\/fees$/)
+      await expect(main(other).locator('.eyebrow').first()).toHaveText(eyebrow)
+      await other.close()
+    }
+  })
+
   test('at 390px the ledger fits without sideways scrolling', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
     await mock(page)
