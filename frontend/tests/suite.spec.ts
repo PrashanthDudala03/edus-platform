@@ -98,7 +98,8 @@ test.describe.serial('Complete school suite',()=>{
   const teacher2=(await good('POST','/teachers',{schoolId,employeeCode:'ST-2',firstName:'Nila',lastName:'Cover',email:'nila'+schoolId+'@example.test',phoneNumber:'9000000004',department:'Science'},'Administrator',201)).id
   const roles=await good('GET','/roles');users.Teacher2=(await good('POST','/users',{schoolId,roleId:roles.find((r:any)=>r.name==='Teacher').id,username:'suite.teacher2',email:'teacher2'+schoolId+'@example.test',firstName:'Nila',lastName:'QA',password},'Administrator',201)).id
   await create('account-links',{userId:users.Teacher2,teacherId:teacher2});await login('Teacher2')
-  const cl2=await create('classes',{name:'Grade 7',section:'B',yearId:year,teacherId:teacher2,capacity:30})
+  // A class of its own for this flow: the capacity test later creates Grade 7 - B, and a class is unique per name, section and year.
+  const cl2=await create('classes',{name:'Grade 8',section:'A',yearId:year,teacherId:teacher2,capacity:30})
   await create('teaching-assignments',{classId:cl2,subjectId:subject,teacherId:teacher2});await create('teaching-assignments',{classId:cl2,subjectId:subject,teacherId:teacher})
   // Lessons placed by period: the first teacher takes Grade 6 in period 1 on that weekday, next to the 09:00 Monday lesson the
   // earlier test placed for the same class and teacher; a clash with the room is named.
