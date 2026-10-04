@@ -269,7 +269,7 @@ public class AiKnowledgeTests
 {
     const string Manage = "ai.knowledge.manage", Marker = "quokka-lantern";
     static readonly byte[] Handbook = Encoding.UTF8.GetBytes("# Attendance\n\nStudents arrive by 8:15. " + Marker + " is the late-arrival code word.\n\n# Fees\n\n" + string.Join(" ", Enumerable.Repeat("Fees are due on the fifth of each month.", 60)));
-    static Task<AiHost> On(InMemoryKnowledgeStore? store = null, InMemoryUsageStore? usage = null, Dictionary<string, string?>? settings = null) => AiGatewayTests.On(settings: settings, usage: usage, knowledge: store);
+    static Task<AiHost> On(InMemoryKnowledgeStore? store = null, InMemoryUsageStore? usage = null, Dictionary<string, string?>? settings = null, TimeProvider? clock = null) => AiGatewayTests.On(settings: settings, usage: usage, knowledge: store, clock: clock);
     static async Task<JsonElement> Data(HttpResponseMessage response, HttpStatusCode expected = HttpStatusCode.OK)
     {
         var body = await response.Content.ReadAsStringAsync();
@@ -481,7 +481,7 @@ public class AiKnowledgeTests
     public async Task UploadsAreRateLimitedLikeOtherAiRequests()
     {
         var store = new InMemoryKnowledgeStore();
-        await using var host = await On(store, settings: new() { ["Ai:Limits:UserRequestsPerMinute"] = "2" });
+        await using var host = await On(store, settings: new() { ["Ai:Limits:UserRequestsPerMinute"] = "2" }, clock: new ManualClock());
         var token = host.Token(permissions: Manage);
         for (var i = 0; i < 2; i++) await Data(await host.Upload(token, "a.txt", Encoding.UTF8.GetBytes("Document " + i)), HttpStatusCode.Created);
         var limited = await Data(await host.Upload(token, "a.txt", Encoding.UTF8.GetBytes("Document 3")));

@@ -413,7 +413,7 @@ public class AiRagTests
     [Fact]
     public async Task QuestionsWithoutKnowledgeStillCountTowardsTheRateLimit()
     {
-        await using var s = await Start(Settings(("Ai:Limits:UserRequestsPerMinute", "2")));
+        await using var s = await Start(Settings(("Ai:Limits:UserRequestsPerMinute", "2")), clock: new ManualClock());
         var caller = s.Reader();
         for (var i = 0; i < 2; i++) Assert.Equal("insufficient-knowledge", Reason((await s.Ask(Sports, caller)).Data));
         var (limited, _) = await s.Ask(Fees, caller);
