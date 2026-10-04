@@ -10,8 +10,8 @@ const root=path.resolve(import.meta.dirname,'../..')
 const env=Object.fromEntries(readFileSync(path.join(root,'.env'),'utf8').split(/\r?\n/).filter(x=>x&&!x.startsWith('#')).map(x=>{const i=x.indexOf('=');return[x.slice(0,i),x.slice(i+1)]}))
 const password=env.EDUOS_BOOTSTRAP_ADMIN_PASSWORD,day=new Date().toISOString().slice(0,10)
 const sql=(query:string)=>execFileSync('docker',['compose','exec','-T','postgres','psql','-U',env.POSTGRES_USER,'-d',env.POSTGRES_DB,'-v','ON_ERROR_STOP=1','-c',query],{cwd:root,encoding:'utf8',stdio:['pipe','pipe','pipe']})
-type School={id:string,tag:string,adminId:string,tokens:Record<string,any>,users:Record<string,string>,year:string,cl:string,subject:string,scheme:string,teacher:string,admission:string,student:string,circular:string,homework:string,document:string,certificate:string}
-const school=(tag:string):School=>({id:randomUUID(),tag,adminId:randomUUID(),tokens:{},users:{},year:'',cl:'',subject:'',scheme:'',teacher:'',admission:'',student:'',circular:'',homework:'',document:'',certificate:''})
+type School={id:string,tag:string,adminId:string,tokens:Record<string,any>,users:Record<string,string>,year:string,cl:string,subject:string,scheme:string,head:string,teacher:string,admission:string,student:string,circular:string,homework:string,document:string,certificate:string}
+const school=(tag:string):School=>({id:randomUUID(),tag,adminId:randomUUID(),tokens:{},users:{},year:'',cl:'',subject:'',scheme:'',head:'',teacher:'',admission:'',student:'',circular:'',homework:'',document:'',certificate:''})
 const A=school('a'),B=school('b'),lower=['Teacher','Parent','Student']
 let api:APIRequestContext
 const bearer=(s:School,role:string)=>({Authorization:'Bearer '+s.tokens[role].accessToken})
@@ -39,6 +39,7 @@ async function bootstrap(s:School,signInRoles:string[]){
  s.teacher=(await ok(s,'Administrator','POST','/teachers',{schoolId:s.id,employeeCode:'SEC-'+s.tag,firstName:'Sec',lastName:'Teacher',email:'teacher-'+s.id+'@example.test',phoneNumber:'9000000002',department:'Science'},201)).id
  s.cl=await create('classes',{name:'Grade 7',section:s.tag.toUpperCase(),yearId:s.year,teacherId:s.teacher,capacity:30})
  s.subject=await create('subjects',{name:'Maths',code:'MAT'})
+ s.head=await create('fee-heads',{name:'Tuition',code:'TUI',active:'Yes'})
  s.scheme=await create('assessment-schemes',{name:'Theory and practical',type:'Components',components:'Theory:70:28, Practical:30',grades:'A:90, B:75, C:60, D:40, E:0'})
  await create('teaching-assignments',{classId:s.cl,subjectId:s.subject,teacherId:s.teacher})
  s.admission=await create('admissions',{admissionNumber:'SEC-'+s.tag+'-001',firstName:'Riya',lastName:'Learner',dateOfBirth:'2014-05-01',gender:'Female',email:'riya-'+s.id+'@example.test',phoneNumber:'9000000003',guardianName:'Kiran Guardian',guardianEmail:'kiran-'+s.id+'@example.test',guardianPhone:'9'+Date.now().toString().slice(-9),address:'1 School Lane',classId:s.cl,status:'Submitted'})
@@ -139,17 +140,17 @@ test.describe.serial('Security boundaries against real Docker services',()=>{
 
  test('teacher, parent and student are refused every administrative operation',async()=>{
   const catalog=await ok(A,'Administrator','GET','/suite/catalog')
-  const refs={'academic-years':A.year,classes:A.cl,subjects:A.subject,'assessment-schemes':A.scheme,teachers:A.teacher,students:A.student,users:A.users.Student}
+  const refs={'academic-years':A.year,classes:A.cl,subjects:A.subject,'assessment-schemes':A.scheme,'fee-heads':A.head,teachers:A.teacher,students:A.student,users:A.users.Student}
   // Modules whose references can all be satisfied with school A records; anything else would fail field validation first.
   const modules=catalog.filter((m:any)=>!m.fields.some((f:any)=>f.type==='reference'&&!(f.source in refs)))
-  expect(modules.map((m:any)=>m.kind)).toEqual(expect.arrayContaining(['school-config','fee-structures','academic-years','classes','subjects','teaching-assignments','assessment-schemes','exams','timetable','circulars','calendar','certificates','account-links','admissions']))
+  expect(modules.map((m:any)=>m.kind)).toEqual(expect.arrayContaining(['school-config','fee-heads','fee-structures','academic-years','classes','subjects','teaching-assignments','assessment-schemes','exams','timetable','circulars','calendar','certificates','account-links','admissions']))
   const teacherWritable=['leave-requests','marks','messages','homework','submissions']
   for(const role of lower){
    for(const m of modules){
     if(m.kind==='submissions'||(role==='Teacher'&&teacherWritable.includes(m.kind)))continue
     await denied(A,role,'POST','/suite/records/'+m.kind,sample(m.fields,refs))
    }
-   for(const kind of ['admissions','account-links','fee-structures','school-config'])await denied(A,role,'GET','/suite/records/'+kind)
+   for(const kind of ['admissions','account-links','fee-heads','fee-structures','school-config'])await denied(A,role,'GET','/suite/records/'+kind)
    await denied(A,role,'PUT','/suite/records/circulars/'+A.circular,{title:'Changed',message:'x',audience:'All',dueDate:day,version:1})
    await denied(A,role,'DELETE','/suite/records/circulars/'+A.circular)
    await denied(A,role,'POST','/suite/admissions/'+A.admission+'/accept')

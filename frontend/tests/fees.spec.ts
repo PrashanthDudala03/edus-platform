@@ -144,6 +144,20 @@ test.describe('Fees & collections', () => {
     expect(confirms.length).toBe(1)
   })
 
+  test('fee heads open for the administrator from the Fees workspace and are refused to a teacher', async ({ page, browser }) => {
+    await mock(page)
+    await page.goto('/suite/fees')
+    await main(page).getByRole('link', { name: 'Fee heads' }).click()
+    await expect(page).toHaveURL(/\/suite\/fee-heads$/)
+    await expect(page.locator('.forbidden-page')).toHaveCount(0)
+    const other = await browser.newPage(); await mock(other, { ...principal, roles: ['Teacher'], dataScope: 'teacher', permissions: ['homework.view', 'exams.view', 'classes.view'] })
+    await other.goto('/suite/fee-heads')
+    await expect(other.locator('.forbidden-page')).toBeVisible()
+    await other.goto('/suite/fee-structures')
+    await expect(other.locator('.forbidden-page')).toBeVisible()
+    await other.close()
+  })
+
   test('at 390px the ledger fits without sideways scrolling', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
     await mock(page)
