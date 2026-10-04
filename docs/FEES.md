@@ -126,3 +126,25 @@ cancellations and revocations require a reason that is stored on the row. No fin
 - Receipts download as print-to-PDF from the web; the app shows receipt numbers and status.
 - Section-level structures use the class (which already carries its section); per-section pricing within a class is by individual-student structures.
 - The payment history and ledger page by 20–25; reports page by 50.
+
+## Razorpay Test Mode Validation
+
+Observed on the local development stack, 2026-10-04. Test mode only; no real money moved.
+
+- Razorpay test credentials were loaded server-side only (the ignored `.env`, passed to school-service alone). No secret appears in browser responses, the frontend bundle, or school-service and gateway logs.
+- EduOS Demo School is the single Razorpay-enabled test tenant. Another school (the bootstrap tenant) read provider none, not connected, online off.
+- A Razorpay TEST order was created by the backend for the amount the ledger fixed; the browser received only the public test key id, order, amount, currency and description.
+- The Razorpay checkout opened in test mode.
+- An initial international-card attempt was rejected by Razorpay. EduOS correctly credited nothing: the attempts stayed Pending, no online payment or receipt was created, and the outstanding balance did not change. Each retry created a fresh order, and every attempt remained recorded and audited.
+- A supported domestic test payment then completed. The server verified the checkout signature with the key secret, the attempt became Verified, and exactly one online payment of the full outstanding amount was allocated to the charge. The outstanding balance went to zero, the charge became Paid, and exactly one receipt was issued. The payment record holds the Razorpay order and payment references.
+- Student 360 showed the same authoritative figures as the ledger (outstanding 0, paid equal to the net payable).
+- Razorpay Live Mode was never enabled (the provider refuses live keys and live mode). EduOS platform billing was not touched and uses separate keys.
+- The webhook is intentionally not configured yet; `SCHOOL_FEES_RAZORPAY_WEBHOOK_SECRET` is unset.
+
+### Automated validation
+
+school-service 202 passed (includes Razorpay order mapping, checkout and webhook signature verification, test-mode-only guard, and the settlement rules), shared auth 125 passed, web unit 55 passed, fees Playwright 6 passed (mocked checkout success and dismissal), web typecheck and build passed. The live security specs run in CI.
+
+### Deferred validation
+
+Razorpay webhook end-to-end validation pending. The next validation will prove: Razorpay webhook, signature verification, recognition of the existing payment, no duplicate ledger allocation and no duplicate receipt. It needs a public HTTPS URL for the dashboard webhook and the webhook secret, neither of which is configured.
