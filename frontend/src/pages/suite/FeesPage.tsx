@@ -7,7 +7,19 @@ import { useAuthStore } from '../../store/auth'
 import { Dialog, Empty, ErrorBox, Loading, PageHeader, today } from '../../components/UI'
 import { data, printSchoolDocument, workbook, type Options } from './helpers'
 import { isAdministrator, isLeadership } from '../../roles'
-import { METHODS, STATE_LABEL, concessionLabel, dayLabel, feesNote, methodBreakdown, money, needsReference, payable, paymentProblem, stateTone, type Charge, type Intent, type Ledger, type Payment, type PaymentConfig, type Summary } from './fees'
+import { METHODS, STATE_LABEL, checkoutAllowed, checkoutOptions, concessionLabel, dayLabel, feesNote, methodBreakdown, money, needsReference, payable, paymentProblem, stateTone, type Charge, type CheckoutResult, type Intent, type Ledger, type Payment, type PaymentConfig, type Summary } from './fees'
+
+type RazorpayCheckout = new (options: ReturnType<typeof checkoutOptions>) => { open: () => void }
+/** Loads Razorpay's checkout script once (allowed by the CSP); only the public key id and the order ever reach it. */
+function loadRazorpayCheckout(): Promise<RazorpayCheckout> {
+  const ready = () => (window as unknown as { Razorpay?: RazorpayCheckout }).Razorpay
+  if (ready()) return Promise.resolve(ready()!)
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script'); script.src = 'https://checkout.razorpay.com/v1/checkout.js'; script.async = true
+    script.onload = () => ready() ? resolve(ready()!) : reject(new Error('Razorpay checkout did not load.')); script.onerror = () => reject(new Error('Razorpay checkout could not be loaded. Check the connection and try again.'))
+    document.head.appendChild(script)
+  })
+}
 
 // Fees & collections. The office finds a student, sees the ledger, records a payment and prints the receipt in a
 // few steps; concessions, waivers and reversals keep every figure and need a reason; reports add up the day, the
@@ -62,7 +74,20 @@ export function LedgerPanel({ studentId, can, onMessage, family }: { studentId: 
   const cache = useQueryClient(), [page, setPage] = useState(1), ledger = useLedger(studentId, page)
   const [paying, setPaying] = useState<Charge | null>(null), [concession, setConcession] = useState(false), [changing, setChanging] = useState<Charge | null>(null), [reversing, setReversing] = useState<Payment | null>(null), [intent, setIntent] = useState<Intent | null>(null), [error, setError] = useState('')
   async function receipt(id: string) { setError(''); try { printSchoolDocument('receipt', await data('/fees/receipts/' + id)) } catch (e) { setError(errorMessage(e)) } }
-  async function payOnline(charge: Charge) { setError(''); try { const r = await client.post('/suite/fees/online/intents', { chargeId: charge.id }); setIntent(r.data.data) } catch (e) { setError(errorMessage(e)) } }
+  // Online: the server creates the attempt and the order for the amount it owes; a Razorpay test checkout opens in the browser,
+  // and its result is sent back for verification. The ledger changes only when the server verifies the result or the webhook.
+  async function payOnline(charge: Charge) {
+    setError('')
+    try {
+      const intent: Intent = (await client.post('/suite/fees/online/intents', { chargeId: charge.id })).data.data
+      if (!checkoutAllowed(intent.checkout)) { setIntent(intent); return }
+      const Razorpay = await loadRazorpayCheckout()
+      await new Promise<void>(resolve => new Razorpay(checkoutOptions(intent.checkout!, async (r: CheckoutResult) => {
+        try { const v = await client.post(`/suite/fees/online/intents/${intent.id}/confirm`, { orderId: r.razorpay_order_id, paymentId: r.razorpay_payment_id, signature: r.razorpay_signature }); onMessage(v.data.data.receipt ? `Payment verified. Receipt ${v.data.data.receipt}.` : 'Payment received; the receipt follows once the provider confirms.'); await refresh(cache) }
+        catch (e) { setError(errorMessage(e)) } finally { resolve() }
+      }, () => { onMessage('Payment not completed. Nothing was charged and the balance is unchanged.'); resolve() })).open())
+    } catch (e) { setError(errorMessage(e)) }
+  }
   if (ledger.isPending) return <Loading />
   if (ledger.isError) return <ErrorBox message={errorMessage(ledger.error)} />
   const l = ledger.data, t = l.totals, c = t.currency, due = payable(l.charges)
@@ -196,7 +221,7 @@ function Settings({ onMessage }: { onMessage: (m: string) => void }) {
   return <section className="panel fees-panel"><div className="panel-heading"><div><h2>Online payments for this school</h2><p>Families pay into the school's own provider account, never into an EduOS account. EduOS's own subscription billing is separate and unaffected.</p></div></div>
     <div className="kpi-row"><div><span>Provider</span><strong>{k.provider}</strong></div><div><span>Connection</span><strong>{k.connectionStatus}</strong></div><div><span>Settlement</span><strong>{k.settlementStatus}</strong></div><div><span>Online payments</span><strong>{k.onlineEnabled ? 'On' : 'Off'}</strong></div></div>
     <form onSubmit={save}>{error && <ErrorBox message={error} />}<div className="form-grid">
-      <label>Provider<select value={d.provider} onChange={e => setDraft({ ...d, provider: e.target.value })}>{k.providers.map(p => <option key={p} value={p}>{p === 'none' ? 'None (offline collection only)' : p === 'fake' ? 'Test provider (no real money)' : 'Razorpay (awaiting school onboarding model)'}</option>)}</select></label>
+      <label>Provider<select value={d.provider} onChange={e => setDraft({ ...d, provider: e.target.value })}>{k.providers.map(p => <option key={p} value={p}>{p === 'none' ? 'None (offline collection only)' : p === 'fake' ? 'Test provider (no real money)' : 'Razorpay · test mode only (no real money)'}</option>)}</select><small className="muted">Razorpay connects only when the deployment holds test keys; a live key is refused until the school settlement model is decided.</small></label>
       <label>Merchant / linked account reference<input maxLength={120} value={d.merchantReference} placeholder="Given by the provider once the school is onboarded" onChange={e => setDraft({ ...d, merchantReference: e.target.value })} /></label>
       <label className="full-width"><input type="checkbox" checked={d.onlineEnabled} onChange={e => setDraft({ ...d, onlineEnabled: e.target.checked })} /> Allow families to pay online (only works once the provider is connected)</label></div>
       <p className="muted">{k.note}</p>

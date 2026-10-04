@@ -63,8 +63,14 @@ public class NotificationTenancyTests
     public void NothingIsHandedToAnOutsideProviderFromARequest()
     {
         // The request path only writes rows. No HTTP client, push SDK or mail client exists in the notification code.
-        foreach (var file in Sources)
+        // The one sanctioned outbound call in these sources is the school fee provider creating a Razorpay TEST order
+        // (Suite.Fees.cs), behind the provider boundary; it carries an amount and references, never a person's details.
+        foreach (var file in Sources.Where(f => !f.EndsWith("Suite.Fees.cs")))
             Assert.DoesNotMatch(@"HttpClient|Firebase|SmtpClient|Twilio|SendGrid", File.ReadAllText(file));
+        var fees = File.ReadAllText(Sources.Single(f => f.EndsWith("Suite.Fees.cs")));
+        Assert.DoesNotMatch(@"Firebase|SmtpClient|Twilio|SendGrid", fees);
+        Assert.Equal(1, Regex.Matches(fees, @"\.SendAsync\(").Count);   // exactly one outbound call: the order
+        Assert.DoesNotContain("first_name", fees[fees.IndexOf("class RazorpaySchoolPaymentProvider", StringComparison.Ordinal)..fees.IndexOf("public static partial class Suite", StringComparison.Ordinal)]);
         Assert.Contains("status varchar(20) NOT NULL CHECK(status IN('pending','processing','delivered','failed','skipped'))", Schema);
         foreach (var column in new[] { "attempts integer NOT NULL DEFAULT 0", "last_error varchar(300)", "next_attempt_at timestamptz", "delivered_at timestamptz" }) Assert.Contains(column, Schema);
     }

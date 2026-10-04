@@ -8,7 +8,15 @@ export type Concession = { id: string, chargeId: string | null, kind: 'Percent' 
 export type Ledger = { student: { id: string, name: string, admissionNumber: string, class: string }, totals: Totals, charges: Charge[], payments: { items: Payment[], total: number, page: number, pageSize: number, more: boolean }, concessions: Concession[], online: { enabled: boolean, provider: string } }
 export type PaymentConfig = { provider: string, merchantReference: string, connectionStatus: string, onlineEnabled: boolean, settlementStatus: string, providers: string[], note: string }
 export type Summary = { collectedToday: number, collectedThisMonth: number, reversalsThisMonth: number, totals: Totals, byClass: { class: string, outstanding: number, overdue: number, paid: number }[], recent: Payment[], online: PaymentConfig }
-export type Intent = { id: string, status: 'Pending' | 'Verified' | 'Failed' | 'Expired', provider: string, orderReference: string, amount: number, currency: string, instructions?: string }
+/** What the server gives a browser checkout: a public key id, the order and the amount it fixed. Never a secret. */
+export type Checkout = { keyId: string, orderId: string, amount: number, currency: string, name: string, description: string, mode: string }
+export type Intent = { id: string, status: 'Pending' | 'Verified' | 'Failed' | 'Expired', provider: string, orderReference: string, amount: number, currency: string, instructions?: string, checkout?: Checkout | null }
+export type CheckoutResult = { razorpay_order_id: string, razorpay_payment_id: string, razorpay_signature: string }
+/** The options a Razorpay checkout opens with. The amount and order come from the server; the browser adds nothing authoritative. */
+export const checkoutOptions = (c: Checkout, handler: (r: CheckoutResult) => void, ondismiss: () => void) => ({
+  key: c.keyId, amount: c.amount, currency: c.currency, order_id: c.orderId, name: c.name, description: (c.mode === 'Test' ? 'TEST MODE · ' : '') + c.description, handler, modal: { ondismiss }, retry: { enabled: false }, theme: { color: '#2c674b' },
+})
+export const checkoutAllowed = (c: Checkout | null | undefined) => !!c && c.mode === 'Test' && c.keyId.startsWith('rzp_test_') && c.orderId.startsWith('order_') && c.amount > 0
 
 export const METHODS = ['Cash', 'UPI', 'Bank transfer', 'Cheque', 'Other'] as const
 export const STATE_LABEL: Record<ChargeState, string> = { Unpaid: 'Unpaid', Partial: 'Part paid', Paid: 'Paid', Overdue: 'Overdue', Waived: 'Waived', Cancelled: 'Cancelled' }

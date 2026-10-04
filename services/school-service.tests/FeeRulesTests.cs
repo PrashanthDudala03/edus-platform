@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Xunit;
 
@@ -95,11 +96,78 @@ public class FeeRulesTests
         Assert.NotNull(ev); Assert.Equal("evt_1", ev!.EventId); Assert.Equal(150000, ev.Amount); Assert.Equal("captured", ev.Status);
         Assert.Null(provider.Parse(config, FeeRules.Hmac(body, "other-secret"), body)); Assert.Null(provider.Parse(config, null, body)); Assert.Null(provider.Parse(config, FeeRules.Hmac("{", "test-secret"), "{"));
         Assert.Null(new FakeSchoolPaymentProvider(() => null).Parse(config, FeeRules.Hmac(body, ""), body));   // no secret: nothing verifies
-        var order = provider.CreateOrder(config, Guid.Empty, 100, "INR").Result; Assert.StartsWith("fake_", order.Reference);
-        // Razorpay is not connected until the school onboarding model is decided: it refuses orders and verifies nothing.
-        var razorpay = new RazorpaySchoolPaymentProvider();
-        Assert.Equal("NotConnected", razorpay.ConnectionStatus(config with { Provider = "razorpay" }));
-        Assert.Null(razorpay.Parse(config, "x", body)); Assert.ThrowsAsync<SuiteError>(() => razorpay.CreateOrder(config, Guid.Empty, 100, "INR")).Wait();
+        var order = provider.CreateOrder(config, Guid.Empty, 100, "INR", "Tuition").Result; Assert.StartsWith("fake_", order.Reference); Assert.Equal("X-Signature", provider.SignatureHeader); Assert.Equal("", provider.PublicKeyId); Assert.False(provider.VerifyCheckout("a", "b", "c"));
+        Assert.Equal("fake_abc", provider.OrderReferenceOf(body)); Assert.Null(provider.OrderReferenceOf("{"));
+    }
+
+    static readonly RazorpaySchoolSettings TestKeys = new("Test", "rzp_test_abc123", "test-key-secret", "test-webhook-secret", "https://razorpay.test");
+    static RazorpaySchoolPaymentProvider Razorpay(RazorpaySchoolSettings? s = null, HttpMessageHandler? handler = null) => new(() => s ?? TestKeys, handler);
+    static readonly SchoolPaymentConfig RzpConfig = new(Guid.Parse("11111111-1111-4111-8111-111111111111"), "razorpay", "acc_test", "Connected", true, "Ready");
+
+    [Fact]
+    public void RazorpayRunsInTestModeOnlyAndRefusesAnythingLive()
+    {
+        Assert.True(TestKeys.TestMode); Assert.True(TestKeys.Usable); Assert.False(TestKeys.Live);
+        Assert.Equal("Connected", Razorpay().ConnectionStatus(RzpConfig)); Assert.Equal("rzp_test_abc123", Razorpay().PublicKeyId);
+        foreach (var bad in new[] { TestKeys with { Mode = "Live" }, TestKeys with { KeyId = "rzp_live_abc123" }, TestKeys with { Mode = "" }, TestKeys with { Mode = "Production" }, TestKeys with { KeySecret = "" }, TestKeys with { KeyId = "abc" } })
+        {
+            Assert.False(bad.Usable); Assert.Equal("NotConnected", Razorpay(bad).ConnectionStatus(RzpConfig)); Assert.Equal("", Razorpay(bad).PublicKeyId);
+            var ex = Assert.ThrowsAsync<SuiteError>(() => Razorpay(bad).CreateOrder(RzpConfig, Guid.NewGuid(), 100, "INR", "Tuition")).Result; Assert.Equal(503, ex.Status);
+            if (bad.Live) Assert.Contains("live mode is not permitted", ex.Message);
+        }
+        Assert.Equal("X-Razorpay-Signature", Razorpay().SignatureHeader); Assert.Equal("razorpay", Razorpay().Name);
+    }
+
+    sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
+    {
+        public HttpRequestMessage? Last; public string? Body;
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) { Last = request; Body = request.Content is null ? null : await request.Content.ReadAsStringAsync(token); return respond(request); }
+    }
+
+    [Fact]
+    public void RazorpayOrdersCarryTheServerAmountAndTheTestKeyNeverTheSecretInTheBody()
+    {
+        var handler = new StubHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("{\"id\":\"order_test_77\",\"amount\":150000,\"currency\":\"INR\",\"status\":\"created\"}") });
+        var intent = Guid.NewGuid(); var order = Razorpay(handler: handler).CreateOrder(RzpConfig, intent, 150000, "INR", "Tuition · Term 1").Result;
+        Assert.Equal("order_test_77", order.Reference); Assert.Contains("no real money", order.Instructions);
+        Assert.Equal("https://razorpay.test/v1/orders", handler.Last!.RequestUri!.ToString()); Assert.Equal("Basic", handler.Last.Headers.Authorization!.Scheme);
+        var sent = JsonNode.Parse(handler.Body!)!.AsObject();
+        Assert.Equal(150000, (long)sent["amount"]!.GetValue<decimal>()); Assert.Equal("INR", sent["currency"]!.ToString()); Assert.Equal(intent.ToString("N"), sent["receipt"]!.ToString()); Assert.Equal("test", sent["notes"]!["eduos_mode"]!.ToString());
+        Assert.DoesNotContain("test-key-secret", handler.Body); Assert.DoesNotContain("test-webhook-secret", handler.Body);
+        var refused = new StubHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.BadRequest) { Content = new StringContent("{\"error\":{}}") });
+        Assert.Equal(502, Assert.ThrowsAsync<SuiteError>(() => Razorpay(handler: refused).CreateOrder(RzpConfig, intent, 100, "INR", "x")).Result.Status);
+        var odd = new StubHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("{\"id\":\"pay_notanorder\"}") });
+        Assert.Equal(502, Assert.ThrowsAsync<SuiteError>(() => Razorpay(handler: odd).CreateOrder(RzpConfig, intent, 100, "INR", "x")).Result.Status);
+    }
+
+    [Fact]
+    public void TheBrowserResultIsVerifiedWithTheKeySecretInConstantTimeAndNothingElseIsTrusted()
+    {
+        var p = Razorpay(); var good = FeeRules.Hmac("order_test_77|pay_test_9", "test-key-secret");
+        Assert.True(p.VerifyCheckout("order_test_77", "pay_test_9", good)); Assert.True(p.VerifyCheckout("order_test_77", "pay_test_9", good.ToUpperInvariant()));
+        Assert.False(p.VerifyCheckout("order_test_78", "pay_test_9", good));                       // another order
+        Assert.False(p.VerifyCheckout("order_test_77", "pay_test_8", good));                       // another payment
+        Assert.False(p.VerifyCheckout("order_test_77", "pay_test_9", FeeRules.Hmac("order_test_77|pay_test_9", "other")));
+        Assert.False(p.VerifyCheckout("order_test_77", "pay_test_9", "")); Assert.False(p.VerifyCheckout("", "pay_test_9", good)); Assert.False(p.VerifyCheckout("order_test_77", "pay_test_9", good[..10]));
+        Assert.False(Razorpay(TestKeys with { KeySecret = "" }).VerifyCheckout("order_test_77", "pay_test_9", good));
+        Assert.True(FeeRules.SignatureMatches("x", "k", FeeRules.Hmac("x", "k"))); Assert.False(FeeRules.SignatureMatches("x", "k", null)); Assert.False(FeeRules.SignatureMatches("x", "", FeeRules.Hmac("x", "")));
+    }
+
+    [Fact]
+    public void RazorpayWebhooksAreVerifiedWithTheWebhookSecretAndOnlyPaymentEventsDecideAnAttempt()
+    {
+        var p = Razorpay(); string Body(string ev, string status = "captured") => "{\"event\":\"" + ev + "\",\"payload\":{\"payment\":{\"entity\":{\"id\":\"pay_test_9\",\"order_id\":\"order_test_77\",\"amount\":150000,\"currency\":\"INR\",\"status\":\"" + status + "\"}}}}";
+        var captured = Body("payment.captured"); var sig = FeeRules.Hmac(captured, "test-webhook-secret");
+        Assert.Equal("order_test_77", p.OrderReferenceOf(captured)); Assert.Null(p.OrderReferenceOf("{")); Assert.Null(p.OrderReferenceOf("{\"event\":\"x\"}"));
+        var ev = p.Parse(RzpConfig, sig, captured); Assert.NotNull(ev);
+        Assert.Equal("captured", ev!.Status); Assert.Equal("pay_test_9:payment.captured", ev.EventId); Assert.Equal("order_test_77", ev.OrderReference); Assert.Equal("pay_test_9", ev.PaymentReference); Assert.Equal(150000, ev.Amount); Assert.Equal("INR", ev.Currency);
+        Assert.Null(p.Parse(RzpConfig, FeeRules.Hmac(captured, "test-key-secret"), captured));         // the key secret is not the webhook secret
+        Assert.Null(p.Parse(RzpConfig, sig, captured + " "));                                           // the body must be the signed bytes
+        Assert.Null(p.Parse(RzpConfig, null, captured)); Assert.Null(Razorpay(TestKeys with { WebhookSecret = "" }).Parse(RzpConfig, sig, captured));
+        var failed = Body("payment.failed", "failed"); Assert.Equal("failed", p.Parse(RzpConfig, FeeRules.Hmac(failed, "test-webhook-secret"), failed)!.Status);
+        var paid = Body("order.paid"); Assert.Equal("captured", p.Parse(RzpConfig, FeeRules.Hmac(paid, "test-webhook-secret"), paid)!.Status);
+        var other = Body("payment.authorized", "authorized"); Assert.Equal("ignored", p.Parse(RzpConfig, FeeRules.Hmac(other, "test-webhook-secret"), other)!.Status);
+        var refund = "{\"event\":\"refund.created\",\"payload\":{\"refund\":{\"entity\":{\"id\":\"rfnd_1\"}}}}"; Assert.Equal("ignored", p.Parse(RzpConfig, FeeRules.Hmac(refund, "test-webhook-secret"), refund)!.Status);
     }
 
     [Fact]
@@ -118,6 +186,8 @@ public class FeeRulesTests
         Assert.DoesNotContain("DELETE FROM", text); Assert.DoesNotContain("DROP ", text);
         Assert.Contains("ON CONFLICT DO NOTHING", text);                          // a repeated provider event is recorded once
         Assert.Contains("status='Reversed'", text); Assert.DoesNotContain("DELETE FROM suite.payments", text);
+        // Secrets stay server-side: the checkout gets the public key id only, no log line carries a key, and the platform's billing keys are never read here.
+        Assert.Contains("keyId = adapter.PublicKeyId", text); Assert.DoesNotContain("\"RAZORPAY_KEY", text); Assert.DoesNotContain("KeySecret}", text); Assert.DoesNotContain("KeySecret);", text.Replace("s.KeyId + \":\" + s.KeySecret)", ""));
         var schema = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Sources", "FeesSchema.sql"));
         Assert.DoesNotContain("DROP ", schema); Assert.Contains("IF NOT EXISTS", schema);
         Assert.DoesNotMatch(@"(?i)(secret|api_key|token)\w*\s+(varchar|text|bytea)", schema);   // no credential column anywhere in the fee ledger

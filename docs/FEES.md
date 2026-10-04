@@ -49,35 +49,63 @@ SuperAdmin has no school scope and is refused by every suite endpoint.
 
 ## Online payments: provider boundary and state machine
 
-`ISchoolPaymentProvider` (name, connection status, create order, parse and verify an event) keeps the ledger
-independent of any provider. `FakeSchoolPaymentProvider` is the test implementation: connected only when the
-deployment sets `SCHOOL_FEES_FAKE_SECRET`, and events are accepted only when `X-Signature` is the HMAC-SHA256 of the
-body with that secret. `RazorpaySchoolPaymentProvider` exists and refuses orders until the school onboarding model
-is decided (see below).
+`ISchoolPaymentProvider` (name, signature header, connection status, create order, order reference of a webhook
+body, parse and verify an event, public key id, verify a browser checkout result) keeps the ledger independent of
+any provider. `FakeSchoolPaymentProvider` is for automated tests: connected only when the deployment sets
+`SCHOOL_FEES_FAKE_SECRET`, and events are accepted only when `X-Signature` is the HMAC-SHA256 of the body with that
+secret. `RazorpaySchoolPaymentProvider` is the real one, test mode only (below).
 
 ```
-POST /fees/online/intents  -> payment_intents Pending (provider order reference)
-provider -> POST /fees/webhooks/{provider}   signature verified with the school's configuration
-  payment_events (provider, event_id) recorded once   -> a repeated event answers "already-processed"
-  intent Pending -> Verified: payments row (source online, receipt) + family told; or -> Failed
-  amount or currency mismatch -> Failed, nothing credited
+POST /fees/online/intents            -> payment_intents Pending; the server fixes school, student, charge, amount and currency
+                                        and creates the provider order; the browser gets {keyId, orderId, amount, currency} only
+browser checkout result
+  -> POST /fees/online/intents/{id}/confirm   signature verified with the server-side key secret, order matched to the attempt
+provider webhook
+  -> POST /api/v1/fees/webhooks/{provider}    raw body verified with the webhook secret; event type checked
+both settle through one path:
+  payment_events (provider, event_id) recorded once        -> a repeated callback or webhook answers "already-processed"
+  intent Pending -> Verified exactly once (row lock)       -> ONE payments row (source online, receipt), family told
+  intent already decided                                   -> "already-decided" with the existing receipt, nothing changes
+  amount or currency mismatch -> Failed, nothing credited  |  payment.failed / dismissed checkout -> nothing credited
 ```
 
-The browser's return is never proof of payment; only the verified event creates the payment and the receipt.
+The browser's return is never proof of payment: only the verified callback or the verified webhook creates the
+payment and the receipt, whichever arrives first, and the other then finds the attempt decided.
 
-## Razorpay: ready and deferred
+## Razorpay: test mode only
 
-Ready: per-school configuration (provider, merchant or linked-account reference, connection and settlement status,
-online switch), the provider boundary, the attempt and event tables, idempotent event handling, receipts for online
-payments, family and office screens that only show the online option when the school is connected and switched on.
+`RazorpaySchoolPaymentProvider` creates orders at `POST {api}/v1/orders` with the school-fee test key, verifies the
+browser result as HMAC-SHA256(`order_id|payment_id`, key secret) and webhooks as HMAC-SHA256(raw body, webhook
+secret), both compared in constant time. `payment.captured` and `order.paid` confirm an attempt, `payment.failed`
+fails it, every other event is acknowledged and ignored. Live mode is refused: the provider is connected only when
+`SCHOOL_FEES_RAZORPAY_MODE=Test` and the key id starts with `rzp_test_`; a live key or a live mode setting leaves it
+disconnected and orders answer 503.
 
-Deferred, deliberately: creating real Razorpay orders, verifying real Razorpay signatures and any onboarding flow.
-Whether a school's money moves through a Razorpay Route linked account, the school's own merchant account under a
-partner model, or something else is a commercial and compliance decision to be confirmed with Razorpay. Until then
-no school's collections can be pointed at an EduOS account by accident: the Razorpay provider refuses orders, and
-the platform's billing keys are never read by the fee ledger.
+Configuration lives in the deployment's environment (compose passes it to school-service only), never in the
+database, source, frontend or logs:
 
-**Production secret decision needed:** provider credentials per school must live in a secret store (deployment
+| Variable | Value |
+|---|---|
+| `SCHOOL_FEES_RAZORPAY_MODE` | `Test` (anything else disconnects the provider) |
+| `SCHOOL_FEES_RAZORPAY_KEY_ID` | the Razorpay **test** Key ID (`rzp_test_…`); the only value a browser ever sees |
+| `SCHOOL_FEES_RAZORPAY_KEY_SECRET` | the Razorpay test Key Secret; server-side only |
+| `SCHOOL_FEES_RAZORPAY_WEBHOOK_SECRET` | the secret you set when creating the webhook in the Razorpay dashboard |
+
+These are separate from the platform billing `RAZORPAY_*` keys, which school-service never receives. The one tenant
+wired to Razorpay for sandbox testing is "EduOS Demo School" (the development seed): `scripts/seed-demo.mjs` sets its
+provider to Razorpay with online payments on when the deployment holds a test key id, and touches no other school.
+Any other school keeps its own configuration (none by default) and shows no online option.
+
+Webhook address for the Razorpay dashboard: `https://<public host>/api/v1/fees/webhooks/razorpay`, events
+`payment.captured`, `payment.failed` and `order.paid`. The gateway forwards it anonymously to school-service; the
+signature is the only credential.
+
+Still deferred, deliberately: live mode, real settlement, and school onboarding. Whether a school's money moves
+through a Razorpay Route linked account, the school's own merchant account under a partner model, or something else
+is a commercial and compliance decision to be confirmed with Razorpay; until then no school's collections can reach a
+live account from this integration.
+
+**Production secret decision needed:** per-school provider credentials must live in a secret store (deployment
 secrets or a KMS-backed vault keyed by school), never in `suite.school_payment_config` or source. The configuration
 model stores only the reference the provider gives the school.
 

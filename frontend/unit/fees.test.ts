@@ -1,7 +1,16 @@
 // Run with `npm run test:unit`.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { METHODS, STATE_LABEL, concessionLabel, feesNote, methodBreakdown, money, needsReference, payable, paymentProblem, stateTone, upcoming, type Charge, type Concession, type Totals } from '../src/pages/suite/fees.ts'
+import { METHODS, STATE_LABEL, checkoutAllowed, checkoutOptions, concessionLabel, feesNote, methodBreakdown, money, needsReference, payable, paymentProblem, stateTone, upcoming, type Charge, type Checkout, type Concession, type Totals } from '../src/pages/suite/fees.ts'
+
+test('a browser checkout opens only for a test-mode order the server fixed, and carries nothing but the public key', () => {
+  const c: Checkout = { keyId: 'rzp_test_abc', orderId: 'order_77', amount: 900000, currency: 'INR', name: 'EduOS Demo School', description: 'Tuition · Term 1', mode: 'Test' }
+  assert.ok(checkoutAllowed(c))
+  assert.ok(!checkoutAllowed({ ...c, mode: 'Live' })); assert.ok(!checkoutAllowed({ ...c, keyId: 'rzp_live_abc' })); assert.ok(!checkoutAllowed({ ...c, orderId: 'fake_1' })); assert.ok(!checkoutAllowed({ ...c, amount: 0 })); assert.ok(!checkoutAllowed(null)); assert.ok(!checkoutAllowed(undefined))
+  const handler = () => {}, dismiss = () => {}, o = checkoutOptions(c, handler, dismiss)
+  assert.equal(o.key, 'rzp_test_abc'); assert.equal(o.order_id, 'order_77'); assert.equal(o.amount, 900000); assert.equal(o.currency, 'INR'); assert.equal(o.description, 'TEST MODE · Tuition · Term 1'); assert.equal(o.handler, handler); assert.equal(o.modal.ondismiss, dismiss); assert.equal(o.retry.enabled, false)
+  assert.ok(!JSON.stringify(o).toLowerCase().includes('secret'))
+})
 
 const charge = (over: Partial<Charge>): Charge => ({ id: 'c', studentId: 's', student: 'Aarav', class: 'Grade 6 - A', description: 'Tuition · Term 1', structureId: 'f', dueDate: '2026-10-15', gross: 15000, concession: 1000, issueConcession: 1000, laterConcession: 0, fine: 0, net: 14000, paid: 0, balance: 14000, outstanding: 14000, status: 'Active', state: 'Unpaid', overdue: false, currency: 'INR', note: '', ...over })
 

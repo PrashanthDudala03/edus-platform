@@ -68,6 +68,13 @@ public static class FeeRules
     /// <summary>Pending -> Verified | Failed | Expired; a decided attempt never moves again. Repeating the same decision is harmless.</summary>
     public static string? IntentTransition(string from, string to) => !IntentStatuses.Contains(to) ? "Unknown payment state." : from == to ? null : from != "Pending" ? "This payment attempt was already decided." : null;
     public static string Hmac(string data, string secret) => Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(secret), Encoding.UTF8.GetBytes(data))).ToLowerInvariant();
+    /// <summary>Constant-time check of a hex HMAC-SHA256 signature over the data; false for anything missing or malformed.</summary>
+    public static bool SignatureMatches(string data, string secret, string? signature)
+    {
+        if (string.IsNullOrEmpty(secret) || string.IsNullOrWhiteSpace(signature)) return false;
+        var expected = Encoding.UTF8.GetBytes(Hmac(data, secret)); var given = Encoding.UTF8.GetBytes(signature.Trim().ToLowerInvariant());
+        return given.Length == expected.Length && CryptographicOperations.FixedTimeEquals(expected, given);
+    }
 }
 
 /// <summary>The school's own payment relationship, as the ledger sees it. No credential is ever part of this.</summary>
@@ -83,11 +90,19 @@ public sealed record ProviderEvent(string EventId, string OrderReference, string
 public interface ISchoolPaymentProvider
 {
     string Name { get; }
+    /// <summary>The request header that carries the provider's signature over the raw webhook body.</summary>
+    string SignatureHeader { get; }
     /// <summary>Connected when the deployment holds what this provider needs for the school; the ledger refuses online payments otherwise.</summary>
     string ConnectionStatus(SchoolPaymentConfig config);
-    Task<ProviderOrder> CreateOrder(SchoolPaymentConfig config, Guid intent, long amount, string currency);
+    Task<ProviderOrder> CreateOrder(SchoolPaymentConfig config, Guid intent, long amount, string currency, string description);
+    /// <summary>The provider's order reference named in a webhook body, read before anything is trusted, so the attempt and its school can be found.</summary>
+    string? OrderReferenceOf(string body);
     /// <summary>The event in the request, or null when the signature does not verify. Never throws on bad input.</summary>
     ProviderEvent? Parse(SchoolPaymentConfig config, string? signature, string body);
+    /// <summary>What a browser checkout may be given: a public key id and nothing else. Empty when the provider has no browser checkout.</summary>
+    string PublicKeyId { get; }
+    /// <summary>Verifies the browser's checkout result (order, payment, signature) with the server-side secret; false when anything is off.</summary>
+    bool VerifyCheckout(string orderReference, string paymentReference, string signature);
 }
 /// <summary>A test provider: orders are references, and an event is accepted when it is signed with the deployment's fake secret.</summary>
 public sealed class FakeSchoolPaymentProvider : ISchoolPaymentProvider
@@ -96,11 +111,15 @@ public sealed class FakeSchoolPaymentProvider : ISchoolPaymentProvider
     readonly Func<string?> secret;
     public FakeSchoolPaymentProvider(Func<string?>? secret = null) => this.secret = secret ?? (() => Environment.GetEnvironmentVariable(SecretVariable));
     public string Name => "fake";
+    public string SignatureHeader => "X-Signature";
+    public string PublicKeyId => "";
     public string ConnectionStatus(SchoolPaymentConfig config) => string.IsNullOrEmpty(secret()) ? "NotConnected" : "Connected";
-    public Task<ProviderOrder> CreateOrder(SchoolPaymentConfig config, Guid intent, long amount, string currency) => Task.FromResult(new ProviderOrder("fake_" + intent.ToString("N"), "Test provider: confirm the payment by posting a signed event to the fees webhook."));
+    public Task<ProviderOrder> CreateOrder(SchoolPaymentConfig config, Guid intent, long amount, string currency, string description) => Task.FromResult(new ProviderOrder("fake_" + intent.ToString("N"), "Test provider: confirm the payment by posting a signed event to the fees webhook."));
+    public string? OrderReferenceOf(string body) { try { return (JsonNode.Parse(body) as JsonObject)?["orderReference"]?.ToString(); } catch (JsonException) { return null; } }
+    public bool VerifyCheckout(string orderReference, string paymentReference, string signature) => false;
     public ProviderEvent? Parse(SchoolPaymentConfig config, string? signature, string body)
     {
-        var key = secret(); if (string.IsNullOrEmpty(key) || string.IsNullOrEmpty(signature) || !CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(FeeRules.Hmac(body, key)), Encoding.UTF8.GetBytes(signature.Trim().ToLowerInvariant()))) return null;
+        var key = secret(); if (string.IsNullOrEmpty(key) || !FeeRules.SignatureMatches(body, key, signature)) return null;
         try
         {
             var o = JsonNode.Parse(body) as JsonObject; if (o is null) return null;
@@ -111,17 +130,82 @@ public sealed class FakeSchoolPaymentProvider : ISchoolPaymentProvider
     }
 }
 /// <summary>
-/// Razorpay for school fees is deliberately not connected: whether each school's money moves through a Razorpay
-/// Route linked account, the school's own merchant account or a partner model is a commercial and compliance decision
-/// still to be made with Razorpay. Until then the provider exists, refuses orders, and never shares the platform's
-/// billing credentials.
+/// Razorpay credentials for SCHOOL fee collections, read from the deployment's environment and never from the
+/// platform's own RAZORPAY_* keys. Only test mode is permitted: a live key or a live mode setting leaves the
+/// provider disconnected, so no school's collections can reach a live account from this integration.
+/// </summary>
+public sealed record RazorpaySchoolSettings(string Mode, string KeyId, string KeySecret, string WebhookSecret, string ApiBase)
+{
+    public const string ModeVariable = "SCHOOL_FEES_RAZORPAY_MODE", KeyIdVariable = "SCHOOL_FEES_RAZORPAY_KEY_ID", KeySecretVariable = "SCHOOL_FEES_RAZORPAY_KEY_SECRET", WebhookSecretVariable = "SCHOOL_FEES_RAZORPAY_WEBHOOK_SECRET", ApiBaseVariable = "SCHOOL_FEES_RAZORPAY_API_BASE";
+    public static RazorpaySchoolSettings FromEnvironment()
+    {
+        static string Env(string name) => Environment.GetEnvironmentVariable(name)?.Trim() ?? "";
+        return new(Env(ModeVariable), Env(KeyIdVariable), Env(KeySecretVariable), Env(WebhookSecretVariable), Env(ApiBaseVariable) is { Length: > 0 } api ? api.TrimEnd('/') : "https://api.razorpay.com");
+    }
+    public bool Live => KeyId.StartsWith("rzp_live_", StringComparison.Ordinal) || Mode.Equals("Live", StringComparison.OrdinalIgnoreCase);
+    /// <summary>Test mode must be asked for explicitly and the key must be a test key; nothing is inferred.</summary>
+    public bool TestMode => !Live && Mode.Equals("Test", StringComparison.OrdinalIgnoreCase) && KeyId.StartsWith("rzp_test_", StringComparison.Ordinal);
+    public bool Usable => TestMode && KeySecret.Length > 0;
+}
+/// <summary>
+/// Razorpay for school fees, test mode only. Orders are created server-side for the authoritative amount, the
+/// browser's checkout result is verified with the key secret, and webhooks with the webhook secret; both are
+/// constant-time comparisons. Which account the school's money settles to (Route linked account, the school's own
+/// merchant account or a partner model) is still to be decided with Razorpay, so live mode is refused outright.
 /// </summary>
 public sealed class RazorpaySchoolPaymentProvider : ISchoolPaymentProvider
 {
+    static readonly HttpClient Shared = new() { Timeout = TimeSpan.FromSeconds(20) };
+    readonly Func<RazorpaySchoolSettings> settings; readonly HttpClient http;
+    public RazorpaySchoolPaymentProvider(Func<RazorpaySchoolSettings>? settings = null, HttpMessageHandler? handler = null) { this.settings = settings ?? RazorpaySchoolSettings.FromEnvironment; http = handler is null ? Shared : new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(20) }; }
     public string Name => "razorpay";
-    public string ConnectionStatus(SchoolPaymentConfig config) => "NotConnected";
-    public Task<ProviderOrder> CreateOrder(SchoolPaymentConfig config, Guid intent, long amount, string currency) => throw new SuiteError(503, "Online payments through Razorpay are not connected for this school yet. Payments can be recorded at the school office.");
-    public ProviderEvent? Parse(SchoolPaymentConfig config, string? signature, string body) => null;
+    public string SignatureHeader => "X-Razorpay-Signature";
+    public string PublicKeyId => settings().Usable ? settings().KeyId : "";
+    public string ConnectionStatus(SchoolPaymentConfig config) => settings().Usable ? "Connected" : "NotConnected";
+    public async Task<ProviderOrder> CreateOrder(SchoolPaymentConfig config, Guid intent, long amount, string currency, string description)
+    {
+        var s = settings();
+        if (s.Live) throw new SuiteError(503, "Razorpay live mode is not permitted for school fees in this environment.");
+        if (!s.Usable) throw new SuiteError(503, "Online payments through Razorpay are not connected for this school yet. Payments can be recorded at the school office.");
+        using var request = new HttpRequestMessage(HttpMethod.Post, s.ApiBase + "/v1/orders");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes(s.KeyId + ":" + s.KeySecret)));
+        request.Content = new StringContent(new JsonObject { ["amount"] = amount, ["currency"] = currency, ["receipt"] = intent.ToString("N"), ["notes"] = new JsonObject { ["eduos_intent"] = intent.ToString(), ["eduos_school"] = config.School.ToString(), ["eduos_mode"] = "test" } }.ToJsonString(), Encoding.UTF8, "application/json");
+        HttpResponseMessage response;
+        try { response = await http.SendAsync(request); } catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException) { Log.Warning("Razorpay order request failed for school {School}: {Reason}", config.School, ex.GetType().Name); throw new SuiteError(502, "Razorpay could not be reached. Try again or pay at the school office."); }
+        using (response)
+        {
+            var text = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode) { Log.Warning("Razorpay refused an order for school {School}: HTTP {Status}", config.School, (int)response.StatusCode); throw new SuiteError(502, "Razorpay did not create the order."); }
+            var id = (JsonNode.Parse(text) as JsonObject)?["id"]?.ToString();
+            if (string.IsNullOrEmpty(id) || !id.StartsWith("order_", StringComparison.Ordinal)) throw new SuiteError(502, "Razorpay did not return an order.");
+            return new ProviderOrder(id, "Razorpay test checkout: no real money moves.");
+        }
+    }
+    public string? OrderReferenceOf(string body)
+    {
+        try { var o = JsonNode.Parse(body) as JsonObject; var payload = o?["payload"] as JsonObject; return payload?["payment"]?["entity"]?["order_id"]?.ToString() ?? payload?["order"]?["entity"]?["id"]?.ToString(); }
+        catch (JsonException) { return null; }
+    }
+    public bool VerifyCheckout(string orderReference, string paymentReference, string signature)
+    {
+        var s = settings(); if (!s.Usable || string.IsNullOrEmpty(orderReference) || string.IsNullOrEmpty(paymentReference)) return false;
+        return FeeRules.SignatureMatches(orderReference + "|" + paymentReference, s.KeySecret, signature);
+    }
+    /// <summary>payment.captured and order.paid confirm the payment; payment.failed fails the attempt; every other event is acknowledged and ignored.</summary>
+    public ProviderEvent? Parse(SchoolPaymentConfig config, string? signature, string body)
+    {
+        var s = settings(); if (!s.Usable || s.WebhookSecret.Length == 0 || !FeeRules.SignatureMatches(body, s.WebhookSecret, signature)) return null;
+        try
+        {
+            var o = JsonNode.Parse(body) as JsonObject; if (o is null) return null;
+            var name = o["event"]?.ToString() ?? ""; var entity = (o["payload"] as JsonObject)?["payment"]?["entity"] as JsonObject;
+            if (entity is null) return new("", "", "", 0, "", "ignored");
+            string T(string k) => entity[k]?.ToString().Trim() ?? "";
+            var status = name is "payment.captured" or "order.paid" ? "captured" : name == "payment.failed" ? "failed" : "ignored";
+            return new(T("id") + ":" + name, T("order_id"), T("id"), long.TryParse(T("amount"), out var amount) ? amount : 0, T("currency"), status);
+        }
+        catch (JsonException) { return null; }
+    }
 }
 
 // Fees & Collections 2.0 on the existing ledger: fee heads and structures as records, charges and payments as rows,
@@ -194,7 +278,7 @@ public static partial class Suite
         var connection = Providers.TryGetValue(provider, out var p) ? p.ConnectionStatus(new(school, provider, merchant, "NotConnected", online, settlement)) : "NotConnected";
         return new(school, provider, merchant, connection, online && connection == "Connected", settlement);
     }
-    static JsonObject ConfigView(SchoolPaymentConfig k) => new() { ["provider"] = k.Provider, ["merchantReference"] = k.MerchantReference, ["connectionStatus"] = k.ConnectionStatus, ["onlineEnabled"] = k.OnlineEnabled, ["settlementStatus"] = k.SettlementStatus, ["providers"] = new JsonArray("none", "fake", "razorpay"), ["note"] = "Credentials are never stored here. The fake provider is for testing; Razorpay waits for the school onboarding decision." };
+    static JsonObject ConfigView(SchoolPaymentConfig k) => new() { ["provider"] = k.Provider, ["merchantReference"] = k.MerchantReference, ["connectionStatus"] = k.ConnectionStatus, ["onlineEnabled"] = k.OnlineEnabled, ["settlementStatus"] = k.SettlementStatus, ["mode"] = k.Provider == "none" ? "" : "Test", ["providers"] = new JsonArray("none", "fake", "razorpay"), ["note"] = "Credentials are never stored here; the deployment holds them. Razorpay runs in test mode only (no real money) until the school settlement model is decided." };
     static bool Office(SchoolAccess a) => a.SchoolWide && a.Can("fees.view");
     static bool Finance(SchoolAccess a) => a.SchoolWide && a.Can("fees.manage");
     static void RequireStudent(SchoolAccess a, Guid student) => Require(a.SchoolWide || a.Students.Contains(student.ToString()), "This student is outside your scope.", 403);
@@ -408,9 +492,25 @@ public static partial class Suite
             var config = await PaymentConfigOf(c, a.School); Require(config.OnlineEnabled, "Online payments are not enabled for this school. Payments can be recorded at the school office.", 409);
             var charge = Id(d, "chargeId"); var row = (await LedgerRows(c, a.School)).FirstOrDefault(l => l.Id == charge); Require(row is not null, "Charge not found.", 404); RequireStudent(a, row!.StudentId);
             var amount = d["amount"] is null ? row.Outstanding : Cents(d, "amount"); Require(row.Status == "Active" && amount > 0 && amount <= row.Outstanding, "The amount must be within the outstanding balance.", 409);
-            var id = Guid.NewGuid(); var order = await Providers[config.Provider].CreateOrder(config, id, amount, row.Currency);
+            var id = Guid.NewGuid(); var adapter = Providers[config.Provider]; var order = await adapter.CreateOrder(config, id, amount, row.Currency, row.Description);
             await E(c, "INSERT INTO suite.payment_intents(id,school_id,student_id,charge_id,amount,currency,provider,provider_order,created_by) VALUES(@id,@s,@st,@ch,@a,@cur,@p,@o,@u)", ("id", id), ("s", a.School), ("st", row.StudentId), ("ch", charge), ("a", amount), ("cur", row.Currency), ("p", config.Provider), ("o", order.Reference), ("u", a.User));
-            return Results.Json(new { data = new { id, status = "Pending", provider = config.Provider, orderReference = order.Reference, amount = Rupees(amount), currency = row.Currency, instructions = order.Instructions } }, statusCode: 201);
+            // The browser gets only what a checkout needs: the public key id, the order and the amount the server fixed. Never a secret.
+            var checkout = adapter.PublicKeyId == "" ? null : new { keyId = adapter.PublicKeyId, orderId = order.Reference, amount, currency = row.Currency, name = await SchoolName(c, a.School), description = row.Description, mode = "Test" };
+            return Results.Json(new { data = new { id, status = "Pending", provider = config.Provider, orderReference = order.Reference, amount = Rupees(amount), currency = row.Currency, instructions = order.Instructions, checkout } }, statusCode: 201);
+        });
+        // The browser's checkout result: verified with the server-side secret, matched to the attempt, then settled through the same
+        // once-only path as a webhook. Whichever of the two arrives first settles; the other finds the attempt decided.
+        group.MapPost("/fees/online/intents/{id:guid}/confirm", async (Guid id, JsonObject d, HttpContext http) =>
+        {
+            await using var c = await Open(); var a = await Access(http, c);
+            var intent = (await Q(c, "SELECT id,school_id AS school,student_id AS student,charge_id AS charge,amount,currency,status,provider,provider_order AS \"order\" FROM suite.payment_intents WHERE id=@id AND school_id=@s", ("id", id), ("s", a.School))).FirstOrDefault();
+            Require(intent is not null && (a.SchoolWide || a.Students.Contains(Text(intent, "student"))), "Payment attempt not found.", 404);
+            var provider = Text(intent!, "provider"); Require(Providers.TryGetValue(provider, out var adapter), "Unknown provider.", 409);
+            var orderId = Text(d, "orderId"); var paymentId = Text(d, "paymentId"); var signature = Text(d, "signature");
+            Require(orderId == Text(intent!, "order"), "This result belongs to another payment attempt.", 409);
+            Require(adapter!.VerifyCheckout(orderId, paymentId, signature), "The payment result could not be verified.", 401);
+            var (status, receipt) = await SettleIntent(c, a.School, provider, intent, new("checkout:" + paymentId, orderId, paymentId, (long)Number(intent!, "amount"), Text(intent!, "currency"), "captured"));
+            return Results.Ok(new { data = new { id, status, receipt } });
         });
         group.MapGet("/fees/online/intents/{id:guid}", async (Guid id, HttpContext http) =>
         {
@@ -432,30 +532,46 @@ public static partial class Suite
             using var reader = new StreamReader(http.Request.Body); var body = await reader.ReadToEndAsync(); if (body.Length > 64 * 1024) return Results.BadRequest(new { message = "Event too large." });
             await using var c = await Open();
             // The order reference names the attempt, and the attempt names the school; the school's own configuration verifies the event.
-            string? orderRef = null; try { orderRef = (JsonNode.Parse(body) as JsonObject)?["orderReference"]?.ToString(); } catch (JsonException) { }
+            var orderRef = adapter.OrderReferenceOf(body);
             var intent = string.IsNullOrEmpty(orderRef) ? null : (await Q(c, "SELECT id,school_id AS school,student_id AS student,charge_id AS charge,amount,currency,status FROM suite.payment_intents WHERE provider=@p AND provider_order=@o", ("p", provider), ("o", orderRef))).FirstOrDefault();
             if (intent is null) return Results.NotFound(new { message = "Unknown payment attempt." });
             var school = Guid.Parse(Text(intent, "school")); var config = await PaymentConfigOf(c, school);
-            var ev = adapter.Parse(config, http.Request.Headers["X-Signature"].FirstOrDefault(), body); if (ev is null) return Results.Unauthorized();
-            await using var tx = await c.BeginTransactionAsync(); await E(c, "SELECT pg_advisory_xact_lock(hashtextextended(@s,0))", ("s", school.ToString()));
-            var outcome = ev.Status == "captured" ? "captured" : "failed";
-            if (await E(c, "INSERT INTO suite.payment_events(school_id,provider,event_id,intent_id,outcome) VALUES(@s,@p,@e,@i,@o) ON CONFLICT DO NOTHING", ("s", school), ("p", provider), ("e", ev.EventId), ("i", Guid.Parse(Text(intent, "id"))), ("o", outcome)) == 0) { await tx.CommitAsync(); return Results.Ok(new { data = new { status = "already-processed" } }); }
-            var current = (await Q(c, "SELECT status FROM suite.payment_intents WHERE id=@id FOR UPDATE", ("id", Guid.Parse(Text(intent, "id"))))).First();
-            var to = outcome == "captured" ? "Verified" : "Failed"; var move = FeeRules.IntentTransition(Text(current, "status"), to);
-            if (move is not null || Text(current, "status") == to) { await tx.CommitAsync(); return Results.Ok(new { data = new { status = "already-decided" } }); }
-            var intentId = Guid.Parse(Text(intent, "id")); var expected = (long)Number(intent, "amount");
-            if (outcome == "captured" && (ev.Amount != expected || (ev.Currency != "" && ev.Currency != Text(intent, "currency"))))
-            { await E(c, "UPDATE suite.payment_intents SET status='Failed',failure='Amount or currency did not match the attempt',provider_event=@e WHERE id=@id", ("e", ev.EventId), ("id", intentId)); await tx.CommitAsync(); return Results.Ok(new { data = new { status = "rejected" } }); }
-            if (outcome == "failed") { await E(c, "UPDATE suite.payment_intents SET status='Failed',failure='Provider reported failure',provider_event=@e,provider_payment=@pp WHERE id=@id", ("e", ev.EventId), ("pp", ev.PaymentReference), ("id", intentId)); await tx.CommitAsync(); return Results.Ok(new { data = new { status = "failed" } }); }
-            var charge = Guid.Parse(Text(intent, "charge")); var paymentId = Guid.NewGuid(); var receipt = await NextNumber(c, school, "receipt", "RCPT");
-            await E(c, "INSERT INTO suite.payments(id,school_id,charge_id,amount,method,reference,paid_on,receipt,idempotency_key,created_by,status,source,provider,provider_order,provider_payment,provider_event) VALUES(@id,@s,@ch,@a,'Online',@ref,@d,@r,@key,@u,'Completed','online',@p,@o,@pp,@e)",
-                ("id", paymentId), ("s", school), ("ch", charge), ("a", expected), ("ref", ev.PaymentReference), ("d", DateOnly.FromDateTime(DateTime.UtcNow)), ("r", receipt), ("key", intentId), ("u", Guid.Parse(Text(intent, "student")) is var st ? st : Guid.Empty), ("p", provider), ("o", ev.OrderReference), ("pp", ev.PaymentReference), ("e", ev.EventId));
-            await E(c, "UPDATE suite.payment_intents SET status='Verified',verified_at=now(),provider_payment=@pp,provider_event=@e,payment_id=@pay WHERE id=@id", ("pp", ev.PaymentReference), ("e", ev.EventId), ("pay", paymentId), ("id", intentId));
-            await tx.CommitAsync();
-            var row = (await LedgerRows(c, school)).FirstOrDefault(l => l.Id == charge);
-            if (row is not null) await AnnouncePayment(new SchoolAccess { School = school, User = Guid.Parse(Text(intent, "student")), Role = "Administrator" }, paymentId, row.StudentId, expected, row.Currency, receipt, row.Description);
-            Log.Information("Online fee payment verified for school {School}, attempt {Intent}, receipt {Receipt}", school, intentId, receipt);
-            return Results.Ok(new { data = new { status = "verified", receipt } });
+            var ev = adapter.Parse(config, http.Request.Headers[adapter.SignatureHeader].FirstOrDefault(), body); if (ev is null) return Results.Unauthorized();
+            if (ev.Status == "ignored") return Results.Ok(new { data = new { status = "ignored" } });
+            var (status, receipt) = await SettleIntent(c, school, provider, intent, ev);
+            return Results.Ok(new { data = new { status, receipt } });
         }).AllowAnonymous();
+    }
+    /// <summary>
+    /// Settles one verified provider event against its attempt, once: the event is recorded (a repeat changes nothing),
+    /// the attempt moves Pending -> Verified or Failed exactly once, the amount and currency must match what the server
+    /// fixed, and only then does a payment with its receipt exist. Callback and webhook both come through here, so
+    /// their order does not matter and neither can pay twice.
+    /// </summary>
+    static async Task<(string status, string? receipt)> SettleIntent(NpgsqlConnection c, Guid school, string provider, JsonObject intent, ProviderEvent ev)
+    {
+        var intentId = Guid.Parse(Text(intent, "id")); var expected = (long)Number(intent, "amount");
+        await using var tx = await c.BeginTransactionAsync(); await E(c, "SELECT pg_advisory_xact_lock(hashtextextended(@s,0))", ("s", school.ToString()));
+        var outcome = ev.Status == "captured" ? "captured" : "failed";
+        if (await E(c, "INSERT INTO suite.payment_events(school_id,provider,event_id,intent_id,outcome) VALUES(@s,@p,@e,@i,@o) ON CONFLICT DO NOTHING", ("s", school), ("p", provider), ("e", ev.EventId), ("i", intentId), ("o", outcome)) == 0) { await tx.CommitAsync(); return ("already-processed", null); }
+        var current = (await Q(c, "SELECT status,payment_id AS payment FROM suite.payment_intents WHERE id=@id AND school_id=@s FOR UPDATE", ("id", intentId), ("s", school))).First();
+        var to = outcome == "captured" ? "Verified" : "Failed"; var move = FeeRules.IntentTransition(Text(current, "status"), to);
+        if (move is not null || Text(current, "status") == to)
+        {
+            var existing = Text(current, "payment") == "" ? null : (await Q(c, "SELECT receipt FROM suite.payments WHERE id=@id AND school_id=@s", ("id", Guid.Parse(Text(current, "payment"))), ("s", school))).Select(r => Text(r, "receipt")).FirstOrDefault();
+            await tx.CommitAsync(); return ("already-decided", existing);
+        }
+        if (outcome == "captured" && (ev.Amount != expected || (ev.Currency != "" && ev.Currency != Text(intent, "currency"))))
+        { await E(c, "UPDATE suite.payment_intents SET status='Failed',failure='Amount or currency did not match the attempt',provider_event=@e WHERE id=@id AND school_id=@s", ("e", ev.EventId), ("id", intentId), ("s", school)); await tx.CommitAsync(); return ("rejected", null); }
+        if (outcome == "failed") { await E(c, "UPDATE suite.payment_intents SET status='Failed',failure='Provider reported failure',provider_event=@e,provider_payment=@pp WHERE id=@id AND school_id=@s", ("e", ev.EventId), ("pp", ev.PaymentReference), ("id", intentId), ("s", school)); await tx.CommitAsync(); return ("failed", null); }
+        var charge = Guid.Parse(Text(intent, "charge")); var paymentId = Guid.NewGuid(); var receipt = await NextNumber(c, school, "receipt", "RCPT");
+        await E(c, "INSERT INTO suite.payments(id,school_id,charge_id,amount,method,reference,paid_on,receipt,idempotency_key,created_by,status,source,provider,provider_order,provider_payment,provider_event) VALUES(@id,@s,@ch,@a,'Online',@ref,@d,@r,@key,@u,'Completed','online',@p,@o,@pp,@e)",
+            ("id", paymentId), ("s", school), ("ch", charge), ("a", expected), ("ref", ev.PaymentReference), ("d", DateOnly.FromDateTime(DateTime.UtcNow)), ("r", receipt), ("key", intentId), ("u", Guid.Parse(Text(intent, "student"))), ("p", provider), ("o", ev.OrderReference), ("pp", ev.PaymentReference), ("e", ev.EventId));
+        await E(c, "UPDATE suite.payment_intents SET status='Verified',verified_at=now(),provider_payment=@pp,provider_event=@e,payment_id=@pay WHERE id=@id AND school_id=@s", ("pp", ev.PaymentReference), ("e", ev.EventId), ("pay", paymentId), ("id", intentId), ("s", school));
+        await tx.CommitAsync();
+        var row = (await LedgerRows(c, school)).FirstOrDefault(l => l.Id == charge);
+        if (row is not null) await AnnouncePayment(new SchoolAccess { School = school, User = Guid.Parse(Text(intent, "student")), Role = "Administrator" }, paymentId, row.StudentId, expected, row.Currency, receipt, row.Description);
+        Log.Information("Online fee payment verified for school {School}, attempt {Intent}, receipt {Receipt}", school, intentId, receipt);
+        return ("verified", receipt);
     }
 }

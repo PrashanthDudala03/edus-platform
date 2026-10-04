@@ -156,6 +156,14 @@ services:
       JWT_AUDIENCE: ${JWT_AUDIENCE:-edus-api}
       ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-edus};Username=${POSTGRES_USER:-edus};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env};"
       SERILOG_LEVEL: ${SERILOG_LEVEL:-Information}
+      # School fee collections (families -> the school). These are the SCHOOL fee provider settings and are separate from
+      # the platform billing RAZORPAY_* keys above, which this service never receives. Razorpay runs in test mode only.
+      SCHOOL_FEES_FAKE_SECRET: ${SCHOOL_FEES_FAKE_SECRET:-}
+      SCHOOL_FEES_RAZORPAY_MODE: ${SCHOOL_FEES_RAZORPAY_MODE:-}
+      SCHOOL_FEES_RAZORPAY_KEY_ID: ${SCHOOL_FEES_RAZORPAY_KEY_ID:-}
+      SCHOOL_FEES_RAZORPAY_KEY_SECRET: ${SCHOOL_FEES_RAZORPAY_KEY_SECRET:-}
+      SCHOOL_FEES_RAZORPAY_WEBHOOK_SECRET: ${SCHOOL_FEES_RAZORPAY_WEBHOOK_SECRET:-}
+      SCHOOL_FEES_RAZORPAY_API_BASE: ${SCHOOL_FEES_RAZORPAY_API_BASE:-https://api.razorpay.com}
     depends_on:
       postgres:
         condition: service_healthy
@@ -164,7 +172,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    networks: [edus-network]
+    # payments-egress lets this service create Razorpay TEST orders for school fees; everything else stays on the internal network.
+    networks: [edus-network, payments-egress]
 
   # Optional AI database: a separate PostgreSQL with pgvector and its own volume. The core database is not involved.
   # Without AI_DB_PASSWORD the image refuses to initialise, so nothing runs on a blank password.

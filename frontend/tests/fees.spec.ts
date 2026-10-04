@@ -124,6 +124,26 @@ test.describe('Fees & collections', () => {
     expect(calls[0]).toMatchObject({ method: 'POST', path: '/suite/fees/online/intents', body: { chargeId: C1 } })
   })
 
+  test('with Razorpay in test mode a parent pays through the checkout and the server, not the browser, confirms it', async ({ page }) => {
+    const calls = await mock(page, parent)
+    // The checkout script is Razorpay's; here a stand-in reports a result, or a dismissal, exactly as the real one would.
+    await page.addInitScript(() => { (window as unknown as { Razorpay: unknown }).Razorpay = function (this: { open: () => void }, options: { order_id: string, key: string, amount: number, handler: (r: Record<string, string>) => void, modal: { ondismiss: () => void } }) {
+      this.open = () => { if (options.amount === 900000 && options.key === 'rzp_test_abc' && !(window as unknown as { dismissNext?: boolean }).dismissNext) options.handler({ razorpay_order_id: options.order_id, razorpay_payment_id: 'pay_test_9', razorpay_signature: 'sig' }); else options.modal.ondismiss() } } })
+    const confirms: Record<string, string>[] = []
+    await page.route('**/api/v1/suite/fees/online/intents', route => route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ data: { id: 'i1', status: 'Pending', provider: 'razorpay', orderReference: 'order_77', amount: 9000, currency: 'INR', checkout: { keyId: 'rzp_test_abc', orderId: 'order_77', amount: 900000, currency: 'INR', name: 'EduOS Demo School', description: 'Tuition · Term 1', mode: 'Test' } } }) }))
+    await page.route('**/api/v1/suite/fees/online/intents/i1/confirm', route => { const body = route.request().postDataJSON() as Record<string, string>; confirms.push(body); return route.fulfill({ status: body.signature === 'sig' ? 200 : 401, contentType: 'application/json', body: JSON.stringify(body.signature === 'sig' ? { data: { id: 'i1', status: confirms.length === 1 ? 'verified' : 'already-decided', receipt: 'RCPT-2026-000009' } } : { message: 'The payment result could not be verified.' }) }) })
+    await page.goto('/suite/fees')
+    await main(page).getByRole('button', { name: 'Pay online' }).click()
+    await expect(main(page).getByText('Payment verified. Receipt RCPT-2026-000009.')).toBeVisible()
+    expect(confirms).toEqual([{ orderId: 'order_77', paymentId: 'pay_test_9', signature: 'sig' }])
+    expect(calls.some(c => c.path.includes('/online/intents'))).toBe(false)                             // the stand-in routes answered; nothing reached the mock backend
+    // A dismissed checkout changes nothing and says so.
+    await page.evaluate(() => { (window as unknown as { dismissNext: boolean }).dismissNext = true })
+    await main(page).getByRole('button', { name: 'Pay online' }).click()
+    await expect(main(page).getByText('Payment not completed. Nothing was charged and the balance is unchanged.')).toBeVisible()
+    expect(confirms.length).toBe(1)
+  })
+
   test('at 390px the ledger fits without sideways scrolling', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
     await mock(page)
