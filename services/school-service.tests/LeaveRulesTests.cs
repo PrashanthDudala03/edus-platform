@@ -58,6 +58,8 @@ public class LeaveRulesTests
         // Decisions and cancellations go through the ordinary record save (its rules, audit trigger and notifications); nothing writes records here.
         Assert.DoesNotContain("INSERT INTO", text); Assert.DoesNotContain("UPDATE suite", text); Assert.Contains("return await Save(\"leave-requests\", id, input, http);", text);
         // The approve permission is checked with the school-wide role, days are stamped by the server, and a rejection carries a reason.
+        // Decided leave is refused as a lifecycle conflict before its new dates are validated: a far-off date on approved leave is 409, not 400.
+        Assert.True(text.IndexOf("Decided leave cannot be edited") < text.IndexOf("LeaveRules.SpanProblem(from, to"), "the immutability check must come before the span validation");
         Assert.Contains("var approver = a.SchoolWide && a.Can(\"leave-requests.approve\");", text); Assert.Contains("d[\"days\"] = days;", text); Assert.Contains("Give a reason when rejecting leave.", text);
         // A teacher reads their own balance only; the office must name a staff member.
         Assert.Contains("Require(a.Teachers.Contains(teacherId), \"You may read your own balance only.\", 403);", text);

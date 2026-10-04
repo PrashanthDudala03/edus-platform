@@ -128,7 +128,8 @@ test.describe.serial('Complete school suite',()=>{
   const approved=(await list('leave-requests','Teacher')).find((r:any)=>r.id===leave);expect(approved.status).toBe('Approved');expect(approved.decidedBy).toBeTruthy()
   // Approved leave is history: its dates cannot be edited, by the teacher or by leadership.
   expect((await req('PUT','/suite/records/leave-requests/'+leave,{...approved,reason:'Changed'},'Teacher')).status()).toBe(403)
-  expect((await req('PUT','/suite/records/leave-requests/'+leave,{...approved,toDate:'2030-01-01'},'Principal')).status()).toBe(409)
+  const refused=await req('PUT','/suite/records/leave-requests/'+leave,{...approved,toDate:'2030-01-01'},'Principal');expect(refused.status()).toBe(409);expect((await refused.json()).message).toBe('Decided leave cannot be edited. Cancel it and submit a new request.')
+  const kept=(await list('leave-requests','Principal')).find((r:any)=>r.id===leave);expect([kept.status,kept.toDate,kept.version]).toEqual(['Approved',date,approved.version])
   // The day's operations show the uncovered lesson; the candidate list knows who is free; a busy substitute is refused.
   const ops=await good('GET','/suite/timetable/operations?date='+date,undefined,'Principal');expect(ops.summary).toEqual({away:1,affected:2,covered:0,uncovered:2});expect(ops.periods[0].status).toBe('uncovered')
   const candidates=await good('GET','/suite/timetable/candidates?timetableId='+lesson+'&date='+date,undefined,'Principal');expect(candidates.candidates.find((c:any)=>c.teacherId===teacher2).free).toBe(true)

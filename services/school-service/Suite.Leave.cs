@@ -69,13 +69,15 @@ public static partial class Suite
         }
         if (kind == "leave-requests")
         {
-            var from = Day(d, "fromDate"); var to = Day(d, "toDate"); if (Text(d, "halfDay") == "") d["halfDay"] = "No";
-            var span = LeaveRules.SpanProblem(from, to, Text(d, "halfDay")); Require(span is null, span ?? "");
+            if (Text(d, "halfDay") == "") d["halfDay"] = "No";
             var oldStatus = old is null ? "" : Text(old, "status"); var status = Text(d, "status");
             var approver = a.SchoolWide && a.Can("leave-requests.approve"); var owner = a.Teachers.Contains(Text(d, "teacherId"));
-            var move = LeaveRules.TransitionProblem(oldStatus, status, approver, owner); Require(move is null, move?.message ?? "", move?.status ?? 409);
+            // Decided leave is history: a change to what was asked for is a lifecycle conflict (409), judged before the new values are validated.
             if (old is not null && LeaveRules.Locked(oldStatus))
                 Require(new[] { "teacherId", "typeId", "fromDate", "toDate", "halfDay", "reason" }.All(k => Text(old, k) == Text(d, k)) && (status == oldStatus ? Text(old, "approvalRemark") == Text(d, "approvalRemark") : true), "Decided leave cannot be edited. Cancel it and submit a new request.", 409);
+            var move = LeaveRules.TransitionProblem(oldStatus, status, approver, owner); Require(move is null, move?.message ?? "", move?.status ?? 409);
+            var from = Day(d, "fromDate"); var to = Day(d, "toDate");
+            var span = LeaveRules.SpanProblem(from, to, Text(d, "halfDay")); Require(span is null, span ?? "");
             Require(status != "Rejected" || Text(d, "approvalRemark") != "", "Give a reason when rejecting leave.");
             Require(!peers.Any(p => Text(p, "teacherId") == Text(d, "teacherId") && LeaveRules.Counts(Text(p, "status")) && LeaveRules.Counts(status) && Day(p, "fromDate") <= to && Day(p, "toDate") >= from), "This staff member already has an overlapping leave request.", 409);
             var days = LeaveRules.Days(from, to, Text(d, "halfDay")); d["days"] = days;
