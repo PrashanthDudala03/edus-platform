@@ -82,9 +82,11 @@ public static partial class Suite
         if(!a.Can(Perm(kind,"view")))return false;
         if(a.SchoolWide)return true;
         return kind switch{
-            "academic-years" or "subjects" or "calendar" or "school-config" or "assessment-schemes"=>true,
+            "academic-years" or "subjects" or "calendar" or "school-config" or "assessment-schemes" or "period-slots" or "leave-types"=>true,
             "classes"=>a.Classes.Contains(Text(d,"id")),
-            "teaching-assignments" or "staff-attendance" or "leave-requests"=>a.Teachers.Contains(Text(d,"teacherId")),
+            "teaching-assignments" or "staff-attendance" or "leave-requests" or "leave-adjustments"=>a.Teachers.Contains(Text(d,"teacherId")),
+            // A teacher reads the substitutions they cover and those covering their own lessons.
+            "substitutions"=>a.Teachers.Contains(Text(d,"teacherId"))||a.Teachers.Contains(Text(d,"originalTeacherId")),
             "exams"=>a.Exams.Contains(Text(d,"id")),
             "marks"=>a.Students.Contains(Text(d,"studentId"))&&a.Exams.Contains(Text(d,"examId"))&&(a.Role=="Teacher"||a.Published.Contains(Text(d,"examId"))),
             "homework"=>a.Homework.Contains(Text(d,"id"))&&(a.Role=="Teacher"||HomeworkRules.Status(Text(d,"status"))!="Draft"),
@@ -100,7 +102,8 @@ public static partial class Suite
         Require(a.Can(Perm(kind,"manage")),"Your role cannot change this module.",403);
         if(a.SchoolWide)return;
         if(a.Role=="Teacher"){
-            if(kind=="leave-requests"){Require(a.Teachers.Contains(Text(d,"teacherId")),"Leave must belong to your staff profile.",403);Require(Text(d,"status")=="Pending"&&Text(d,"approvalRemark")=="","Only school leadership can approve leave.",403);Require(old is null||Text(old,"status")=="Pending","Reviewed leave cannot be changed.",409);}
+            // A teacher submits their own leave as Pending and may withdraw it while it is pending; deciding is leadership's (LeaveRules).
+            if(kind=="leave-requests"){Require(a.Teachers.Contains(Text(d,"teacherId")),"Leave must belong to your staff profile.",403);Require((Text(d,"status")=="Pending"||Text(d,"status")=="Cancelled"&&old is not null)&&Text(d,"approvalRemark")=="","Only school leadership can approve leave.",403);Require(old is null||Text(old,"status")=="Pending","Reviewed leave cannot be changed.",409);}
             else if(kind=="homework")Require(a.Classes.Contains(Text(d,"classId")),"This class is not assigned to you.",403);
             else if(kind=="marks")Require(a.Exams.Contains(Text(d,"examId"))&&a.Students.Contains(Text(d,"studentId")),"This result is outside your classes.",403);
             else if(kind=="submissions")Require(old is not null&&a.Homework.Contains(Text(d,"homeworkId"))&&a.Students.Contains(Text(d,"studentId"))&&Text(d,"response")==Text(old,"response")&&Text(d,"homeworkId")==Text(old,"homeworkId")&&Text(d,"studentId")==Text(old,"studentId"),"Teachers may add feedback to assigned submissions only.",403);
@@ -136,7 +139,7 @@ public static partial class Suite
         group.MapPut("/records/{kind}/{id:guid}",async(string kind,Guid id,JsonObject data,HttpContext http)=>await Save(kind,id,data,http));
         group.MapDelete("/records/{kind}/{id:guid}",async(string kind,Guid id,HttpContext http)=>{
             Require(Schemas.ContainsKey(kind),"Module not found.",404);await using var c=await Open();var a=await Access(http,c);Require(a.Can(Perm(kind,"archive")),"Archive permission required.",403);
-            Require(!new[]{"academic-years","classes","subjects","fee-structures","fee-heads","exams","marks","assessment-schemes","school-config","certificates","admissions"}.Contains(kind),"This record is retained for academic or financial history. Change its status instead.",409);
+            Require(!new[]{"academic-years","classes","subjects","fee-structures","fee-heads","exams","marks","assessment-schemes","school-config","certificates","admissions","leave-types","leave-adjustments"}.Contains(kind),"This record is retained for academic or financial history. Change its status instead.",409);
             Require(kind!="account-links","Profile links are retained. Contact platform support to correct a relationship.",409);
             var old=await Get(c,a.School,kind,id);
             await E(c,"UPDATE suite.records SET archived_at=now(),updated_by=@u,version=version+1 WHERE id=@id AND school_id=@s",("u",a.User),("id",id),("s",a.School));

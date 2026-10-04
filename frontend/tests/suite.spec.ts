@@ -21,7 +21,7 @@ async function throttled(send:()=>Promise<APIResponse>){for(let i=0;;i++){const 
 async function login(role:string,pw=password){const r=await throttled(()=>api.post('/api/v1/auth/login',{data:{schoolId,username:'suite.'+role.toLowerCase(),password:pw}}));expect(r.status(),await r.text()).toBe(200);sessions[role]=(await r.json()).data}
 async function browserSession(page:Page,role='Administrator'){await page.addInitScript(s=>{localStorage.setItem('accessToken',s.accessToken);localStorage.setItem('refreshToken',s.refreshToken);localStorage.setItem('user',JSON.stringify(s.user))},sessions[role])}
 // Every module the suite serves, in catalog order. A new kind is a deliberate contract change: add it here with its feature.
-const CATALOG=['academic-years','classes','subjects','teaching-assignments','admissions','staff-attendance','leave-requests','fee-heads','fee-structures','assessment-schemes','exams','marks','circulars','calendar','messages','homework','submissions','timetable','certificates','account-links','school-config']
+const CATALOG=['academic-years','classes','subjects','teaching-assignments','admissions','staff-attendance','leave-types','leave-requests','leave-adjustments','fee-heads','fee-structures','assessment-schemes','exams','marks','circulars','calendar','messages','homework','submissions','period-slots','timetable','substitutions','certificates','account-links','school-config']
 test.describe.serial('Complete school suite',()=>{
  test.beforeAll(async({playwright})=>{
   test.setTimeout(180000)
@@ -87,6 +87,71 @@ test.describe.serial('Complete school suite',()=>{
   expect((await req('PUT','/suite/records/leave-requests/'+leave,{...row,status:'Approved'},'Teacher')).status()).toBe(403)
   await good('PUT','/suite/records/leave-requests/'+leave,{...row,status:'Approved',approvalRemark:'Approved by principal'},'Principal')
   expect((await good('GET','/suite/reports/staff-attendance?month='+day.slice(0,7),undefined,'Teacher'))[0].present).toBe(1)
+ })
+ test('connects the timetable to leave: impact, approval, uncovered lessons, a safe substitute, and what each role sees',async()=>{
+  // A school day next week, so the leave never collides with the one approved for today above.
+  const monday=new Date();monday.setDate(monday.getDate()+((8-monday.getDay())%7||7));const date=monday.toISOString().slice(0,10)
+  const slot1=await create('period-slots',{name:'Period 1',order:1,startsAt:'08:00',endsAt:'08:40',type:'Teaching'})
+  await create('period-slots',{name:'Assembly',order:2,startsAt:'08:40',endsAt:'09:00',type:'Assembly'})
+  expect((await req('POST','/suite/records/period-slots',{name:'Period 1b',order:3,startsAt:'08:20',endsAt:'08:50',type:'Teaching'})).status()).toBe(409)
+  // A second teacher with an account: the substitute. A second class for the clash checks.
+  const teacher2=(await good('POST','/teachers',{schoolId,employeeCode:'ST-2',firstName:'Nila',lastName:'Cover',email:'nila'+schoolId+'@example.test',phoneNumber:'9000000004',department:'Science'},'Administrator',201)).id
+  const roles=await good('GET','/roles');users.Teacher2=(await good('POST','/users',{schoolId,roleId:roles.find((r:any)=>r.name==='Teacher').id,username:'suite.teacher2',email:'teacher2'+schoolId+'@example.test',firstName:'Nila',lastName:'QA',password},'Administrator',201)).id
+  await create('account-links',{userId:users.Teacher2,teacherId:teacher2});await login('Teacher2')
+  const cl2=await create('classes',{name:'Grade 7',section:'B',yearId:year,teacherId:teacher2,capacity:30})
+  await create('teaching-assignments',{classId:cl2,subjectId:subject,teacherId:teacher2});await create('teaching-assignments',{classId:cl2,subjectId:subject,teacherId:teacher})
+  // Lessons placed by period: the first teacher takes Grade 6 in period 1 on that weekday; a clash with the room is named.
+  const weekday=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][monday.getDay()]
+  const lesson=await create('timetable',{classId:cl,subjectId:subject,teacherId:teacher,day:weekday,slotId:slot1,room:'Lab 1'})
+  expect((await req('POST','/suite/records/timetable',{classId:cl2,subjectId:subject,teacherId:teacher2,day:weekday,slotId:slot1,room:'lab 1'})).status()).toBe(409)
+  expect((await req('POST','/suite/records/timetable',{classId:cl2,subjectId:subject,teacherId:teacher,day:weekday,startsAt:'08:10',endsAt:'08:30'})).status()).toBe(409)
+  expect((await req('POST','/suite/records/timetable',{classId:cl2,subjectId:subject,teacherId:teacher2,day:weekday,startsAt:'10:00',endsAt:'09:00'})).status()).toBe(400)
+  const week=await good('GET','/suite/timetable/week?classId='+cl+'&date='+date,undefined,'Student')
+  expect(week.periods.map((p:any)=>[p.startsAt,p.subjectName,p.teacherName,p.substituted])).toEqual([['08:00','Science','Maya Teacher',false]]);expect(week.office).toBe(false);expect(week.slots.length).toBe(2)
+  expect((await req('GET','/suite/timetable/week?teacherId='+teacher,undefined,'Student')).status()).toBe(403)
+  expect((await req('GET','/suite/timetable/week?room=Lab 1',undefined,'Teacher')).status()).toBe(403)
+  expect((await good('GET','/suite/timetable/week?room=Lab 1&date='+date)).periods.length).toBe(1)
+  // Leave with a tracked balance: the request counts as pending, its impact names the lesson, and only leadership decides.
+  const casual=await create('leave-types',{name:'Casual leave',code:'CL',paid:'Paid',yearlyAllowance:2,tracksBalance:'Yes',active:'Yes'})
+  const leave=await create('leave-requests',{teacherId:teacher,typeId:casual,fromDate:date,toDate:date,reason:'Family function',status:'Pending'},'Teacher')
+  const before=await good('GET','/suite/leave/balances',undefined,'Teacher');expect(before.balances.map((b:any)=>[b.code,b.allowance,b.pending,b.remaining])).toEqual([['CL',2,1,2]])
+  expect((await req('POST','/suite/records/leave-requests',{teacherId:teacher,typeId:casual,fromDate:'2030-01-01',toDate:'2030-01-03',reason:'Too long',status:'Pending'},'Teacher')).status()).toBe(409)
+  const impact=await good('GET','/suite/leave/'+leave+'/impact',undefined,'Teacher');expect(impact.summary).toEqual({affected:1,covered:0,uncovered:1});expect(impact.periods[0].className).toBe('Grade 6 - A')
+  expect((await req('POST','/suite/leave/'+leave+'/decision',{decision:'Approved',remark:'ok'},'Teacher')).status()).toBe(403)
+  for(const role of ['Student','Parent']){expect((await req('GET','/suite/leave/queue',undefined,role)).status()).toBe(403);expect((await req('GET','/suite/timetable/operations?date='+date,undefined,role)).status()).toBe(403);expect((await req('GET','/suite/leave/'+leave+'/impact',undefined,role)).status()).toBe(403)}
+  expect((await req('GET','/suite/timetable/operations?date='+date,undefined,'Teacher')).status()).toBe(403)
+  const queue=await good('GET','/suite/leave/queue',undefined,'Principal');const item=queue.items.find((i:any)=>i.id===leave);expect([item.typeName,item.days,item.remaining,item.impact.uncovered]).toEqual(['Casual leave',1,2,1])
+  expect((await req('POST','/suite/leave/'+leave+'/decision',{decision:'Rejected',remark:''},'Principal')).status()).toBe(400)
+  await good('POST','/suite/leave/'+leave+'/decision',{decision:'Approved',remark:'Enjoy'},'Principal')
+  const after=await good('GET','/suite/leave/balances',undefined,'Teacher');expect(after.balances[0].used).toBe(1);expect(after.balances[0].remaining).toBe(1);expect(after.balances[0].pending).toBe(0)
+  const approved=(await list('leave-requests','Teacher')).find((r:any)=>r.id===leave);expect(approved.status).toBe('Approved');expect(approved.decidedBy).toBeTruthy()
+  // Approved leave is history: its dates cannot be edited, by the teacher or by leadership.
+  expect((await req('PUT','/suite/records/leave-requests/'+leave,{...approved,reason:'Changed'},'Teacher')).status()).toBe(403)
+  expect((await req('PUT','/suite/records/leave-requests/'+leave,{...approved,toDate:'2030-01-01'},'Principal')).status()).toBe(409)
+  // The day's operations show the uncovered lesson; the candidate list knows who is free; a busy substitute is refused.
+  const ops=await good('GET','/suite/timetable/operations?date='+date,undefined,'Principal');expect(ops.summary).toEqual({away:1,affected:1,covered:0,uncovered:1});expect(ops.periods[0].status).toBe('uncovered')
+  const candidates=await good('GET','/suite/timetable/candidates?timetableId='+lesson+'&date='+date,undefined,'Principal');expect(candidates.candidates.find((c:any)=>c.teacherId===teacher2).free).toBe(true)
+  const busyLesson=await create('timetable',{classId:cl2,subjectId:subject,teacherId:teacher2,day:weekday,startsAt:'08:20',endsAt:'09:20'})
+  expect((await req('POST','/suite/records/substitutions',{date,timetableId:lesson,teacherId:teacher2},'Principal')).status()).toBe(409)
+  await good('DELETE','/suite/records/timetable/'+busyLesson)
+  expect((await req('POST','/suite/records/substitutions',{date,timetableId:lesson,teacherId:teacher2},'Teacher')).status()).toBe(403)
+  expect((await req('POST','/suite/records/substitutions',{date:'2030-01-01',timetableId:lesson,teacherId:teacher2},'Principal')).status()).toBe(400)
+  const substitution=await create('substitutions',{date,timetableId:lesson,teacherId:teacher2,note:'Worksheet on the desk'},'Principal')
+  expect((await req('POST','/suite/records/substitutions',{date,timetableId:lesson,teacherId:teacher2},'Principal')).status()).toBe(409)
+  expect((await good('GET','/suite/timetable/operations?date='+date,undefined,'Principal')).summary).toEqual({away:1,affected:1,covered:1,uncovered:0})
+  // The substitute sees the period they cover; the absent teacher sees it covered; the family sees the substitute and nothing about leave.
+  const covering=await good('GET','/suite/timetable/today?date='+date,undefined,'Teacher2');expect(covering.periods.map((p:any)=>[p.covering,p.originalTeacherName,p.className])).toEqual([[true,'Maya Teacher','Grade 6 - A']])
+  const own=await good('GET','/suite/timetable/today?date='+date,undefined,'Teacher');expect(own.away).toBe(true);expect(own.periods[0].status).toBe('covered');expect(own.periods[0].substitution.teacherName).toBe('Nila Cover')
+  for(const role of ['Student','Parent']){const family=await good('GET','/suite/timetable/today?date='+date,undefined,role);const p=family.periods[0];expect([p.effectiveTeacherName,p.substituted,p.teacherName]).toEqual(['Nila Cover',true,'Maya Teacher']);expect(Object.keys(p)).not.toEqual(expect.arrayContaining(['status','away','substitution']));expect(JSON.stringify(family)).not.toContain('Family function')}
+  expect((await good('GET','/suite/students/'+student+'/360',undefined,'Parent')).timetable.className).toBe('Grade 6 - A')
+  expect((await req('GET','/suite/records/leave-requests',undefined,'Student')).status()).toBe(403);expect((await req('GET','/suite/records/substitutions',undefined,'Parent')).status()).toBe(403)
+  expect((await list('substitutions','Teacher2')).map((r:any)=>r.id)).toEqual([substitution])
+  // A pending request can be withdrawn by its owner; leadership's balance adjustments are permanent history.
+  const later=await create('leave-requests',{teacherId:teacher,typeId:casual,fromDate:'2030-02-01',toDate:'2030-02-01',reason:'Later',status:'Pending'},'Teacher')
+  await good('POST','/suite/leave/'+later+'/cancel',{},'Teacher');expect((await list('leave-requests','Teacher')).find((r:any)=>r.id===later).status).toBe('Cancelled')
+  const adjustment=await create('leave-adjustments',{teacherId:teacher,typeId:casual,direction:'Add',days:1,effectiveOn:date,reason:'Carried over'},'Principal')
+  expect((await req('DELETE','/suite/records/leave-adjustments/'+adjustment)).status()).toBe(403)
+  expect((await good('GET','/suite/leave/balances?teacherId='+teacher,undefined,'Principal')).balances[0].remaining).toBe(2)
  })
  test('keeps fees exact, payments idempotent, receipts private and balances non-negative',async()=>{
   const structure=await create('fee-structures',{name:'Tuition',classId:cl,amount:1000.10,installment:'Term 1',dueDate:day})

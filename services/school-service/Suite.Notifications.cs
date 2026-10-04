@@ -28,6 +28,7 @@ public static class NotificationRules
         ["homework.reviewed"] = "homework", ["fee.due"] = "fees", ["fee.overdue"] = "fees", ["circular.published"] = "notices", ["message.received"] = "notices",
         ["leave.requested"] = "leave", ["leave.approved"] = "leave", ["leave.rejected"] = "leave", ["timetable.changed"] = "timetable", ["school-home.published"] = "school",
         ["exam.scheduled"] = "timetable", ["exam.rescheduled"] = "timetable", ["fee.payment_received"] = "fees", ["fee.due_soon"] = "fees",
+        ["substitution.assigned"] = "timetable", ["substitution.changed"] = "timetable",
     };
     public static IReadOnlyCollection<string> Types => TypeCategory.Keys;
     public static bool KnownType(string? type) => type is not null && TypeCategory.ContainsKey(type);
@@ -247,8 +248,23 @@ public static partial class Suite
     {
         try
         {
-            if (kind is not ("circulars" or "leave-requests" or "homework" or "submissions" or "exams")) return;
+            if (kind is not ("circulars" or "leave-requests" or "homework" or "submissions" or "exams" or "substitutions")) return;
             await using var c = await Open();
+            if (kind == "substitutions")
+            {
+                // The teacher asked to cover a period hears once per assignment; a teacher no longer covering it hears that it changed.
+                // Families are not told: they read the effective timetable, which carries the substitute's name.
+                var period = await Get(c, a.School, "timetable", Id(d, "timetableId")); var cls = await Get(c, a.School, "classes", Id(period, "classId")); var subject = await Get(c, a.School, "subjects", Id(period, "subjectId"));
+                var names = await TeacherNames(c, a.School);
+                var values = new Dictionary<string, string?> { ["teacherName"] = names.GetValueOrDefault(Text(period, "teacherId")) ?? "a colleague", ["className"] = Label("classes", cls), ["subjectName"] = Text(subject, "name"), ["date"] = NotificationTemplates.Day(Text(d, "date")), ["time"] = Text(period, "startsAt") + "-" + Text(period, "endsAt"), ["room"] = Text(period, "room"), ["schoolName"] = await SchoolName(c, a.School) };
+                var version = old is null ? "v1" : "v" + ((int)Number(old, "version") + 1);
+                if (old is null || Text(old, "teacherId") != Text(d, "teacherId"))
+                {
+                    await Send(c, a.School, "substitution.assigned", NotificationRules.EventKey("substitution.assigned", id, version), values, id, await UsersForTeachers(c, a.School, [Text(d, "teacherId")]), a.User, "suite.substitutions");
+                    if (old is not null) await Send(c, a.School, "substitution.changed", NotificationRules.EventKey("substitution.changed", id, version), values, id, await UsersForTeachers(c, a.School, [Text(old, "teacherId")]), a.User, "suite.substitutions");
+                }
+                return;
+            }
             if (kind == "circulars" && old is null)
             {
                 // The same people who may read the circular: its audience, narrowed to the class when one is set.

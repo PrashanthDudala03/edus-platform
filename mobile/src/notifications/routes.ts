@@ -6,7 +6,7 @@ import type { User } from '../session/types.ts'
 // serve push taps and deep links when push arrives; device registration is still only a seam.
 export type NotificationType =
   | 'attendance.absent' | 'attendance.late' | 'attendance.corrected' | 'homework.assigned' | 'homework.reviewed' | 'homework.due' | 'result.published' | 'fee.due' | 'fee.payment_received' | 'fee.due_soon' | 'fee.overdue' | 'circular.published'
-  | 'message.received' | 'leave.requested' | 'leave.approved' | 'leave.rejected' | 'timetable.changed' | 'school-home.published' | 'exam.scheduled' | 'exam.rescheduled'
+  | 'message.received' | 'leave.requested' | 'leave.approved' | 'leave.rejected' | 'timetable.changed' | 'school-home.published' | 'exam.scheduled' | 'exam.rescheduled' | 'substitution.assigned' | 'substitution.changed'
 
 /** What a notification will carry. Ids are opaque; the server authorises them again when the screen loads. */
 export interface NotificationPayload { type: string, entityId?: string, studentId?: string }
@@ -31,6 +31,8 @@ const DESTINATIONS: Record<NotificationType, Destination[]> = {
   'leave.approved': ['/leave'],
   'leave.rejected': ['/leave'],
   'timetable.changed': ['/timetable'],
+  'substitution.assigned': ['/timetable'],
+  'substitution.changed': ['/timetable'],
   'exam.scheduled': ['/exams'],
   'exam.rescheduled': ['/exams'],
   'school-home.published': ['/welcome'],

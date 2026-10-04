@@ -115,6 +115,10 @@ await ensure('account-links',r=>r.userId===userIds.Student,{userId:userIds.Stude
 // Linking a profile revokes that account's sessions, so the teacher and student sign in only after their links exist.
 const teacherToken=await login(accounts.Teacher.username),studentToken=await login(accounts.Student.username)
 
+// Period structure (Timetable 2.0): the bell schedule the demo lessons sit in; breaks are shown on every timetable.
+for(const [name,order,startsAt,endsAt,type] of [['Period 1',1,'09:00','09:45','Teaching'],['Break',2,'09:45','10:00','Break'],['Period 2',3,'10:00','10:45','Teaching'],['Period 3',4,'10:45','11:30','Teaching'],['Lunch',5,'11:30','12:15','Lunch'],['Period 4',6,'12:15','13:00','Teaching']])
+ await ensure('period-slots',r=>r.name===name,{name,order,startsAt,endsAt,type})
+
 // Weekly timetable: Grade 6-A Monday to Saturday, Grade 3-B Monday to Friday.
 const days=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
 const periods=await records('timetable')
@@ -149,7 +153,11 @@ await ensure('circulars',r=>r.title==='Parent-teacher meeting (Demo)',{title:'Pa
 await ensure('circulars',r=>r.title==='Sports day volunteers (Demo)',{title:'Sports day volunteers (Demo)',message:'We are looking for parent volunteers for sports day.',audience:'Parent'})
 await ensure('calendar',r=>r.title==='Sports Day (Demo)',{title:'Sports Day (Demo)',startsOn:day(10),endsOn:day(10),description:'Annual sports day for all classes.'})
 await ensure('messages',r=>r.title==='Homework reminder (Demo)',{title:'Homework reminder (Demo)',message:'Aarav’s plant cell diagram is due this week.',recipientUserId:userIds.Parent},teacherToken,admin)
-await ensure('leave-requests',r=>r.teacherId===ravi,{teacherId:ravi,fromDate:day(20),toDate:day(21),reason:'Family function (demo).',status:'Pending'},teacherToken)
+// Leave types (Leave 2.0): balances are tracked for casual and sick leave; unpaid leave is open-ended.
+const casual=await ensure('leave-types',r=>r.code==='CL',{name:'Casual leave',code:'CL',paid:'Paid',yearlyAllowance:12,tracksBalance:'Yes',active:'Yes'})
+await ensure('leave-types',r=>r.code==='SL',{name:'Sick leave',code:'SL',paid:'Paid',yearlyAllowance:8,tracksBalance:'Yes',active:'Yes'})
+await ensure('leave-types',r=>r.code==='UL',{name:'Unpaid leave',code:'UL',paid:'Unpaid',yearlyAllowance:0,tracksBalance:'No',active:'Yes'})
+await ensure('leave-requests',r=>r.teacherId===ravi,{teacherId:ravi,typeId:casual,fromDate:day(20),toDate:day(21),reason:'Family function (demo).',status:'Pending'},teacherToken)
 const fee6=await ensure('fee-structures',r=>r.name==='Term 1 Tuition (Demo)'&&r.classId===grade6,{name:'Term 1 Tuition (Demo)',classId:grade6,amount:'15000',installment:'Term 1',dueDate:day(15)})
 const fee3=await ensure('fee-structures',r=>r.name==='Term 1 Tuition (Demo)'&&r.classId===grade3,{name:'Term 1 Tuition (Demo)',classId:grade3,amount:'12000',installment:'Term 1',dueDate:day(15)})
 const fees=await must('GET','/suite/fees',admin)

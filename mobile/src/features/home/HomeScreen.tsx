@@ -12,14 +12,14 @@ import { AppText, Avatar, Card, Skeleton, type IconName } from '@/components/ui'
 import { api, useSession } from '@/services'
 import type { User } from '@/session/types'
 import { color, elevation, radius, space } from '@/theme/tokens'
-import { dayParts, dayRange, greeting, initials, isoDay, lessonsByDay, percent, weekdayOf } from '@/utils/format'
-import { useCalendar, useChildren, useCirculars, useFees, useHomework, useHomeworkBoard, useHomeworkOverview, useLeave, useNames, usePermission, useRegister, useReportCard } from '../data'
+import { dayParts, dayRange, greeting, initials, isoDay, percent, weekdayOf } from '@/utils/format'
+import { useCalendar, useChildren, useCirculars, useFees, useHomework, useHomeworkBoard, useHomeworkOverview, useLeave, useNames, usePermission, useRegister, useReportCard, useTimetableDay } from '../data'
+import { dayRows, periodNote, shownRows } from '../timetable'
 import { GROUP_LABEL, feeTotals, money, needsAttention, newestFirst, overviewTotals, registerSummary, splitHomework, upcomingEvents } from '../logic'
 import { NotificationBell } from '../notifications/NotificationsScreen'
 import { useOverview } from '../principal/OverviewScreen'
 import { SchoolImage, useBrand, useSchoolHome } from '../school-home/api'
 import { heroOf } from '../school-home/model'
-import { useTimetable } from '../student/TimetableScreen'
 import { useMyClasses } from '../teacher/ClassesScreen'
 
 // Home is each role's command centre. A branded header carries the greeting and one-tap shortcuts; below it the
@@ -40,14 +40,15 @@ function Summary({ figures, go }: { figures: Figure[], go: Go }) {
     <AppText variant="title" tone={figure.warn ? 'danger' : 'primary'} numberOfLines={1} adjustsFontSizeToFit>{figure.value}</AppText><AppText variant="label" numberOfLines={1}>{figure.label}</AppText>
     {!!figure.note && <AppText variant="caption" tone="muted" numberOfLines={2}>{figure.note}</AppText>}</Pressable>)}</View>
 }
-function TodayLessons({ classId, go, showClass }: { classId?: string, go: Go, showClass?: boolean }) {
-  const may = usePermission('timetable.view'), timetable = useTimetable(may), name = useNames(may), today = weekdayOf(new Date())
+function TodayLessons({ studentId, go, showClass }: { studentId?: string, go: Go, showClass?: boolean }) {
+  // The effective day from the timetable endpoint: the role's own scope, with the substitute's name where one takes a lesson.
+  const may = usePermission('timetable.view'), day = useTimetableDay(isoDay(new Date()), studentId, may), today = weekdayOf(new Date())
   if (!may) return null
-  const lessons = (lessonsByDay(timetable.data ?? []).find(group => group.day === today)?.lessons ?? []).filter(lesson => !classId || lesson.classId === classId)
+  const rows = day.data ? shownRows(dayRows(day.data.slots, day.data.periods)).filter(r => r.periods.length) : []
   return <Group title={'Today · ' + today} action={<LinkText label="Timetable" onPress={() => go('/timetable')} />}>
-    {timetable.data === undefined ? <View style={styles.pad}><Skeleton width="70%" /></View> : lessons.length === 0 ? <ListItem icon="time-outline" title="No lessons today" subtitle={timetable.data.length === 0 ? 'The timetable has not been published yet.' : undefined} last />
-      : lessons.slice(0, 4).map((lesson, i, all) => <ListItem key={lesson.id} leading={<View style={styles.time}><AppText variant="label">{lesson.startsAt}</AppText><AppText variant="caption" tone="faint">{lesson.endsAt}</AppText></View>}
-        title={name('subjects', lesson.subjectId) || 'Lesson'} subtitle={[showClass ? name('classes', lesson.classId) : name('teachers', lesson.teacherId), lesson.room && 'Room ' + lesson.room].filter(Boolean).join(' · ')} last={i === all.length - 1} />)}</Group>
+    {day.data === undefined ? <View style={styles.pad}><Skeleton width="70%" /></View> : rows.length === 0 ? <ListItem icon="time-outline" title="No lessons today" subtitle={day.data.periods.length === 0 ? 'Nothing is on the timetable for today.' : undefined} last />
+      : rows.slice(0, 4).map((row, i, all) => <ListItem key={row.key} leading={<View style={styles.time}><AppText variant="label">{row.startsAt}</AppText><AppText variant="caption" tone="faint">{row.endsAt}</AppText></View>}
+        title={row.periods.map(p => p.subjectName || 'Lesson').join(', ')} subtitle={row.periods.map(p => periodNote(p, !!showClass)).join(' · ')} last={i === all.length - 1} />)}</Group>
 }
 function NoticesPreview({ go }: { go: Go }) {
   const mayCirculars = usePermission('circulars.view'), mayCalendar = usePermission('calendar.view'), circulars = useCirculars(), calendar = useCalendar()
@@ -73,7 +74,7 @@ function FamilyHome({ student, go }: { student: boolean, go: Go }) {
       ...(mayHomework ? [{ value: board.data === undefined ? dash : String(due.length), label: 'Homework due', note: board.data ? (open.length ? `${open.length} missing` : 'Nothing missing') : undefined, warn: open.length > 0, route: '/homework' as const }] : []),
       { value: card.data?.maximum ? card.data.percent + '%' : dash, label: 'Results', note: card.data?.maximum ? 'Grade ' + card.data.grade : 'None published', route: '/results' }]} />
     {mayFees && fees.data !== undefined && totals.count > 0 && <Group><ListItem icon="wallet-outline" title={totals.balance > 0 ? money(totals.currency, totals.balance) + ' outstanding' : 'Fees are up to date'} subtitle={`${totals.outstanding} of ${totals.count} charges with a balance`} onPress={() => go('/fees')} last /></Group>}
-    <TodayLessons classId={child?.classId || undefined} go={go} />
+    <TodayLessons studentId={child?.studentId} go={go} />
     {mayHomework && <Group title="Homework due" action={<LinkText label="All homework" onPress={() => go('/homework')} />}>
       {board.data === undefined ? <View style={styles.pad}><Skeleton width="65%" /></View> : due.length === 0 ? <ListItem icon="book-outline" title="No homework due" last />
         : due.slice(0, 3).map((item, i, all) => <ListItem key={item.id} icon="book-outline" title={item.title} subtitle={[item.subjectName, GROUP_LABEL[item.group]].filter(Boolean).join(' · ')} meta={'Due ' + (dayParts(item.dueDate)?.label ?? item.dueDate)} onPress={() => go('/homework')} last={i === all.length - 1} />)}</Group>}

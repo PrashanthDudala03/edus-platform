@@ -124,6 +124,22 @@
     ]
   },
   {
+    "key": "leave-types.view",
+    "group": "Attendance",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher"
+    ]
+  },
+  {
+    "key": "leave-types.manage",
+    "group": "Attendance",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
     "key": "leave-requests.view",
     "group": "Attendance",
     "defaults": [
@@ -149,6 +165,44 @@
     ]
   },
   {
+    "key": "leave-adjustments.view",
+    "group": "Attendance",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "leave-adjustments.manage",
+    "group": "Attendance",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "fee-heads.view",
+    "group": "Finance",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "fee-heads.manage",
+    "group": "Finance",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "fee-heads.archive",
+    "group": "Finance",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
     "key": "fee-structures.view",
     "group": "Fees",
     "defaults": [
@@ -159,6 +213,32 @@
   {
     "key": "fee-structures.manage",
     "group": "Fees",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "assessment-schemes.view",
+    "group": "Exams",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ]
+  },
+  {
+    "key": "assessment-schemes.manage",
+    "group": "Exams",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "assessment-schemes.archive",
+    "group": "Exams",
     "defaults": [
       "Administrator"
     ]
@@ -338,6 +418,31 @@
     ]
   },
   {
+    "key": "period-slots.view",
+    "group": "Learning",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher",
+      "Parent",
+      "Student"
+    ]
+  },
+  {
+    "key": "period-slots.manage",
+    "group": "Learning",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "period-slots.archive",
+    "group": "Learning",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
     "key": "timetable.view",
     "group": "Learning",
     "defaults": [
@@ -358,6 +463,30 @@
   },
   {
     "key": "timetable.archive",
+    "group": "Learning",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "substitutions.view",
+    "group": "Learning",
+    "defaults": [
+      "Administrator",
+      "Principal",
+      "Teacher"
+    ]
+  },
+  {
+    "key": "substitutions.manage",
+    "group": "Learning",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "substitutions.archive",
     "group": "Learning",
     "defaults": [
       "Administrator"
@@ -530,20 +659,6 @@
     ]
   },
   {
-    "key": "school-home.manage",
-    "group": "Settings",
-    "defaults": [
-      "Administrator"
-    ]
-  },
-  {
-    "key": "notifications.manage",
-    "group": "Settings",
-    "defaults": [
-      "Administrator"
-    ]
-  },
-  {
     "key": "attendance.view",
     "group": "Attendance",
     "defaults": [
@@ -671,6 +786,28 @@
       "Teacher",
       "Parent",
       "Student"
+    ]
+  },
+  {
+    "key": "school-home.manage",
+    "group": "Settings",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "notifications.manage",
+    "group": "Settings",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "leave-requests.approve",
+    "group": "Attendance",
+    "defaults": [
+      "Administrator",
+      "Principal"
     ]
   },
   {
