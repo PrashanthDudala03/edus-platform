@@ -59,7 +59,7 @@ app.UseRouting();
 // Every proxied endpoint is protected unless its YARP route explicitly marks it
 // anonymous. Tenant scoping then pins schoolId in the query, path and JSON body
 // to the school claim in the verified token.
-app.UseEduOSAuthorization("/api/v1", "/api/v1/health", "/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/auth/reset-password", "/api/v1/auth/signup", "/api/v1/promotions", "/api/v1/billing/webhooks/razorpay", "/api/v1/fees/webhooks");
+app.UseEduOSAuthorization("/api/v1", "/api/v1/health", "/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/auth/reset-password", "/api/v1/auth/signup", "/api/v1/promotions", "/api/v1/billing/webhooks/razorpay", "/api/v1/fees/webhooks/fake", "/api/v1/fees/webhooks/razorpay");
 
 // Health endpoint - return Prometheus metrics format
 app.MapGet("/api/v1/health", () =>

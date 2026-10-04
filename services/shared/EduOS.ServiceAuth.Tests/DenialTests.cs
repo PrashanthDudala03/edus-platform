@@ -45,8 +45,10 @@ public sealed class ServiceHost : IAsyncLifetime
 
         app = builder.Build();
         app.UseRouting();
-        app.UseEduOSAuthorization("/api", "/api/health");
+        app.UseEduOSAuthorization("/api", "/api/health", "/api/fees/webhooks/fake");
         app.MapGet("/api/health", () => Results.Ok(new { status = "ready" })).AllowAnonymous();
+        // A provider webhook: no EduOS session, listed by its exact path; the provider signature is checked inside the handler.
+        app.MapPost("/api/fees/webhooks/{provider}", (string provider) => Results.Ok(new { provider })).AllowAnonymous();
         app.MapGet("/api/users", (TenantContext tenant) => Results.Ok(tenant)).RequireAuthorization(EduOSPolicies.Administrators);
         app.MapGet("/api/operations/overview", (TenantContext tenant) => Results.Ok(tenant)).RequireAuthorization(EduOSPolicies.Leadership);
         app.MapGet("/api/platform", (TenantContext tenant) => Results.Ok(tenant)).RequireAuthorization(EduOSPolicies.Platform);
@@ -128,6 +130,21 @@ public class DenialTests(ServiceHost host) : IClassFixture<ServiceHost>
     {
         var response = await Get(path, null);
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AProviderWebhookListedByExactPathNeedsNoSessionAndAnUnlistedSiblingStillDoes()
+    {
+        // The anonymous list is exact-match: the listed provider path passes without any token, a sibling path that is not listed is refused
+        // before any handler runs, and a token on the listed path changes nothing. Signature verification belongs to the handler.
+        var open = await host.Client.SendAsync(ServiceHost.Request(HttpMethod.Post, "/api/fees/webhooks/fake", null, "{}"));
+        Assert.Equal(HttpStatusCode.OK, open.StatusCode);
+        var unlisted = await host.Client.SendAsync(ServiceHost.Request(HttpMethod.Post, "/api/fees/webhooks/other", null, "{}"));
+        Assert.Equal(HttpStatusCode.Unauthorized, unlisted.StatusCode);
+        var prefixOnly = await host.Client.SendAsync(ServiceHost.Request(HttpMethod.Post, "/api/fees/webhooks", null, "{}"));
+        Assert.NotEqual(HttpStatusCode.OK, prefixOnly.StatusCode);
+        var withToken = await host.Client.SendAsync(ServiceHost.Request(HttpMethod.Post, "/api/fees/webhooks/fake", host.Token(EduOSRoles.Student), "{}"));
+        Assert.Equal(HttpStatusCode.OK, withToken.StatusCode);
     }
 
     [Fact]

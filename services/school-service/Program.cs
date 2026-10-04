@@ -41,7 +41,9 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.UseRouting();
-app.UseEduOSAuthorization("/api", "/api/health", "/api/fees/webhooks");
+// Provider webhooks carry no EduOS session: each provider path is listed exactly (the list is exact-match), and the
+// provider signature inside the handler is the only credential.
+app.UseEduOSAuthorization("/api", "/api/health", "/api/fees/webhooks/fake", "/api/fees/webhooks/razorpay");
 // Health endpoint - return Prometheus metrics format
 app.MapGet("/api/health", async (SchoolDbContext db) => {try { return await db.Database.CanConnectAsync() ? Results.Ok(new {status="ready"}) : Results.StatusCode(503); } catch { return Results.StatusCode(503); }}).AllowAnonymous();
 

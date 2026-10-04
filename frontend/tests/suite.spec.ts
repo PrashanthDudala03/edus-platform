@@ -21,7 +21,7 @@ async function throttled(send:()=>Promise<APIResponse>){for(let i=0;;i++){const 
 async function login(role:string,pw=password){const r=await throttled(()=>api.post('/api/v1/auth/login',{data:{schoolId,username:'suite.'+role.toLowerCase(),password:pw}}));expect(r.status(),await r.text()).toBe(200);sessions[role]=(await r.json()).data}
 async function browserSession(page:Page,role='Administrator'){await page.addInitScript(s=>{localStorage.setItem('accessToken',s.accessToken);localStorage.setItem('refreshToken',s.refreshToken);localStorage.setItem('user',JSON.stringify(s.user))},sessions[role])}
 // Every module the suite serves, in catalog order. A new kind is a deliberate contract change: add it here with its feature.
-const CATALOG=['academic-years','classes','subjects','teaching-assignments','admissions','staff-attendance','leave-requests','fee-structures','assessment-schemes','exams','marks','circulars','calendar','messages','homework','submissions','timetable','certificates','account-links','school-config']
+const CATALOG=['academic-years','classes','subjects','teaching-assignments','admissions','staff-attendance','leave-requests','fee-heads','fee-structures','assessment-schemes','exams','marks','circulars','calendar','messages','homework','submissions','timetable','certificates','account-links','school-config']
 test.describe.serial('Complete school suite',()=>{
  test.beforeAll(async({playwright})=>{
   test.setTimeout(180000)

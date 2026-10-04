@@ -110,8 +110,14 @@ test.describe.serial('Security boundaries against real Docker services',()=>{
   await denied(B,'Administrator','GET','/suite/fees/receipts/'+first.id,undefined,404)
   // Online payments are off until the school turns them on; a provider event without a known attempt is refused.
   await denied(A,'Parent','POST','/suite/fees/online/intents',{chargeId:charge},409)
+  // The webhook needs no EduOS session; the provider signature is the credential. An unknown order is refused as not found before any
+  // signature can be checked (the order names the school whose secret would verify it), signed or not, and creates no financial state.
   const event=await api.post('/api/v1/fees/webhooks/fake',{headers:{'X-Signature':'deadbeef','Content-Type':'application/json'},data:{eventId:'evt_x',orderReference:'fake_none',amount:1,currency:'INR',status:'captured'}})
   expect(event.status()).toBe(404)
+  const unsigned=await api.post('/api/v1/fees/webhooks/fake',{headers:{'Content-Type':'application/json'},data:{eventId:'evt_y',orderReference:'fake_none',amount:1,currency:'INR',status:'captured'}})
+  expect(unsigned.status()).toBe(404)
+  expect((await api.post('/api/v1/fees/webhooks/nope',{headers:{'Content-Type':'application/json'},data:{}})).status()).toBe(401)   // not a provider: no anonymous path exists for it
+  expect((await ok(A,'Administrator','GET','/suite/fees/payments')).length).toBe(1)   // the one recorded payment; the events created nothing
  })
 
  test('Student 360 shows a student only to the office, the class teacher and the linked family',async()=>{
