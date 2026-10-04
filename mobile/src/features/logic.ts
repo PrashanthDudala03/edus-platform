@@ -139,6 +139,19 @@ export function upcomingEvents<T extends { startsOn: string, endsOn: string }>(e
 }
 export const newestFirst = <T extends { createdAt: string }>(items: T[]) => [...items].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
 
+// Fees 2.0: the ledger the server composes for one student (totals, every instalment with its state, payments and
+// receipts) and the office summary. The app never adds figures up; it only lays the server's figures out.
+export type ChargeState = 'Unpaid' | 'Partial' | 'Paid' | 'Overdue' | 'Waived' | 'Cancelled'
+export interface LedgerCharge { id: string, description: string, dueDate: string, net: number, paid: number, outstanding: number, state: ChargeState, overdue: boolean, currency: string }
+export interface LedgerTotals { charges: number, applicable: number, concessions: number, net: number, paid: number, outstanding: number, overdue: number, overdueCount: number, currency: string }
+export interface LedgerPayment { id: string, receipt: string, amount: number, method: string, reference: string, status: 'Completed' | 'Reversed', source: 'manual' | 'online', paidOn: string, description: string, currency: string, reversalReason: string }
+export interface StudentLedger { student: { id: string, name: string, admissionNumber: string, class: string }, totals: LedgerTotals, charges: LedgerCharge[], payments: { items: LedgerPayment[], total: number, more: boolean }, online: { enabled: boolean, provider: string } }
+export interface FeeSummary { collectedToday: number, collectedThisMonth: number, reversalsThisMonth: number, totals: LedgerTotals, byClass: { class: string, outstanding: number, overdue: number, paid: number }[], recent: { id: string, receipt: string, amount: number, method: string, status: string, paidOn: string, student: string, currency: string }[] }
+export const STATE_LABEL: Record<ChargeState, string> = { Unpaid: 'Unpaid', Partial: 'Part paid', Paid: 'Paid', Overdue: 'Overdue', Waived: 'Waived', Cancelled: 'Cancelled' }
+export const stateTone = (state: ChargeState): 'neutral' | 'success' | 'warning' | 'danger' | 'primary' => state === 'Paid' ? 'success' : state === 'Overdue' ? 'danger' : state === 'Partial' ? 'warning' : 'neutral'
+/** Instalments still open: overdue first, then soonest due. Settled, waived and cancelled ones are not due. */
+export const dueCharges = (charges: LedgerCharge[]) => charges.filter(c => c.outstanding > 0 && c.state !== 'Waived' && c.state !== 'Cancelled').sort((a, b) => Number(b.overdue) - Number(a.overdue) || a.dueDate.localeCompare(b.dueDate))
+export const ledgerNote = (t: LedgerTotals) => t.charges === 0 ? 'No fees charged yet' : t.outstanding > 0 ? `${t.overdueCount} overdue of ${t.charges} charges` : 'All charges settled'
 /** Totals exactly as the web fee summary computes them: billed is after concessions. */
 export function feeTotals(charges: Charge[]) {
   const sum = (pick: (charge: Charge) => number) => charges.reduce((total, charge) => total + (Number(pick(charge)) || 0), 0)

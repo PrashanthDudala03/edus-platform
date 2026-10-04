@@ -40,7 +40,7 @@ public static class NotificationTemplates
         new("dueDate", "The date it is due", "15 Oct 2026"), new("subjectName", "The subject", "Mathematics"),
         new("homeworkTitle", "The homework's title", "Fractions worksheet"), new("examName", "The exam or term", "Half-yearly examination"),
         new("status", "The attendance status", "Present"), new("circularTitle", "The circular's title", "Parent-teacher meeting"), new("circularMessage", "The circular's text", "The parent-teacher meeting is on Saturday at 9 am."),
-        new("time", "The start and end time, when set", "09:00-11:00"), new("room", "The room or location, when set", "Hall B"),
+        new("time", "The start and end time, when set", "09:00-11:00"), new("room", "The room or location, when set", "Hall B"), new("reference", "A receipt or reference number", "RCPT-2026-000012"),
     ];
 
     static IReadOnlyDictionary<string, TemplateText> InApp(string title, string body) => new Dictionary<string, TemplateText> { ["in-app"] = new(title, body) };
@@ -74,6 +74,10 @@ public static class NotificationTemplates
             ["examName", "subjectName", "className", "date", "time", "room", "schoolName"], InApp("Exam timetable changed: {{examName}}", "{{subjectName}} for {{className}} is now on {{date}} {{time}} {{room}}")),
         new("fee.due", "A fee is charged", "Fee due", "For a student's family when a fee is charged.", "fees", Implemented,
             ["studentName", "amount", "dueDate", "schoolName"], InApp("Fee due: {{amount}}", "{{amount}} for {{studentName}} is due on {{dueDate}}.")),
+        new("fee.payment_received", "A fee payment is received", "Payment received", "For a student's family when a payment is recorded or verified; the receipt number is in it.", "fees", Implemented,
+            ["studentName", "amount", "remark", "reference", "schoolName"], InApp("Payment received: {{amount}}", "{{amount}} received for {{studentName}} ({{remark}}). Receipt {{reference}}.")),
+        new("fee.due_soon", "A fee instalment is due soon", "Fee due soon", "A reminder before an instalment falls due.", "fees", Blocked,
+            ["studentName", "amount", "dueDate", "schoolName"], InApp("Fee due soon: {{amount}}", "{{amount}} for {{studentName}} is due on {{dueDate}}.")),
         new("fee.overdue", "A fee is past its due date", "Fee overdue", "For a student's family when a fee is not paid by its due date.", "fees", Blocked,
             ["studentName", "amount", "dueDate", "schoolName"], InApp("Fee overdue: {{amount}}", "{{amount}} for {{studentName}} was due on {{dueDate}}.")),
     ];

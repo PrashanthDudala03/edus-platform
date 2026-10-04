@@ -16,7 +16,8 @@ public static partial class Suite
             Require(Day(d,"fromDate")<=Day(d,"toDate"),"Leave end date must be on or after the start.");
             Require(!peers.Any(p=>Text(p,"teacherId")==Text(d,"teacherId")&&Text(p,"status")!="Rejected"&&Text(d,"status")!="Rejected"&&Day(p,"fromDate")<=Day(d,"toDate")&&Day(p,"toDate")>=Day(d,"fromDate")),"This staff member already has an overlapping leave request.",409);
         }
-        if(kind=="fee-structures"){Require(Number(d,"amount")>0,"Fee amount must be positive.");Unique("name","classId","installment");if(old is not null){var issued=await Q(c,"SELECT id FROM suite.charges WHERE structure_id=@id AND school_id=@s LIMIT 1",("id",id),("s",a.School));Require(issued.Count==0,"An issued fee structure is immutable. Create a new structure or instalment.",409);}}
+        if(kind=="fee-heads"){Unique("name");if(Text(d,"active")=="")d["active"]="Yes";}
+        if(kind=="fee-structures"){Require(Number(d,"amount")>0,"Fee amount must be positive.");Unique("name","classId","installment","studentId");if(Text(d,"studentId")!="")await InClass(c,a.School,Id(d,"studentId"),Id(d,"classId"));if(old is not null){var issued=await Q(c,"SELECT id FROM suite.charges WHERE structure_id=@id AND school_id=@s LIMIT 1",("id",id),("s",a.School));Require(issued.Count==0,"An issued fee structure is immutable. Create a new structure or instalment.",409);}}
         if(kind=="assessment-schemes"){
             Unique("name");var passPercent=d["passPercent"] is JsonValue pv&&pv.TryGetValue<decimal>(out var pp)?pp:(decimal?)null;
             var problem=ExamRules.Build(Text(d,"type"),Text(d,"components"),Text(d,"grades"),passPercent,100,0,ExamRules.LegacyGrades(90,75,60,40),out _);Require(problem is null,problem??"");

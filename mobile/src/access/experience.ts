@@ -72,6 +72,7 @@ export const NAVIGATION: Record<Experience, NavItem[]> = {
     item('results', 'Results', 'Your marks and report card', 'ribbon-outline', 'reports.view', '/results', true),
     item('attendance', 'Attendance', 'Your attendance by month', 'calendar-outline', 'reports.view', '/children'),
     item('exams', 'Exams', 'Upcoming and held exams', 'school-outline', 'exams.view', '/exams'),
+    item('fees', 'My fees', 'Instalments, payments and receipts', 'wallet-outline', 'fees.view', '/fees'),
     item('notices', 'Notices', 'Circulars, events and messages', 'megaphone-outline', 'circulars.view', '/notices'),
     item('student360', 'My school profile', 'Attendance, homework, results and more in one place', 'person-circle-outline', 'reports.view', '/student360'),
   ],

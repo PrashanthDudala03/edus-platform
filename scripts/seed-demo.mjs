@@ -153,6 +153,12 @@ await ensure('leave-requests',r=>r.teacherId===ravi,{teacherId:ravi,fromDate:day
 const fee6=await ensure('fee-structures',r=>r.name==='Term 1 Tuition (Demo)'&&r.classId===grade6,{name:'Term 1 Tuition (Demo)',classId:grade6,amount:'15000',installment:'Term 1',dueDate:day(15)})
 const fee3=await ensure('fee-structures',r=>r.name==='Term 1 Tuition (Demo)'&&r.classId===grade3,{name:'Term 1 Tuition (Demo)',classId:grade3,amount:'12000',installment:'Term 1',dueDate:day(15)})
 const fees=await must('GET','/suite/fees',admin)
+// The demo school is the ONE tenant wired to the Razorpay TEST provider, and only when the deployment holds test keys
+// (SCHOOL_FEES_RAZORPAY_KEY_ID starting rzp_test_). No other school is touched; without keys nothing changes.
+if((process.env.SCHOOL_FEES_RAZORPAY_KEY_ID||'').startsWith('rzp_test_')){
+ const config=await must('GET','/suite/fees/payment-config',admin)
+ if(config.provider!=='razorpay'||!config.onlineEnabled)await must('PUT','/suite/fees/payment-config',admin,{provider:'razorpay',merchantReference:'demo-school-test-mode',onlineEnabled:true})
+}
 for(const [student,structure,concession] of [[aarav,fee6,'1000'],[diya,fee3,'0']])
  if(!fees.some(f=>f.studentId===student))await must('POST','/suite/fees/charges',admin,{studentId:student,structureId:structure,concession},[201])
 const aaravCharge=(await must('GET','/suite/fees',admin)).find(f=>f.studentId===aarav)

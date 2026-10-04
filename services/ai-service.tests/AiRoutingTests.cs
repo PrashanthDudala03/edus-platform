@@ -84,7 +84,7 @@ public class AiRoutingTests
         public string Today => DateTime.UtcNow.ToString("yyyy-MM-dd");
         public int Embeds => Embedding.Calls.Count;
     }
-    static async Task<Setup> Start(Dictionary<string, string?>? settings = null, RecordingModel? model = null, InMemoryUsageStore? usage = null)
+    static async Task<Setup> Start(Dictionary<string, string?>? settings = null, RecordingModel? model = null, InMemoryUsageStore? usage = null, TimeProvider? clock = null)
     {
         Setup? setup = null;
         var eduos = new StubRuntime((path, _) => StubRuntime.Reply(setup!.Downstream != HttpStatusCode.OK ? "{\"message\":\"The requested school is outside your account scope.\"}" : path.EndsWith("/count") ? "{\"statusCode\":200,\"data\":{\"count\":40}}"
@@ -92,7 +92,7 @@ public class AiRoutingTests
             : path.EndsWith("/overview") ? "{\"data\":{\"stats\":{\"students\":40,\"marked\":36,\"present\":27}}}" : path.EndsWith("/fees") ? Fees : Exams, setup.Downstream));
         var store = new InMemoryKnowledgeStore(); var embedding = new KeywordEmbedding(); model ??= new RecordingModel(); usage ??= new InMemoryUsageStore(); var audit = new InMemoryToolAudit();
         var all = new Dictionary<string, string?>(settings ?? []) { ["Ai:Knowledge:ChunkMaxChars"] = "200", ["Ai:Knowledge:ChunkOverlapChars"] = "0" };
-        var host = await AiHost.Start(true, new StubBootstrap(true), all, new GuardedModelProvider(model, TimeSpan.FromSeconds(30)), usage: usage, knowledge: store, embedding: new GuardedEmbeddingProvider(embedding, TimeSpan.FromSeconds(30)), toolAudit: audit, eduos: eduos);
+        var host = await AiHost.Start(true, new StubBootstrap(true), all, new GuardedModelProvider(model, TimeSpan.FromSeconds(30)), clock: clock, usage: usage, knowledge: store, embedding: new GuardedEmbeddingProvider(embedding, TimeSpan.FromSeconds(30)), toolAudit: audit, eduos: eduos);
         setup = new Setup(host, model, eduos, embedding, usage, audit);
         // Stored for every reader. A school with AI switched off stores nothing, which is what its test expects.
         Assert.Contains((await host.Upload(host.Token("Administrator", "school", permissions: "ai.knowledge.manage"), "handbook.txt", Encoding.UTF8.GetBytes(Handbook), audience: "school,teacher,parent,student")).StatusCode, new[] { HttpStatusCode.Created, HttpStatusCode.OK });
@@ -255,7 +255,8 @@ public class AiRoutingTests
     [Fact]
     public async Task EveryRouteIsBehindTheRateLimitAndTheSchoolSwitch()
     {
-        await using var s = await Start(new() { ["Ai:Limits:UserRequestsPerMinute"] = "3" });
+        // A fixed clock keeps every request in one rate-limit window; on the wall clock the fourth could start a new minute.
+        await using var s = await Start(new() { ["Ai:Limits:UserRequestsPerMinute"] = "3" }, clock: new ManualClock());
         var caller = s.Host.Token("Administrator", "school", permissions: All);
         await s.Say("hi", caller); await s.Say("How many students are there?", caller); await s.Say("pending fees", caller);
         foreach (var question in new[] { "upcoming exams", "hi", "Explain photosynthesis" })

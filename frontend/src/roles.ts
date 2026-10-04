@@ -36,7 +36,7 @@ export const navigation: Record<Role, NavSection[]> = {
     { title: 'Notifications', links: [['/notifications/templates', 'Notification wording', Bell], ['/notifications/history', 'Delivery history', History]] },
     { title: 'Academics', links: [['/suite/admissions', 'Admissions', GraduationCap], ['/suite/allocation', 'Class allocation & promotion', GraduationCap], ['/suite/teaching-assignments', 'Teaching assignments', Users], ['/suite/timetable', 'Weekly timetable', CalendarCheck], ['/suite/exams', 'Exams & schedules', ClipboardList], ['/suite/marks', 'Marks & remarks', ClipboardList], ['/suite/homework', 'Homework & assignments', BookOpen], ['/suite/submissions', 'Submissions & feedback', BookOpen]] },
     { title: 'Attendance', links: [['/attendance', 'Daily register', CalendarCheck], ['/suite/register', 'Student attendance', CalendarCheck], ['/suite/staff-attendance', 'Staff attendance', CalendarCheck], ['/suite/leave-requests', 'Leave approvals', CalendarCheck]] },
-    { title: 'Finance', links: [['/suite/fees', 'Fees & receipts', Wallet], ['/suite/fee-structures', 'Fee structures', Wallet]] },
+    { title: 'Finance', links: [['/suite/fees', 'Fees & collections', Wallet], ['/suite/fee-heads', 'Fee heads', Wallet], ['/suite/fee-structures', 'Fee structures & instalments', Wallet]] },
     { title: 'Communication', links: [['/suite/circulars', 'Circulars & acknowledgements', Megaphone], ['/announcements', 'Admin noticeboard', Megaphone], ['/suite/messages', 'Targeted messages', Megaphone], ['/suite/calendar', 'School calendar', CalendarCheck]] },
     { title: 'Documents & reports', links: [['/suite/certificates', 'Certificates & ID cards', FileText], ['/suite/reports', 'Reports & Excel imports', ShieldCheck], ['/audit', 'Activity log', ShieldCheck]] },
   ],
@@ -62,6 +62,6 @@ export const navigation: Record<Role, NavSection[]> = {
   Student: [
     { title: 'My day', links: [['/student', 'Dashboard', LayoutDashboard], ['/student360', 'My school profile', GraduationCap], ['/home', 'School Home', School], ['/suite/timetable', 'Timetable', CalendarCheck], ['/suite/homework', 'Homework', BookOpen], ['/suite/submissions', 'My submissions', BookOpen]] },
     { title: 'Progress', links: [['/suite/exams', 'Exams', ClipboardList], ['/suite/marks', 'My results', ClipboardList], ['/suite/reports', 'Attendance & report card', ShieldCheck]] },
-    { title: 'School', links: [['/suite/circulars', 'Notices & circulars', Megaphone], ['/suite/messages', 'Messages', Megaphone], ['/suite/calendar', 'School calendar', CalendarCheck], ['/suite/certificates', 'Documents & certificates', FileText]] },
+    { title: 'School', links: [['/suite/fees', 'Fees & receipts', Wallet], ['/suite/circulars', 'Notices & circulars', Megaphone], ['/suite/messages', 'Messages', Megaphone], ['/suite/calendar', 'School calendar', CalendarCheck], ['/suite/certificates', 'Documents & certificates', FileText]] },
   ],
 }

@@ -97,14 +97,9 @@ public static partial class Suite
             var examsView = new JsonObject { ["upcoming"] = upcoming, ["published"] = results.Count, ["obtained"] = card["obtained"]?.DeepClone(), ["maximum"] = card["maximum"]?.DeepClone(), ["percent"] = card["percent"]?.DeepClone(), ["grade"] = card["grade"]?.DeepClone(), ["passed"] = card["passed"]?.DeepClone(), ["failed"] = card["failed"]?.DeepClone(),
                 ["latest"] = new JsonArray(results.Reverse().Take(5).Select(r => r!.DeepClone()).ToArray()) };
             // Fees: authoritative figures from charges and payments, for the office and the family only.
+            // Fees: the authoritative ledger summary (Fees 2.0), for the office and the family only.
             JsonObject fees;
-            if (see.fees)
-            {
-                var charges = await Q(c, "SELECT ch.description,ch.due_date AS \"dueDate\",(ch.gross-ch.concession)/100.0 AS net,COALESCE(sum(p.amount),0)/100.0 AS paid,ch.currency FROM suite.charges ch LEFT JOIN suite.payments p ON p.charge_id=ch.id AND p.school_id=ch.school_id WHERE ch.school_id=@s AND ch.student_id=@id GROUP BY ch.id ORDER BY ch.due_date", ("s", a.School), ("id", id));
-                var payments = await Q(c, "SELECT p.id::text AS id,p.receipt,p.amount/100.0 AS amount,p.method,p.paid_on AS \"paidOn\",ch.description,ch.currency FROM suite.payments p JOIN suite.charges ch ON ch.id=p.charge_id AND ch.school_id=p.school_id WHERE p.school_id=@s AND ch.student_id=@id ORDER BY p.paid_on DESC,p.created_at DESC LIMIT 5", ("s", a.School), ("id", id));
-                decimal applicable = charges.Sum(r => Number(r, "net")), paid = charges.Sum(r => Number(r, "paid"));
-                fees = new JsonObject { ["available"] = true, ["charges"] = charges.Count, ["applicable"] = applicable, ["paid"] = paid, ["outstanding"] = applicable - paid, ["overdue"] = charges.Count(r => Number(r, "net") - Number(r, "paid") > 0 && r["dueDate"] is JsonValue dv && DateOnly.TryParse(dv.ToString()[..10], out var due) && due < today), ["currency"] = charges.Select(r => Text(r, "currency")).FirstOrDefault() ?? "", ["recentPayments"] = new JsonArray(payments.Select(p => (JsonNode)p.DeepClone()).ToArray()) };
-            }
+            if (see.fees) { fees = await LedgerSummary(c, a.School, id, today); fees["overdue"] = fees["overdueCount"]?.DeepClone(); }
             else fees = new JsonObject { ["available"] = false, ["reason"] = "Fee details are shown to the school office and the family." };
             // Documents: certificates issued to the student and the files attached to them.
             var certificates = (await Records(c, a.School, "certificates")).Where(x => Text(x, "studentId") == id.ToString()).OrderByDescending(x => Text(x, "issuedOn")).ToList();
