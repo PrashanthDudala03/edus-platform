@@ -8,6 +8,7 @@ import { Empty, ErrorBox, Loading, PageHeader, today } from '../../components/UI
 import { data, label, printSchoolDocument, type Row } from '../suite/helpers'
 import { FeeSummary, Panel, QueryState, RecentCirculars, StatTile, TodayTimetable, UpcomingExams, useOptions, useRecords } from './widgets'
 import { AttendanceDays } from '../suite/AttendancePages'
+import { Student360Link } from '../Student360Page'
 import { Board } from '../suite/HomeworkPage'
 type ReportCard = { results: Row[], obtained: number, maximum: number, percent: number, grade: string }
 
@@ -29,6 +30,7 @@ export default function FamilyDashboard({ role }: { role: 'Parent' | 'Student' }
         <span className="person-avatar tone-0">{child!.label.split(' ').map(p => p[0]).slice(0, 2).join('')}</span>
         <div><span className="eyebrow">{student ? 'MY PROFILE' : 'CHILD PROFILE'}</span><h2>{child!.label}</h2><p>{placement?.class || 'Class not allocated yet'}</p></div>
         {!student && children.length > 1 && <label className="child-switcher">Viewing child<select aria-label="Choose child" value={child!.id} onChange={e => setChosen(e.target.value)}>{children.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}</select></label>}
+        <Student360Link studentId={child!.id} label={student ? 'My school profile' : 'Student 360'} />
       </section>
       <ChildView key={child!.id} studentId={child!.id} classId={placement?.classId} role={role} />
     </>}</>

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { can } from '@/access/experience'
 import { api, useSession } from '@/services'
 import { isoMonth } from '@/utils/format'
-import type { Assignment, AttendanceStatus, BoardItem, CalendarEvent, Charge, Child, Circular, ClassRegister, DayRecord, Exam, ExamOverview, ExamStatus, Homework, HomeworkGroup, HomeworkSubmission, Leave, MarkStatus, Marksheet, Message, OverviewItem, RegisterRow, RegisterTotals, ReportCard, ReportResult, ReviewRow, Scheme, SheetMark, Submission, TimetableExam } from './logic'
+import type { Assignment, AttendanceStatus, BoardItem, CalendarEvent, Charge, Child, Circular, ClassRegister, DayRecord, Exam, ExamOverview, ExamStatus, Homework, HomeworkGroup, HomeworkSubmission, Leave, MarkStatus, Marksheet, Message, OverviewItem, RegisterRow, RegisterTotals, ReportCard, ReportResult, ReviewRow, S360Timeline, Scheme, SheetMark, Student360, Submission, TimetableExam } from './logic'
 
 // Every request the core modules make, in one place. Each is an existing EduOS endpoint that already limits rows to
 // what the signed-in account may see; the app adds no filter that could be mistaken for access control. A query is
@@ -84,6 +84,14 @@ export function useExamOverview(enabled = true) {
 export function useMarksheet(examId: string | undefined) {
   return useQuery({ queryKey: ['marksheet', examId], enabled: !!examId, staleTime: 15_000, queryFn: async (): Promise<Marksheet> => { const d = await get<Row>('/suite/exams/' + examId + '/marksheet')
     return { exam: timetableExam(d.exam as Row), scheme: scheme(d.scheme as Row), students: (Array.isArray(d.students) ? d.students as Row[] : []).map(r => ({ studentId: s(r.studentId), name: s(r.name), code: s(r.code), mark: sheetMark(r.mark) })), entered: n(d.entered), canEdit: d.canEdit === true, canSubmit: d.canSubmit === true, canReview: d.canReview === true } } })
+}
+/** Student 360: one request composes the whole picture; the server limits it to the caller's own students. */
+export function useStudent360(studentId: string | undefined) {
+  const allowed = usePermission('reports.view')
+  return useQuery({ queryKey: ['student360', studentId], enabled: allowed && !!studentId, staleTime: 30_000, queryFn: () => get<Student360>('/suite/students/' + studentId + '/360') })
+}
+export function useStudent360Timeline(studentId: string | undefined, page: number, pageSize = 20) {
+  return useQuery({ queryKey: ['student360-timeline', studentId, page, pageSize], enabled: !!studentId && page > 1, staleTime: 30_000, queryFn: () => get<S360Timeline>('/suite/students/' + studentId + '/360/timeline', { page, pageSize }) })
 }
 const examKeys = ['exam-timetable', 'exam-overview', 'marksheet', 'report-card', 'records']
 /** Saves changed rows (every row goes through the ordinary marks save on the server) and, if asked, submits the sheet. */

@@ -44,6 +44,8 @@ public static class PermissionAccess
             "fees" => read ? "fees.view" : p.ElementAtOrDefault(4) == "payments" ? "fees.collect" : "fees.manage",
             "reports" => p.ElementAtOrDefault(4) == "audit" ? "audit.view" : "reports.view",
             "report-cards" => "reports.view", "certificates" => "certificates.view",
+            // Student 360 reads with reports.view, which every school role holds for its own scope; the service narrows to that scope.
+            "students" => read ? "reports.view" : "unsupported",
             "documents" => read ? "documents.view" : "documents.upload",
             "imports" => p.ElementAtOrDefault(4) + ".create",
             "allocate" => "allocations.manage", "allocations" => "allocations.view",

@@ -88,6 +88,23 @@ test.describe.serial('Security boundaries against real Docker services',()=>{
   await ok(A,'Parent','GET','/suite/fees');await ok(A,'Student','GET','/suite/fees')
  })
 
+ test('Student 360 shows a student only to the office, the class teacher and the linked family',async()=>{
+  // Own scope: the student themself, the linked parent, the class teacher and the office all read the composed picture.
+  for(const role of ['Student','Parent','Teacher','Administrator'])expect((await ok(A,role,'GET','/suite/students/'+A.student+'/360')).student.id).toBe(A.student)
+  const teacherView=await ok(A,'Teacher','GET','/suite/students/'+A.student+'/360')
+  expect(teacherView.fees.available).toBe(false);expect(teacherView.student.email).toBe('');expect(teacherView.visibility.contact).toBe(false)     // fees and contact details stay with the office and the family
+  const parentView=await ok(A,'Parent','GET','/suite/students/'+A.student+'/360')
+  expect(parentView.fees.available).toBe(true);expect(parentView.visibility.contact).toBe(true);expect(parentView.exams.published).toBe(0)        // nothing unpublished is counted
+  expect((await ok(A,'Student','GET','/suite/students/'+A.student+'/360/timeline?page=1&pageSize=5')).pageSize).toBe(5)
+  // Another student, an unrelated child, a student outside the teacher's classes: refused before any lookup, so the
+  // same 403 whether the id is in this school or another, and nothing is learnt from it.
+  for(const role of ['Student','Parent','Teacher']){await denied(A,role,'GET','/suite/students/'+B.student+'/360');await denied(A,role,'GET','/suite/students/'+randomUUID()+'/360');await denied(A,role,'GET','/suite/students/'+B.student+'/360/timeline')}
+  // The office of school A cannot reach a student of school B: not found, never another school's record.
+  await denied(A,'Administrator','GET','/suite/students/'+B.student+'/360',undefined,404);await denied(A,'Administrator','GET','/suite/students/'+B.student+'/360/timeline',undefined,404)
+  // Writes do not exist for Student 360, whatever the role.
+  for(const role of ['Administrator','Teacher','Parent','Student'])await denied(A,role,'POST','/suite/students/'+A.student+'/360',{})
+ })
+
  test('teacher, parent and student are refused every administrative operation',async()=>{
   const catalog=await ok(A,'Administrator','GET','/suite/catalog')
   const refs={'academic-years':A.year,classes:A.cl,subjects:A.subject,'assessment-schemes':A.scheme,teachers:A.teacher,students:A.student,users:A.users.Student}

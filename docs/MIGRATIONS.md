@@ -33,6 +33,10 @@ Run step 3 only after the old auth-service is running; the new one re-applies th
 
 **Rollback.** Stop ai-service, then in the AI database: `DROP SCHEMA ai CASCADE; DROP ROLE ai_app;`. Nothing outside the AI database depends on it.
 
+## Student 360 (2026-10-04, no database change)
+
+**What it does.** Nothing in the database: two read-only endpoints compose existing tables and records per request. Rebuild school-service, the api-gateway (permission map) and the frontend.
+
 ## Exams & Report Cards (2026-10-04, no database change)
 
 **What it does.** No table, column, index or permission changes. Exams and marks stay JSON documents in `suite.records`; the new fields (`yearId`, `term`, `schemeId`, `startsAt`, `endsAt`, `room`, `instructions`, the seven-stage `status` and the stage stamps on exams; `status`, `components`, `grade`, `pass`, `history`, `enteredBy/At` on marks) are keys inside that JSON. The new `assessment-schemes` record kind lives in the same table and shares the `exams.view` / `exams.manage` permissions, so no role rows are added. Existing records read as Draft or Published plain-marks exams exactly as before.

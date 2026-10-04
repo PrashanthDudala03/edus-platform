@@ -93,6 +93,35 @@ export interface RegisterTotals { expected: number, marked: number, present: num
 export interface DayRecord { day: string, status: AttendanceStatus, reason: string, remark: string }
 export interface ReportResult { exam: string, term: string, subject: string, status: MarkStatus, components: { name: string, max: number, score: number | null }[], score: number | null, maximum: number | null, grade: string, pass: boolean, remarks: string }
 export interface ReportCard { results: ReportResult[], obtained: number, maximum: number, percent: number, grade: string, passed: number, failed: number, year: string, attendance: { percent: number | null, markedDays: number, present: number, absent: number, late: number } | null }
+// Student 360: the one read model the server composes from the register, homework, exams, fees, documents and
+// notices, with what the role may see already decided. These helpers only shape the screen.
+export interface S360Summary { present: number, late: number, absent: number, excused: number, markedDays: number, percent: number | null }
+export interface S360Event { at: string, kind: string, title: string, detail: string, source: string }
+export interface S360Timeline { items: S360Event[], total: number, more: boolean, page: number, pageSize: number }
+export interface Student360 {
+  student: { id: string, name: string, admissionNumber: string, className: string, year: string, status: string, email: string, phone: string, dateOfBirth: string, guardians: { name: string, relationship: string, email: string }[] }
+  visibility: { contact: boolean, fees: boolean, guardians: boolean, history: boolean }
+  academics: { year: string, className: string, section: string, classTeacher: string, allocated: boolean, subjects: { subject: string, teacher: string }[] }
+  attendance: { month: string, thisMonth: S360Summary, year: S360Summary, from: string, to: string, recent: { day: string, status: string, reason: string, remark: string }[] }
+  homework: { assigned: number, counts: Record<string, number>, completion: number | null, due: { id: string, title: string, subject: string, dueDate: string, dueTime: string, group: string }[], feedback: { title: string, subject: string, grade: string, feedback: string, reviewedAt: string }[] }
+  exams: { upcoming: { id: string, name: string, subjectName: string, date: string, startsAt: string, endsAt: string, room: string }[], published: number, obtained: number, maximum: number, percent: number, grade: string, passed: number, failed: number, latest: ReportResult[] }
+  fees: { available: true, charges: number, applicable: number, paid: number, outstanding: number, overdue: number, currency: string, recentPayments: { id: string, receipt: string, amount: number, method: string, paidOn: string, description: string, currency: string }[] } | { available: false, reason: string }
+  documents: { id: string, type: string, number: string, issuedOn: string, files: number }[]
+  notices: { id: string, title: string, createdAt: string, dueDate: string }[]
+  timeline: S360Timeline
+}
+export type S360Tab = 'overview' | 'academics' | 'attendance' | 'homework' | 'exams' | 'fees' | 'documents' | 'timeline'
+export const S360_TAB_LABEL: Record<S360Tab, string> = { overview: 'Overview', academics: 'Academics', attendance: 'Attendance', homework: 'Homework', exams: 'Exams', fees: 'Fees', documents: 'Documents', timeline: 'Timeline' }
+/** The sections a viewer gets: fees only where the role may see them. */
+export const s360Tabs = (see: { fees: boolean }): S360Tab[] => ['overview', 'academics', 'attendance', 'homework', 'exams', ...(see.fees ? ['fees' as const] : []), 'documents', 'timeline']
+/** "—" where nothing has been recorded, never a fake zero. */
+export const pctLabel = (value: number | null | undefined) => value == null ? '—' : value + '%'
+export const s360AttendanceNote = (s: S360Summary) => s.markedDays === 0 ? 'No days marked yet' : `${s.present + s.late} of ${s.markedDays} days attended`
+export const s360HomeworkNote = (h: Student360['homework']) => h.assigned === 0 ? 'No homework set yet' : `${h.counts.missing ?? 0} missing · ${(h.counts['due-today'] ?? 0) + (h.counts.upcoming ?? 0)} due`
+export const s360ExamsNote = (e: Student360['exams']) => e.published === 0 ? 'No published results yet' : `${e.passed} passed · ${e.failed} below pass`
+export const s360FeesNote = (f: Student360['fees']) => !f.available ? f.reason : f.charges === 0 ? 'No fees charged yet' : f.outstanding > 0 ? `${f.overdue} overdue of ${f.charges} charges` : 'All charges settled'
+export const s360EventsByDay = (events: S360Event[]) => { const groups: { day: string, events: S360Event[] }[] = []; for (const e of events) { const day = e.at.slice(0, 10); const last = groups[groups.length - 1]; if (last && last.day === day) last.events.push(e); else groups.push({ day, events: [e] }) } return groups }
+export const s360EventIcon = (kind: string) => kind === 'attendance' ? 'checkbox-outline' : kind === 'homework' ? 'book-outline' : kind === 'exam' || kind === 'result' ? 'school-outline' : kind === 'fee' || kind === 'payment' ? 'wallet-outline' : 'document-text-outline'
 /** "Theory 56/70 · Practical 25/30" when an exam has components; nothing for plain marks. */
 export const componentsLabel = (components: { name: string, max: number, score: number | null }[]) => components.length > 1 ? components.map(c => c.name + ' ' + (c.score ?? '—') + '/' + c.max).join(' · ') : ''
 export const resultLabel = (r: ReportResult) => r.status === 'Absent' ? 'Absent' : r.status === 'Exempt' ? 'Exempt' : r.maximum == null ? r.grade || '—' : r.score + ' / ' + r.maximum

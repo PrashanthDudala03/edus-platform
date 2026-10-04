@@ -4,6 +4,7 @@ const dashboards=['/admin','/principal','/teacher','/parent','/student']
 export function permissionForPath(path:string):string|undefined {
  if(path.startsWith('/control'))return path.includes('signup-requests')?'signup.review':path.includes('access-history')?'access-history.view':path.includes('/users')?'users.view':path.includes('/permissions')?'permissions.view':'roles.view'
  const fixed:Record<string,string>={'/students':'students.view','/teachers':'teachers.view','/parents':'parents.view','/attendance':'attendance.view','/announcements':'announcements.view','/audit':'audit.view','/settings':'school.settings.manage','/subscription':'subscription.view','/home/manage':'school-home.manage','/home/preview':'school-home.manage','/notifications/templates':'notifications.manage','/notifications/history':'notifications.manage','/admin':'overview.view','/principal':'overview.view','/suite/fees':'fees.view','/suite/register':'attendance.mark','/suite/reports':'reports.view','/suite/allocation':'allocations.manage'}
+ if(path.startsWith('/student360'))return 'reports.view'
  return fixed[path]||(path.startsWith('/suite/')?path.split('/')[2]+'.view':undefined)
 }
 export function canVisit(user:User|null,path:string):boolean {

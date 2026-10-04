@@ -11,6 +11,7 @@ import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import SuiteRouter, { SchoolModules } from './pages/suite/SuitePage'
 import DirectoryPage from './pages/DirectoryPage'
+import Student360Page from './pages/Student360Page'
 import { AttendancePage, AnnouncementsPage, AuditPage, SettingsPage } from './pages/OperationsPages'
 import { PlatformDashboard, SchoolsPage } from './pages/portals/PlatformPages'
 import PrincipalDashboard from './pages/portals/PrincipalDashboard'
@@ -81,6 +82,8 @@ export default function App() {
         <Route path="home/preview" element={<SchoolHomePreviewPage />} />
         <Route path="notifications/templates" element={<NotificationTemplatesPage />} />
         <Route path="notifications/history" element={<NotificationHistoryPage />} />
+        <Route path="student360" element={<Student360Page />} />
+        <Route path="student360/:id" element={<Student360Page />} />
         <Route path="suite" element={<SchoolModules />} />
         <Route path="suite/:kind" element={<SuiteRouter />} />
       </Route>

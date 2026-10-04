@@ -289,7 +289,7 @@ public static partial class Suite
                 // Putting an exam on the timetable tells the class and their families once; a later change of date,
                 // time or room is announced as a change, once per new sitting. Drafts tell nobody.
                 var wasVisible = old is not null && ExamRules.FamilyVisible(Text(old, "status"));
-                var moved = wasVisible && (Text(old!, "date") != Text(d, "date") || Text(old, "startsAt") != Text(d, "startsAt") || Text(old, "endsAt") != Text(d, "endsAt") || Text(old, "room") != Text(d, "room"));
+                var moved = wasVisible && (Text(old!, "date") != Text(d, "date") || Text(old!, "startsAt") != Text(d, "startsAt") || Text(old!, "endsAt") != Text(d, "endsAt") || Text(old!, "room") != Text(d, "room"));
                 if (!wasVisible || moved)
                 {
                     var classId = Id(d, "classId"); var cls = await Get(c, a.School, "classes", classId); var subject = await Get(c, a.School, "subjects", Id(d, "subjectId"));
