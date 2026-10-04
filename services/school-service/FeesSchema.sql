@@ -50,10 +50,13 @@ CREATE TABLE IF NOT EXISTS suite.payment_intents(
 CREATE TABLE IF NOT EXISTS suite.payment_events(
  school_id uuid NOT NULL, provider varchar(20) NOT NULL, event_id varchar(120) NOT NULL, intent_id uuid, outcome varchar(20) NOT NULL,
  created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(provider,event_id));
+-- The payment configuration is keyed by school alone, so the generic audit trigger (which needs an id, record_id or
+-- student_id) cannot describe it; the PUT handler writes its own audit row with the school as the entity instead.
+DROP TRIGGER IF EXISTS suite_audit ON suite.school_payment_config;
 DO $$
 DECLARE t text;
 BEGIN
- FOREACH t IN ARRAY ARRAY['suite.concessions','suite.school_payment_config','suite.payment_intents']
+ FOREACH t IN ARRAY ARRAY['suite.concessions','suite.payment_intents']
  LOOP
  IF NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='suite_audit' AND tgrelid=t::regclass) THEN
  EXECUTE format('CREATE TRIGGER suite_audit AFTER INSERT OR UPDATE OR DELETE ON %s FOR EACH ROW EXECUTE FUNCTION suite.audit_change()',t);

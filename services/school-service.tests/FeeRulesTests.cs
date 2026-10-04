@@ -189,7 +189,8 @@ public class FeeRulesTests
         // Secrets stay server-side: the checkout gets the public key id only, no log line carries a key, and the platform's billing keys are never read here.
         Assert.Contains("keyId = adapter.PublicKeyId", text); Assert.DoesNotContain("\"RAZORPAY_KEY", text); Assert.DoesNotContain("KeySecret}", text); Assert.DoesNotContain("KeySecret);", text.Replace("s.KeyId + \":\" + s.KeySecret)", ""));
         var schema = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Sources", "FeesSchema.sql"));
-        Assert.DoesNotContain("DROP ", schema); Assert.Contains("IF NOT EXISTS", schema);
+        Assert.DoesNotMatch(@"DROP (TABLE|COLUMN|SCHEMA|INDEX)", schema); Assert.Contains("IF NOT EXISTS", schema);
+        Assert.Contains("INSERT INTO suite.audit(school_id,user_id,action,entity_type,entity_id) VALUES(@s,@u,'PAYMENT_CONFIG'", text);   // the configuration change is audited explicitly
         Assert.DoesNotMatch(@"(?i)(secret|api_key|token)\w*\s+(varchar|text|bytea)", schema);   // no credential column anywhere in the fee ledger
     }
 }

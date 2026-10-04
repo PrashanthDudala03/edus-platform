@@ -481,6 +481,8 @@ public static partial class Suite
             var provider = Text(d, "provider"); Require(provider == "none" || Providers.ContainsKey(provider), "Choose a supported provider."); var merchant = Text(d, "merchantReference"); Require(merchant.Length <= 120, "The merchant reference is too long.");
             var online = d["onlineEnabled"] is JsonValue v && v.TryGetValue<bool>(out var o) && o; Require(!online || provider != "none", "Choose a provider before switching online payments on.");
             await E(c, "INSERT INTO suite.school_payment_config(school_id,provider,merchant_reference,online_enabled,updated_by) VALUES(@s,@p,@m,@o,@u) ON CONFLICT(school_id) DO UPDATE SET provider=excluded.provider,merchant_reference=excluded.merchant_reference,online_enabled=excluded.online_enabled,updated_by=excluded.updated_by,updated_at=now()", ("s", a.School), ("p", provider), ("m", merchant), ("o", online), ("u", a.User));
+            // A configuration change is audited explicitly (the table has no row id of its own): who, when, which school.
+            await E(c, "INSERT INTO suite.audit(school_id,user_id,action,entity_type,entity_id) VALUES(@s,@u,'PAYMENT_CONFIG',@t,@s)", ("s", a.School), ("u", a.User), ("t", "school_payment_config:" + provider + (online ? ":online" : ":offline")));
             var config = await PaymentConfigOf(c, a.School);
             await E(c, "UPDATE suite.school_payment_config SET connection_status=@c,settlement_status=@st WHERE school_id=@s", ("c", config.ConnectionStatus), ("st", config.ConnectionStatus == "Connected" ? "Ready" : "NotReady"), ("s", a.School));
             return Results.Ok(new { data = ConfigView(await PaymentConfigOf(c, a.School)) });
