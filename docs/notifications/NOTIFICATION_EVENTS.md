@@ -28,6 +28,8 @@ to its own screen.
 | Exam scheduled | `exam.scheduled` | Student and parent accounts linked to students allocated to the class, whose role holds `exams.view` | `timetable` | examName, subjectName, className, date, time, room, schoolName | IMPLEMENTED |
 | Exam timetable changed | `exam.rescheduled` | As exam scheduled | `timetable` | examName, subjectName, className, date, time, room, schoolName | IMPLEMENTED |
 | Fee due | `fee.due` | Parent accounts linked to the student whose role holds `fees.view` | `fees` | studentName, amount, dueDate, schoolName | IMPLEMENTED |
+| Payment received | `fee.payment_received` | Student and parent accounts linked to the student, whose role holds `fees.view` | `fees` | studentName, amount, remark (fee), reference (receipt), schoolName | IMPLEMENTED |
+| Fee due soon | `fee.due_soon` | As fee due | `fees` | studentName, amount, dueDate, schoolName | BLOCKED BY DOMAIN EVENT |
 | Fee overdue | `fee.overdue` | As fee due | `fees` | studentName, amount, dueDate, schoolName | BLOCKED BY DOMAIN EVENT |
 | Payment received | none yet | Parent accounts linked to the student | `fees` | to define | FUTURE |
 | Leave requested | `leave.requested` | School-scope accounts holding `leave-requests.manage` | `leave` | teacherName, dateRange, startDate, endDate, reason, schoolName | IMPLEMENTED |
@@ -49,6 +51,7 @@ to its own screen.
 | Exam scheduled | an exam leaves Draft (Scheduled or any later stage) | the write commits | exam, once however many times it moves |
 | Exam timetable changed | a scheduled exam's date, start or end time, or room changes | the write commits | exam and the new date, time and room (the same change saved twice sends nothing) |
 | Fee due | `POST /suite/fees/charges` issues a charge to a student (amount after concession above zero) | the charge transaction commits | charge |
+| Payment received | a payment is recorded at the office (`POST /suite/fees/payments`) or verified from the school's payment provider (fees webhook) | the payment transaction commits | payment (a retried request or a repeated provider event is the same payment and sends nothing new) |
 
 Viewing or calculating a balance raises nothing. The manual fee reminder (`POST /suite/fees/{id}/remind`) and the manual
 absence notice (`POST /suite/absence-notifications`) are older actions that write per-student message records; they are
@@ -82,6 +85,7 @@ Nothing in EduOS runs on a timer. A future scheduler needs:
 |---|---|
 | A daily run per school | at a fixed local time; schools have no time zone setting yet, so that must be added or one assumed |
 | Homework due | Published homework whose due moment (`HomeworkRules.DueAt`, date plus optional time) falls within the next day; recipients as homework assigned, minus students whose submission is handed in, reviewed or checked Completed / Late / Excused; key `homework.due:homeworkId:dueDate`. The scheduler is the boundary: no service runs on a clock today |
+| Fee due soon | active charges whose due date is within the next few days with a balance; recipients as fee due; key `fee.due_soon:chargeId:dueDate` |
 | Fee overdue | charges past their due date with a balance; recipients as fee due; key `fee.overdue:chargeId:dueDate` (or per week, if reminders should repeat) |
 | Safety | the event keys already make a run that happens twice harmless; the run must be claimed by one instance (a row lock or an advisory lock) |
 | Decision | whether the manual fee reminder should become this event |

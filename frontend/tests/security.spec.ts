@@ -88,6 +88,32 @@ test.describe.serial('Security boundaries against real Docker services',()=>{
   await ok(A,'Parent','GET','/suite/fees');await ok(A,'Student','GET','/suite/fees')
  })
 
+ test('fees stay with the office and the linked family: ledgers, receipts, concessions, reversals and provider events',async()=>{
+  const structure=(await ok(A,'Administrator','POST','/suite/records/fee-structures',{name:'Tuition',classId:A.cl,amount:1000,installment:'Term 1',dueDate:day},201)).id
+  const charge=(await ok(A,'Administrator','POST','/suite/fees/charges',{studentId:A.student,structureId:structure,concession:'0'},201)).id
+  // The family reads its own ledger; a teacher reads no financial detail at all; another family's child is refused before any lookup.
+  for(const role of ['Parent','Student','Administrator'])expect((await ok(A,role,'GET','/suite/fees/ledger/'+A.student)).totals.net).toBe(1000)
+  await denied(A,'Teacher','GET','/suite/fees/ledger/'+A.student);await denied(A,'Teacher','GET','/suite/fees');await denied(A,'Teacher','GET','/suite/fees/summary')
+  for(const role of ['Parent','Student','Teacher'])await denied(A,role,'GET','/suite/fees/ledger/'+B.student)
+  await denied(A,'Administrator','GET','/suite/fees/ledger/'+B.student,undefined,404)
+  // Only the office collects, concedes, reverses or changes settings; the same payment twice is one payment.
+  const payment={chargeId:charge,amount:400,method:'Cash',reference:'',paidOn:day,idempotencyKey:randomUUID()}
+  for(const role of ['Parent','Student','Teacher'])await denied(A,role,'POST','/suite/fees/payments',payment)
+  const first=await ok(A,'Administrator','POST','/suite/fees/payments',payment,201);expect((await ok(A,'Administrator','POST','/suite/fees/payments',payment)).id).toBe(first.id)
+  expect((await ok(A,'Parent','GET','/suite/fees/ledger/'+A.student)).totals.outstanding).toBe(600)
+  for(const role of ['Parent','Student','Teacher'])await denied(A,role,'POST','/suite/fees/concessions',{studentId:A.student,kind:'Percent',value:10,reason:'Not allowed'})
+  for(const role of ['Parent','Student','Teacher'])await denied(A,role,'POST','/suite/fees/payments/'+first.id+'/reverse',{reason:'Not allowed here'})
+  await denied(A,'Parent','PUT','/suite/fees/payment-config',{provider:'fake',onlineEnabled:true})
+  await denied(A,'Administrator','GET','/suite/fees/receipts/'+randomUUID(),undefined,404)
+  // Receipts: the family reads its own, never another school's; school B's office never sees school A's receipt.
+  expect((await ok(A,'Student','GET','/suite/fees/receipts/'+first.id)).receipt.amount).toBe(400)
+  await denied(B,'Administrator','GET','/suite/fees/receipts/'+first.id,undefined,404)
+  // Online payments are off until the school turns them on; a provider event without a known attempt is refused.
+  await denied(A,'Parent','POST','/suite/fees/online/intents',{chargeId:charge},409)
+  const event=await api.post('/api/v1/fees/webhooks/fake',{headers:{'X-Signature':'deadbeef','Content-Type':'application/json'},data:{eventId:'evt_x',orderReference:'fake_none',amount:1,currency:'INR',status:'captured'}})
+  expect(event.status()).toBe(404)
+ })
+
  test('Student 360 shows a student only to the office, the class teacher and the linked family',async()=>{
   // Own scope: the student themself, the linked parent, the class teacher and the office all read the composed picture.
   for(const role of ['Student','Parent','Teacher','Administrator'])expect((await ok(A,role,'GET','/suite/students/'+A.student+'/360')).student.id).toBe(A.student)

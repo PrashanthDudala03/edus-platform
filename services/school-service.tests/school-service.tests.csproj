@@ -18,7 +18,7 @@
 
   <ItemGroup>
     <!-- Read by NotificationTenancyTests, which checks that every notification statement names the school. -->
-    <None Include="../school-service/Suite.Notification*.cs;../school-service/Suite.Attendance.cs;../school-service/Suite.Homework.cs;../school-service/Suite.Exams.cs;../school-service/Suite.Student360.cs;../school-service/NotificationSchema.sql;../school-service/AttendanceSchema.sql" Link="Sources/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../school-service/Suite.Notification*.cs;../school-service/Suite.Attendance.cs;../school-service/Suite.Homework.cs;../school-service/Suite.Exams.cs;../school-service/Suite.Student360.cs;../school-service/Suite.Fees.cs;../school-service/FeesSchema.sql;../school-service/NotificationSchema.sql;../school-service/AttendanceSchema.sql" Link="Sources/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

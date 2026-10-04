@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { can } from '@/access/experience'
 import { api, useSession } from '@/services'
 import { isoMonth } from '@/utils/format'
-import type { Assignment, AttendanceStatus, BoardItem, CalendarEvent, Charge, Child, Circular, ClassRegister, DayRecord, Exam, ExamOverview, ExamStatus, Homework, HomeworkGroup, HomeworkSubmission, Leave, MarkStatus, Marksheet, Message, OverviewItem, RegisterRow, RegisterTotals, ReportCard, ReportResult, ReviewRow, S360Timeline, Scheme, SheetMark, Student360, Submission, TimetableExam } from './logic'
+import type { Assignment, AttendanceStatus, BoardItem, CalendarEvent, Charge, ChargeState, Child, Circular, ClassRegister, DayRecord, Exam, ExamOverview, ExamStatus, FeeSummary, LedgerTotals, StudentLedger, Homework, HomeworkGroup, HomeworkSubmission, Leave, MarkStatus, Marksheet, Message, OverviewItem, RegisterRow, RegisterTotals, ReportCard, ReportResult, ReviewRow, S360Timeline, Scheme, SheetMark, Student360, Submission, TimetableExam } from './logic'
 
 // Every request the core modules make, in one place. Each is an existing EduOS endpoint that already limits rows to
 // what the signed-in account may see; the app adds no filter that could be mistaken for access control. A query is
@@ -111,6 +111,28 @@ export function useFees(enabled = true) {
   const allowed = usePermission('fees.view')
   return useQuery({ queryKey: ['fees'], enabled: enabled && allowed, staleTime: 60_000, queryFn: async (): Promise<Charge[]> => (await get<Row[]>('/suite/fees')).map(r => ({ id: s(r.id), studentId: s(r.studentId), student: s(r.student), description: s(r.description),
     dueDate: s(r.dueDate).slice(0, 10), gross: n(r.gross), concession: n(r.concession), paid: n(r.paid), balance: n(r.balance), currency: s(r.currency) })) })
+}
+const ledgerTotals = (t: Row): LedgerTotals => ({ charges: n(t.charges), applicable: n(t.applicable), concessions: n(t.concessions), net: n(t.net), paid: n(t.paid), outstanding: n(t.outstanding), overdue: n(t.overdue), overdueCount: n(t.overdueCount), currency: s(t.currency) })
+/** One student's fee ledger from the server: totals, instalments with their state, payments and receipts. Families get their own students only. */
+export function useStudentLedger(studentId: string | undefined, page = 1) {
+  const allowed = usePermission('fees.view')
+  return useQuery({ queryKey: ['fee-ledger', studentId, page], enabled: allowed && !!studentId, staleTime: 30_000, queryFn: async (): Promise<StudentLedger> => {
+    const d = await get<Row>('/suite/fees/ledger/' + studentId, { page, pageSize: 20 }); const st = (d.student ?? {}) as Row, pay = (d.payments ?? {}) as Row, online = (d.online ?? {}) as Row
+    return { student: { id: s(st.id), name: s(st.name), admissionNumber: s(st.admissionNumber), class: s(st.class) }, totals: ledgerTotals((d.totals ?? {}) as Row),
+      charges: (Array.isArray(d.charges) ? d.charges as Row[] : []).map(c => ({ id: s(c.id), description: s(c.description), dueDate: s(c.dueDate).slice(0, 10), net: n(c.net), paid: n(c.paid), outstanding: n(c.outstanding), state: (s(c.state) || 'Unpaid') as ChargeState, overdue: c.overdue === true, currency: s(c.currency) })),
+      payments: { items: (Array.isArray(pay.items) ? pay.items as Row[] : []).map(p => ({ id: s(p.id), receipt: s(p.receipt), amount: n(p.amount), method: s(p.method), reference: s(p.reference), status: s(p.status) === 'Reversed' ? 'Reversed' : 'Completed', source: s(p.source) === 'online' ? 'online' : 'manual', paidOn: s(p.paidOn).slice(0, 10), description: s(p.description), currency: s(p.currency), reversalReason: s(p.reversalReason) })), total: n(pay.total), more: pay.more === true },
+      online: { enabled: online.enabled === true, provider: s(online.provider) } }
+  } })
+}
+/** The office summary: collected today and this month, outstanding, overdue, dues by class, recent payments. Leadership only. */
+export function useFeeSummary(enabled = true) {
+  const allowed = usePermission('fees.view')
+  return useQuery({ queryKey: ['fee-summary'], enabled: enabled && allowed, staleTime: 60_000, queryFn: async (): Promise<FeeSummary> => {
+    const d = await get<Row>('/suite/fees/summary')
+    return { collectedToday: n(d.collectedToday), collectedThisMonth: n(d.collectedThisMonth), reversalsThisMonth: n(d.reversalsThisMonth), totals: ledgerTotals((d.totals ?? {}) as Row),
+      byClass: (Array.isArray(d.byClass) ? d.byClass as Row[] : []).map(r => ({ class: s(r.class), outstanding: n(r.outstanding), overdue: n(r.overdue), paid: n(r.paid) })),
+      recent: (Array.isArray(d.recent) ? d.recent as Row[] : []).map(p => ({ id: s(p.id), receipt: s(p.receipt), amount: n(p.amount), method: s(p.method), status: s(p.status), paidOn: s(p.paidOn).slice(0, 10), student: s(p.student), currency: s(p.currency) })) }
+  } })
 }
 /** The daily register for the students this account teaches (or the whole school for leadership). */
 export function useRegister(day: string, enabled = true) {

@@ -40,7 +40,7 @@ backend code that is written but not deployed (see `docs/notifications/`).
 | Homework | IMPLEMENTED | `GET /suite/homework/board` | Board per child: due today, upcoming, completed, late, missing, excused, reviewed; the teacher's check, marks and feedback. Parents read only. Files are counted, opened on the web. |
 | Timetable | IMPLEMENTED | `GET /suite/records/timetable`, `GET /suite/options` | Weekly, by day. |
 | Results | IMPLEMENTED | `GET /suite/report-cards/{student}` | Published exams with components (Theory + Practical), grade, absent/exempt, overall percent and grade, attendance for the year. Printable report card: web only. |
-| Fees | IMPLEMENTED (view) | `GET /suite/fees` | Charges, received, outstanding. Online payment: BLOCKED BY API (does not exist in EduOS). Receipts download: FUTURE. |
+| Fees | IMPLEMENTED (view) | `GET /suite/fees/ledger/{student}` | Per child: outstanding, overdue, net and paid, instalments with their state, payments with receipt numbers and status. Online payment and receipt printing: web portal (shown only when the school has switched its provider on). |
 | Notices | PARTIAL | `circulars`, `calendar`, `messages` records, `POST /suite/circulars/{id}/acknowledge` | Read and acknowledge. Whether a circular was already acknowledged: BLOCKED BY API (no endpoint returns it), so the tick lasts for the session only. |
 | Calendar / events | IMPLEMENTED | `GET /suite/records/calendar` | Inside Notices. |
 | Exams | IMPLEMENTED | `GET /suite/exams/timetable` | Timetable: upcoming and held, with time and room; never a draft. |
@@ -87,7 +87,7 @@ backend code that is written but not deployed (see `docs/notifications/`).
 | Gap | Effect on mobile |
 |---|---|
 | No "my acknowledgement" on circulars | Acknowledged state is not remembered between sessions. |
-| No online fee payment | Fees are view only. |
+| No online fee payment in the app | Fees are a view of the school's ledger; an online payment opens from the web portal, and only once the school's own provider is connected and switched on (Razorpay onboarding model still to be decided). |
 | No self-service password change | Not offered in Profile. |
 | `/suite/records/{kind}`: 20 per page, no filters, filtered in memory | Lists read up to 10 pages; classes shows the first page. Will not scale to large schools. See "API contract review" below. |
 | `GET /suite/options` is heavy and gives students few teacher names | Names for subjects and classes work; teacher names are often blank for students. |
@@ -116,6 +116,7 @@ reviewed account links.
 
 ## Verification
 
+- 2026-10-04 (Fees & Collections 2.0): Fees screen rewritten on the student ledger (families, with a child chip) and the office summary (leadership); students gain a My fees entry; payment notification routes added. `npm run typecheck` clean; `npm test` 71 passing. Not yet seen on a device.
 - 2026-10-04 (Student 360): new Student 360 screen on `GET /suite/students/{id}/360` and its timeline page: a student opens their own profile, a parent picks a child, teachers and leadership find a student in scope; overview, academics, attendance, homework, exams (published only), fees (office and family only), documents and timeline sections. Reached from Home and Profile, not a tab. `npm run typecheck` clean; `npm test` 68 passing. Not yet seen on a device.
 - 2026-10-04 (Exams & Report Cards 2.0): Exams screen rewritten on the exam timetable, overview, marksheet and transition endpoints; Results screen shows components, grades, absent/exempt and attendance; leadership sees exam status and can approve, return or publish; exam notification routes added. `npm run typecheck` clean; `npm test` 65 passing. Not yet seen on a device.
 - 2026-10-03 (Homework & Assignments 2.0): Homework screen rewritten on `GET /suite/homework/board|overview|{id}/submissions`, `PUT /suite/homework/{id}/verify|review/{studentId}` and the submissions record save; submission modes (Mark as done, Text, File, Physical, None), one-tap Completed / Late / Missing / Excused check for teachers, hand in and hand in again for students; Home shows what needs attention and what is to review. `npm run typecheck` clean; `npm test` 61 passing. Not yet seen on a device.

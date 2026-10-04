@@ -432,8 +432,57 @@
     ]
   },
   {
+    "kind": "fee-heads",
+    "title": "Fee heads",
+    "group": "Finance",
+    "fields": [
+      {
+        "key": "name",
+        "label": "Fee head",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "code",
+        "label": "Code",
+        "type": "text",
+        "required": false,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "active",
+        "label": "Active",
+        "type": "select",
+        "required": true,
+        "source": null,
+        "options": [
+          "Yes",
+          "No"
+        ]
+      },
+      {
+        "key": "description",
+        "label": "Description",
+        "type": "textarea",
+        "required": false,
+        "source": null,
+        "options": null
+      }
+    ],
+    "read": [
+      "Administrator",
+      "Principal"
+    ],
+    "write": [
+      "Administrator"
+    ]
+  },
+  {
     "kind": "fee-structures",
-    "title": "Fee structures",
+    "title": "Fee structures & instalments",
     "group": "Fees",
     "fields": [
       {
@@ -445,11 +494,35 @@
         "options": null
       },
       {
+        "key": "headId",
+        "label": "Fee head",
+        "type": "reference",
+        "required": false,
+        "source": "fee-heads",
+        "options": null
+      },
+      {
+        "key": "yearId",
+        "label": "Academic year",
+        "type": "reference",
+        "required": false,
+        "source": "academic-years",
+        "options": null
+      },
+      {
         "key": "classId",
         "label": "Class",
         "type": "reference",
         "required": true,
         "source": "classes",
+        "options": null
+      },
+      {
+        "key": "studentId",
+        "label": "Student (individual structure, optional)",
+        "type": "reference",
+        "required": false,
+        "source": "students",
         "options": null
       },
       {
@@ -459,6 +532,21 @@
         "required": true,
         "source": null,
         "options": null
+      },
+      {
+        "key": "frequency",
+        "label": "Frequency",
+        "type": "select",
+        "required": false,
+        "source": null,
+        "options": [
+          "One-time",
+          "Monthly",
+          "Quarterly",
+          "Term",
+          "Annual",
+          "Custom"
+        ]
       },
       {
         "key": "installment",

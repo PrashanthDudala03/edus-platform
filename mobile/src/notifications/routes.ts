@@ -5,7 +5,7 @@ import type { User } from '../session/types.ts'
 // after checking who is signed in, so a tap can never open a screen the person may not see. The same function will
 // serve push taps and deep links when push arrives; device registration is still only a seam.
 export type NotificationType =
-  | 'attendance.absent' | 'attendance.late' | 'attendance.corrected' | 'homework.assigned' | 'homework.reviewed' | 'homework.due' | 'result.published' | 'fee.due' | 'fee.overdue' | 'circular.published'
+  | 'attendance.absent' | 'attendance.late' | 'attendance.corrected' | 'homework.assigned' | 'homework.reviewed' | 'homework.due' | 'result.published' | 'fee.due' | 'fee.payment_received' | 'fee.due_soon' | 'fee.overdue' | 'circular.published'
   | 'message.received' | 'leave.requested' | 'leave.approved' | 'leave.rejected' | 'timetable.changed' | 'school-home.published' | 'exam.scheduled' | 'exam.rescheduled'
 
 /** What a notification will carry. Ids are opaque; the server authorises them again when the screen loads. */
@@ -23,6 +23,8 @@ const DESTINATIONS: Record<NotificationType, Destination[]> = {
   'result.published': ['/results'],
   'fee.due': ['/fees'],
   'fee.overdue': ['/fees'],
+  'fee.payment_received': ['/fees'],
+  'fee.due_soon': ['/fees'],
   'circular.published': ['/notices'],
   'message.received': ['/notices'],
   'leave.requested': ['/leave'],

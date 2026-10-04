@@ -27,7 +27,7 @@ public static class NotificationRules
         ["attendance.absent"] = "attendance", ["attendance.late"] = "attendance", ["attendance.corrected"] = "attendance", ["homework.assigned"] = "homework", ["homework.due"] = "homework", ["result.published"] = "results",
         ["homework.reviewed"] = "homework", ["fee.due"] = "fees", ["fee.overdue"] = "fees", ["circular.published"] = "notices", ["message.received"] = "notices",
         ["leave.requested"] = "leave", ["leave.approved"] = "leave", ["leave.rejected"] = "leave", ["timetable.changed"] = "timetable", ["school-home.published"] = "school",
-        ["exam.scheduled"] = "timetable", ["exam.rescheduled"] = "timetable",
+        ["exam.scheduled"] = "timetable", ["exam.rescheduled"] = "timetable", ["fee.payment_received"] = "fees", ["fee.due_soon"] = "fees",
     };
     public static IReadOnlyCollection<string> Types => TypeCategory.Keys;
     public static bool KnownType(string? type) => type is not null && TypeCategory.ContainsKey(type);
@@ -334,6 +334,18 @@ public static partial class Suite
         catch (Exception ex) { Log.Warning(ex, "Notification for {Kind} {Id} was not created", kind, id); }
     }
 
+    /// <summary>Tells the family that a payment was received and its receipt is available. Called after the payment is committed; once per payment.</summary>
+    static async Task AnnouncePayment(SchoolAccess a, Guid payment, Guid student, long amount, string currency, string receipt, string description)
+    {
+        try
+        {
+            await using var c = await Open();
+            if (!(await GuardiansOf(c, a.School, [student], "fees.view", "student")).TryGetValue(student, out var family)) return;
+            var name = (await Q(c, "SELECT first_name || ' ' || last_name AS name FROM student_db.students WHERE school_id=@s AND id=@id", ("s", a.School), ("id", student))).Select(row => Text(row, "name")).FirstOrDefault();
+            await Send(c, a.School, "fee.payment_received", NotificationRules.EventKey("fee.payment_received", payment), new() { ["studentName"] = name, ["amount"] = NotificationTemplates.Money(currency, amount), ["remark"] = description, ["reference"] = receipt, ["schoolName"] = await SchoolName(c, a.School) }, payment, family, a.User, "suite.fees");
+        }
+        catch (Exception ex) { Log.Warning(ex, "Payment notification for {Payment} was not created", payment); }
+    }
     /// <summary>Tells guardians that a fee was charged to their child. Called after the charge is committed; one notification per charge.</summary>
     static async Task AnnounceCharge(SchoolAccess a, Guid charge, Guid student, long amount, string currency, DateOnly due)
     {

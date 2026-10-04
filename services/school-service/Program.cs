@@ -41,7 +41,7 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.UseRouting();
-app.UseEduOSAuthorization("/api", "/api/health");
+app.UseEduOSAuthorization("/api", "/api/health", "/api/fees/webhooks");
 // Health endpoint - return Prometheus metrics format
 app.MapGet("/api/health", async (SchoolDbContext db) => {try { return await db.Database.CanConnectAsync() ? Results.Ok(new {status="ready"}) : Results.StatusCode(503); } catch { return Results.StatusCode(503); }}).AllowAnonymous();
 
@@ -85,7 +85,9 @@ await Suite.Initialize(connectionString);
 Suite.Map(app);
 await Suite.InitializeNotifications();
 await Suite.InitializeAttendance();
+await Suite.InitializeFees();
 Suite.MapNotifications(app);
+Suite.MapFeeWebhooks(app);
 app.Run();
 
 #region Models

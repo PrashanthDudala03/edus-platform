@@ -33,6 +33,14 @@ Run step 3 only after the old auth-service is running; the new one re-applies th
 
 **Rollback.** Stop ai-service, then in the AI database: `DROP SCHEMA ai CASCADE; DROP ROLE ai_app;`. Nothing outside the AI database depends on it.
 
+## Fees & Collections (2026-10-04, prepared, not applied)
+
+**What it does.** Additive only, in `services/school-service/FeesSchema.sql`. `suite.charges` gains `status`, `fine`, `note`, `updated_by`, `updated_at`; `suite.payments` gains `status`, `source`, `note`, provider references, reversal fields and `updated_by` (all defaulted; existing rows read as Active and Completed). New tables: `suite.concessions`, `suite.school_payment_config` (no credential column), `suite.payment_intents`, `suite.payment_events`, plus two indexes. The three new tables with an actor column get the existing `suite_audit` trigger. No permission changes: fee heads share the fee-structure permissions and everything else reuses `fees.view`, `fees.collect` and `fees.manage`. The platform `billing` schema is untouched.
+
+**Applied by** school-service on start (idempotent) once the new image runs; nothing was applied to any environment by this branch. Rebuild school-service, the api-gateway (fees webhook route and permission map) and the frontend. Optional: set `SCHOOL_FEES_FAKE_SECRET` to connect the test provider; never the platform's `RAZORPAY_*` keys.
+
+**Rollback.** Deploy the previous images. Optionally `DROP TABLE suite.payment_events, suite.payment_intents, suite.school_payment_config, suite.concessions;` and drop the added columns; older code ignores them.
+
 ## Student 360 (2026-10-04, no database change)
 
 **What it does.** Nothing in the database: two read-only endpoints compose existing tables and records per request. Rebuild school-service, the api-gateway (permission map) and the frontend.

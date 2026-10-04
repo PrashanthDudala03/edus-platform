@@ -30,7 +30,7 @@ public static partial class Suite
     private static readonly string[] KnownRoles=["Administrator","Principal","Teacher","Parent","Student"];
     static string Text(JsonObject o,string key)=>o[key]?.ToString().Trim()??"";
     /// <summary>The permission a module's action needs. Assessment schemes are part of the exams module, not a module of their own.</summary>
-    static string Perm(string kind,string action)=>(kind=="assessment-schemes"?"exams":kind)+"."+action;
+    static string Perm(string kind,string action)=>(kind=="assessment-schemes"?"exams":kind=="fee-heads"?"fee-structures":kind)+"."+action;
     static decimal Number(JsonObject o,string key)=>decimal.TryParse(Text(o,key),System.Globalization.NumberStyles.Number,System.Globalization.CultureInfo.InvariantCulture,out var n)?n:throw new SuiteError(400,key+" must be a number.");
     static Guid Id(JsonObject o,string key)=>Guid.TryParse(Text(o,key),out var id)?id:throw new SuiteError(400,key+" must be a valid record.");
     static DateOnly Day(JsonObject o,string key)=>DateOnly.TryParse(Text(o,key),out var d)?d:throw new SuiteError(400,key+" must be a valid date.");
@@ -136,7 +136,7 @@ public static partial class Suite
         group.MapPut("/records/{kind}/{id:guid}",async(string kind,Guid id,JsonObject data,HttpContext http)=>await Save(kind,id,data,http));
         group.MapDelete("/records/{kind}/{id:guid}",async(string kind,Guid id,HttpContext http)=>{
             Require(Schemas.ContainsKey(kind),"Module not found.",404);await using var c=await Open();var a=await Access(http,c);Require(a.Can(Perm(kind,"archive")),"Archive permission required.",403);
-            Require(!new[]{"academic-years","classes","subjects","fee-structures","exams","marks","assessment-schemes","school-config","certificates","admissions"}.Contains(kind),"This record is retained for academic or financial history. Change its status instead.",409);
+            Require(!new[]{"academic-years","classes","subjects","fee-structures","fee-heads","exams","marks","assessment-schemes","school-config","certificates","admissions"}.Contains(kind),"This record is retained for academic or financial history. Change its status instead.",409);
             Require(kind!="account-links","Profile links are retained. Contact platform support to correct a relationship.",409);
             var old=await Get(c,a.School,kind,id);
             await E(c,"UPDATE suite.records SET archived_at=now(),updated_by=@u,version=version+1 WHERE id=@id AND school_id=@s",("u",a.User),("id",id),("s",a.School));
