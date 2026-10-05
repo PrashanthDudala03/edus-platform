@@ -327,8 +327,8 @@ test.describe.serial('Complete school suite',()=>{
   const put=(body:any)=>req('PUT','/suite/admissions/'+app+'/onboarding',body)
   await good('PUT','/suite/admissions/'+app+'/onboarding',{section:'details',confirmed:true,admissionNumber:'ADM-QA-'+tag})
   // Another family's guardian cannot be linked: only one whose email or phone is on the application.
-  const otherParent=/[0-9a-f-]{36}/.exec(sql("SELECT id FROM parent_db.parents WHERE school_id='"+schoolId+"' AND email='priya"+schoolId+"@example.test'"))![0]
-  expect((await put({section:'guardian',mode:'existing',parentId:otherParent,relationship:'Father',confirmed:true})).status()).toBe(400)
+  const otherParent=/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/.exec(sql("SELECT id FROM parent_db.parents WHERE school_id='"+schoolId+"' AND email='priya"+schoolId+"@example.test'"))![0]
+  const refused=await put({section:'guardian',mode:'existing',parentId:otherParent,relationship:'Father',confirmed:true});expect(refused.status()).toBe(400);expect((await refused.json()).message).toBe('Only a guardian whose email or phone matches the application can be linked.')
   await good('PUT','/suite/admissions/'+app+'/onboarding',{section:'guardian',mode:'new',relationship:'Father',confirmed:true})
   expect((await put({section:'documents',key:'birth-certificate',status:'Verified'})).status()).toBe(400)
   const upload=await api.post('/api/v1/suite/documents?recordId='+app,{headers:headers(),multipart:{file:{name:'birth.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4\nbirth certificate\n%%EOF')}}});expect(upload.status()).toBe(201);docs.push((await upload.json()).data.id)
