@@ -104,7 +104,7 @@ for(const [cl,subject,teacher] of [[grade6,maths,ravi],[grade6,science,ravi],[gr
 async function admit(number,firstName,gender,dob,cl){
  const id=await ensure('admissions',r=>r.admissionNumber===number,{admissionNumber:number,firstName,lastName:'Sharma',dateOfBirth:dob,gender,email:firstName.toLowerCase()+'.sharma@demo.eduos.local',phoneNumber:'9000000201',guardianName:'Neha Sharma',guardianEmail:accounts.Parent.username,guardianPhone:'9000000202',address:'12 Demo Lane, Bengaluru',classId:cl,status:'Submitted'})
  const row=(await records('admissions',admin,number)).find(r=>r.id===id)
- return row.status==='Accepted'?row.studentId:(await must('POST','/suite/admissions/'+id+'/accept',admin)).studentId
+ return row.studentId?row.studentId:(await must('POST','/suite/admissions/'+id+'/accept',admin)).studentId
 }
 const aarav=await admit('DEMO-2026-001','Aarav','Male','2014-06-15',grade6)
 const diya=await admit('DEMO-2026-002','Diya','Female','2017-09-02',grade3)

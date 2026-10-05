@@ -284,6 +284,17 @@ public static partial class Suite
     static void RequireStudent(SchoolAccess a, Guid student) => Require(a.SchoolWide || a.Students.Contains(student.ToString()), "This student is outside your scope.", 403);
     static async Task<string> UserName(NpgsqlConnection c, Guid school, string? id) => string.IsNullOrEmpty(id) ? "" : (await Q(c, "SELECT COALESCE(first_name || ' ' || last_name,username) AS name FROM auth_db.users WHERE school_id=@s AND id=@u", ("s", school), ("u", Guid.Parse(id)))).Select(r => Text(r, "name")).FirstOrDefault() ?? "";
 
+    /// <summary>One charge for one student from one fee structure: the amount comes from the structure, never the caller. Shared by the
+    /// Fees office and by student activation, so both issue charges the same way. Callers hold the school lock and have checked access.</summary>
+    static async Task<(Guid id, long net, string currency)> IssueCharge(NpgsqlConnection c, SchoolAccess a, Guid student, JsonObject structure, long concession, string note)
+    {
+        var gross = Cents(structure, "amount"); Require(concession <= gross, "Concession cannot exceed the charge.");
+        var config = (await Records(c, a.School, "school-config")).FirstOrDefault(); var currency = config is null ? "INR" : Text(config, "currency");
+        var id = Guid.NewGuid();
+        await E(c, "INSERT INTO suite.charges(id,school_id,student_id,structure_id,description,due_date,gross,concession,currency,created_by,note) VALUES(@id,@s,@student,@structure,@desc,@due,@gross,@concession,@currency,@user,@note)",
+            ("id", id), ("s", a.School), ("student", student), ("structure", Guid.Parse(Text(structure, "id"))), ("desc", Text(structure, "name") + " · " + Text(structure, "installment")), ("due", Day(structure, "dueDate")), ("gross", gross), ("concession", concession), ("currency", currency), ("user", a.User), ("note", note.Length > 300 ? note[..300] : note));
+        return (id, gross - concession, currency);
+    }
     static void MapFinance(RouteGroupBuilder group)
     {
         // The ledger as every reader sees it: the office the school, a family its own students; teachers never.
@@ -313,13 +324,9 @@ public static partial class Suite
             await using var tx = await c.BeginTransactionAsync(); await E(c, "SELECT pg_advisory_xact_lock(hashtextextended(@s,0))", ("s", a.School.ToString()));
             var structure = await Get(c, a.School, "fee-structures", Id(d, "structureId")); await InClass(c, a.School, student, Id(structure, "classId"));
             Require(Text(structure, "studentId") == "" || Text(structure, "studentId") == student.ToString(), "This fee structure is for another student.");
-            var gross = Cents(structure, "amount"); var concession = Cents(d, "concession"); Require(concession <= gross, "Concession cannot exceed the charge.");
-            var config = (await Records(c, a.School, "school-config")).FirstOrDefault(); var currency = config is null ? "INR" : Text(config, "currency");
-            var id = Guid.NewGuid();
-            await E(c, "INSERT INTO suite.charges(id,school_id,student_id,structure_id,description,due_date,gross,concession,currency,created_by,note) VALUES(@id,@s,@student,@structure,@desc,@due,@gross,@concession,@currency,@user,@note)",
-                ("id", id), ("s", a.School), ("student", student), ("structure", Id(d, "structureId")), ("desc", Text(structure, "name") + " · " + Text(structure, "installment")), ("due", Day(structure, "dueDate")), ("gross", gross), ("concession", concession), ("currency", currency), ("user", a.User), ("note", Text(d, "note").Length > 300 ? Text(d, "note")[..300] : Text(d, "note")));
+            var (id, net, currency) = await IssueCharge(c, a, student, structure, Cents(d, "concession"), Text(d, "note"));
             await tx.CommitAsync();
-            await AnnounceCharge(a, id, student, gross - concession, currency, Day(structure, "dueDate")); return Results.Json(new { data = new { id } }, statusCode: 201);
+            await AnnounceCharge(a, id, student, net, currency, Day(structure, "dueDate")); return Results.Json(new { data = new { id } }, statusCode: 201);
         });
         // A plan lays out instalments as fee structures in one go (monthly, quarterly, term-wise, annual or custom); charges are issued from them as usual.
         group.MapPost("/fees/plans", async (JsonObject d, HttpContext http) =>

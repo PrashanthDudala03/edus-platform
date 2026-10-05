@@ -143,6 +143,8 @@ reviewed account links.
 
 - 2026-10-05: Timetable 2.0 and Leave 2.0: the timetable screen reads the effective day (GET /suite/timetable/today) with week navigation, now/next and substitutes; the leave screen adds balances, leave types, half days, withdraw, the approval queue with impact, decisions through POST /suite/leave/{id}/decision, and Cover today with substitute assignment; leadership gains a Timetable entry; substitution notifications open the timetable.
 
+- 2026-10-06: Admissions 2.0: leadership gains an Admissions screen (pipeline summary, applications to decide, applicant summary with duplicates and onboarding blockers, review/approve/waitlist/reject by permission); admission notifications open it, and student.activated opens Student 360. Onboarding and configuration stay on the web.
+
 ## Next
 
 1. Owner reviews phase 2 on the phone; fix what the device shows.

@@ -14,6 +14,8 @@ for(const [k,r] of Object.entries({'overview.view':lead,'school.settings.view':l
 add('school-home.manage',['Administrator'],'Settings');add('notifications.manage',['Administrator'],'Settings')
 // Deciding leave is a capability of its own: a teacher who may request leave never holds it.
 add('leave-requests.approve',lead,'Attendance')
+// Admissions decisions and onboarding are separate from editing applications; teachers and families hold neither.
+add('admissions.approve',lead,'Admissions');add('onboarding.manage',['Administrator'],'Admissions')
 for(const k of ['users.view','users.create','users.update','users.disable','roles.view','roles.manage','roles.assign','permissions.view','signup.review','access-history.view'])add(k,['Administrator'],'Access control')
 // Platform billing stays with the SuperAdmin; a school administrator only sees and pays for the school subscription.
 for(const k of ["billing.view","billing.plans.manage","billing.offers.manage","billing.subscriptions.manage","billing.payments.view","billing.settings.manage"])add(k,["SuperAdmin"],"Billing")

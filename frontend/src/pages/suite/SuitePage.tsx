@@ -13,6 +13,7 @@ import HomeworkPage from './HomeworkPage'
 import ExamsPage from './ExamsPage'
 import TimetablePage from './TimetablePage'
 import LeavePage from './LeavePage'
+import AdmissionsPage from './AdmissionsPage'
 import { RegisterPage } from './AttendancePages'
 import { ForbiddenPage } from '../ForbiddenPage'
 import { canVisit } from '../../access'
@@ -28,7 +29,7 @@ export function SchoolModules(){
 }
 // Connected tools are shown only to roles their endpoints accept; the API still decides every request.
 const toolRoles:Record<string,string[]>={fees:['Administrator','Principal','Parent','Student'],allocation:['Administrator'],register:['Administrator','Principal','Teacher'],reports:['Administrator','Principal','Teacher','Parent','Student']}
-export default function SuiteRouter(){const{kind}=useParams(),user=useAuthStore(s=>s.user);if(kind&&!canVisit(user,'/suite/'+kind))return <ForbiddenPage/>;return kind==='fees'?<FeesPage/>:kind==='reports'?<ReportsPage/>:kind==='allocation'?<AllocationPage/>:kind==='register'?<RegisterPage/>:kind==='homework'?<HomeworkPage/>:kind==='exams'||kind==='marks'?<ExamsPage key={kind} kind={kind}/>:kind==='timetable'?<TimetablePage/>:kind==='leave-requests'?<LeavePage/>:<RecordPage key={kind} kind={kind||''}/>}
+export default function SuiteRouter(){const{kind}=useParams(),user=useAuthStore(s=>s.user);if(kind&&!canVisit(user,'/suite/'+kind))return <ForbiddenPage/>;return kind==='fees'?<FeesPage/>:kind==='reports'?<ReportsPage/>:kind==='allocation'?<AllocationPage/>:kind==='register'?<RegisterPage/>:kind==='homework'?<HomeworkPage/>:kind==='exams'||kind==='marks'?<ExamsPage key={kind} kind={kind}/>:kind==='timetable'?<TimetablePage/>:kind==='leave-requests'?<LeavePage/>:kind==='admissions'?<AdmissionsPage/>:<RecordPage key={kind} kind={kind||''}/>}
 function RecordPage({kind}:{kind:string}){
  const cache=useQueryClient(),role=useAuthStore(s=>s.user?.roles[0]),admin=isAdministrator(role),leader=isLeadership(role)
  const [linkDraft,setLinkDraft]=useState<Record<string,string>>()

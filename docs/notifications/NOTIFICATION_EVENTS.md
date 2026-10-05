@@ -29,6 +29,10 @@ to its own screen.
 | Exam timetable changed | `exam.rescheduled` | As exam scheduled | `timetable` | examName, subjectName, className, date, time, room, schoolName | IMPLEMENTED |
 | Substitution assigned | `substitution.assigned` | Accounts linked to the substitute teacher's profile | `timetable` | teacherName (the teacher covered), className, subjectName, date, time, room, schoolName | IMPLEMENTED |
 | Substitution changed | `substitution.changed` | Accounts linked to the teacher who no longer covers the period | `timetable` | teacherName, className, subjectName, date, time, room, schoolName | IMPLEMENTED |
+| Application submitted | `admission.submitted` | School-scope accounts holding `admissions.approve` | `home` | studentName, className, reference, date, schoolName | IMPLEMENTED |
+| Application approved | `admission.approved` | School-scope accounts holding `onboarding.manage` | `home` | studentName, className, reference, date, schoolName | IMPLEMENTED |
+| Ready to activate | `onboarding.ready` | School-scope accounts holding `onboarding.manage` | `home` | studentName, className, reference, date, schoolName | IMPLEMENTED |
+| Student activated | `student.activated` | The student's linked parent and student accounts holding `reports.view` | `home` | studentName, className, date, schoolName | IMPLEMENTED |
 | Fee due | `fee.due` | Parent accounts linked to the student whose role holds `fees.view` | `fees` | studentName, amount, dueDate, schoolName | IMPLEMENTED |
 | Payment received | `fee.payment_received` | Student and parent accounts linked to the student, whose role holds `fees.view` | `fees` | studentName, amount, remark (fee), reference (receipt), schoolName | IMPLEMENTED |
 | Fee due soon | `fee.due_soon` | As fee due | `fees` | studentName, amount, dueDate, schoolName | BLOCKED BY DOMAIN EVENT |

@@ -115,6 +115,30 @@ test.describe.serial('Security boundaries against real Docker services',()=>{
   await denied(A,'Teacher','GET','/suite/leave/balances?teacherId='+B.teacher)
   await denied(A,'Teacher','GET','/suite/timetable/week?teacherId='+B.teacher)
  })
+ test('admissions and onboarding stay inside the school and with the office',async()=>{
+  // A fresh application of school A, approved and in onboarding, to try foreign records against.
+  const app=(await ok(A,'Administrator','POST','/suite/records/admissions',{firstName:'Isha',lastName:'Isolation',dateOfBirth:'2015-02-02',gender:'Female',email:'isha-'+A.id+'@example.test',guardianName:'Kiran Guardian',guardianEmail:'kiran-'+A.id+'@example.test',guardianPhone:'9111111111',address:'1 School Lane',classId:A.cl,status:'Submitted'},201)).id
+  for(const to of ['Under Review','Approved'])await ok(A,'Administrator','POST','/suite/admissions/'+app+'/transition',{to,acknowledgeDuplicates:true})
+  await ok(A,'Administrator','POST','/suite/admissions/'+app+'/onboarding/start')
+  const bParent=/[0-9a-f-]{36}/.exec(sql("SELECT id FROM parent_db.parents WHERE school_id='"+B.id+"' LIMIT 1"))![0]
+  const bStructure=(await ok(B,'Administrator','POST','/suite/records/fee-structures',{name:'B fee',classId:B.cl,amount:10,installment:'Term 1',dueDate:day},201)).id
+  // Another school's application, class, guardian, fee structure and account are unknown here: 404, nothing learned.
+  await denied(A,'Administrator','GET','/suite/admissions/'+B.admission,undefined,404)
+  await denied(A,'Administrator','POST','/suite/admissions/'+B.admission+'/transition',{to:'Withdrawn',reason:'x'},404)
+  await denied(A,'Administrator','POST','/suite/admissions/'+B.admission+'/activate',undefined,404)
+  await denied(A,'Administrator','GET','/suite/admissions/'+B.admission+'/candidates',undefined,404)
+  await denied(A,'Administrator','PUT','/suite/admissions/'+app+'/onboarding',{section:'academics',classId:B.cl},404)
+  await denied(A,'Administrator','PUT','/suite/admissions/'+app+'/onboarding',{section:'guardian',mode:'existing',parentId:bParent,relationship:'Mother',confirmed:true},404)
+  await denied(A,'Administrator','PUT','/suite/admissions/'+app+'/onboarding',{section:'fees',mode:'assign',structureIds:[bStructure]},404)
+  await denied(A,'Administrator','PUT','/suite/admissions/'+app+'/onboarding',{section:'accounts',parentUserId:B.users.Parent},400)
+  expect((await ok(A,'Administrator','GET','/suite/admissions/pipeline')).items.map((i:any)=>i.id)).not.toContain(B.admission)
+  // Teachers, parents and students hold no admissions or onboarding access at all.
+  for(const role of lower){
+   await denied(A,role,'GET','/suite/admissions/pipeline');await denied(A,role,'GET','/suite/admissions/'+app)
+   await denied(A,role,'POST','/suite/admissions/'+app+'/transition',{to:'Withdrawn',reason:'x'});await denied(A,role,'POST','/suite/admissions/'+app+'/onboarding/start')
+   await denied(A,role,'PUT','/suite/admissions/'+app+'/onboarding',{section:'details',confirmed:true});await denied(A,role,'POST','/suite/admissions/'+app+'/activate')
+  }
+ })
  test('fees stay with the office and the linked family: ledgers, receipts, concessions, reversals and provider events',async()=>{
   const structure=(await ok(A,'Administrator','POST','/suite/records/fee-structures',{name:'Tuition',classId:A.cl,amount:1000,installment:'Term 1',dueDate:day},201)).id
   const charge=(await ok(A,'Administrator','POST','/suite/fees/charges',{studentId:A.student,structureId:structure,concession:'0'},201)).id

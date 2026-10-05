@@ -188,11 +188,19 @@
     "group": "Admissions",
     "fields": [
       {
-        "key": "admissionNumber",
-        "label": "Admission number",
-        "type": "text",
+        "key": "yearId",
+        "label": "Academic year",
+        "type": "reference",
+        "required": false,
+        "source": "academic-years",
+        "options": null
+      },
+      {
+        "key": "classId",
+        "label": "Class applied for",
+        "type": "reference",
         "required": true,
-        "source": null,
+        "source": "classes",
         "options": null
       },
       {
@@ -249,12 +257,33 @@
         "options": null
       },
       {
+        "key": "previousSchool",
+        "label": "Previous school",
+        "type": "text",
+        "required": false,
+        "source": null,
+        "options": null
+      },
+      {
         "key": "guardianName",
-        "label": "Guardian full name",
+        "label": "Guardian name",
         "type": "text",
         "required": true,
         "source": null,
         "options": null
+      },
+      {
+        "key": "guardianRelationship",
+        "label": "Guardian relationship",
+        "type": "select",
+        "required": false,
+        "source": null,
+        "options": [
+          "Mother",
+          "Father",
+          "Guardian",
+          "Other"
+        ]
       },
       {
         "key": "guardianEmail",
@@ -281,24 +310,147 @@
         "options": null
       },
       {
-        "key": "classId",
-        "label": "Allocated class",
-        "type": "reference",
-        "required": true,
-        "source": "classes",
+        "key": "source",
+        "label": "How they heard",
+        "type": "select",
+        "required": false,
+        "source": null,
+        "options": [
+          "Walk-in",
+          "Website",
+          "Referral",
+          "Phone",
+          "Other"
+        ]
+      },
+      {
+        "key": "notes",
+        "label": "Applicant notes",
+        "type": "textarea",
+        "required": false,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "admissionNumber",
+        "label": "Admission number",
+        "type": "text",
+        "required": false,
+        "source": null,
         "options": null
       },
       {
         "key": "status",
-        "label": "Application status",
+        "label": "Status",
         "type": "select",
         "required": true,
         "source": null,
         "options": [
           "Draft",
           "Submitted",
-          "Rejected"
+          "Under Review",
+          "Approved",
+          "Waitlisted",
+          "Rejected",
+          "Withdrawn",
+          "Onboarding",
+          "Ready",
+          "Active"
         ]
+      },
+      {
+        "key": "reviewNotes",
+        "label": "Internal review notes",
+        "type": "textarea",
+        "required": false,
+        "source": null,
+        "options": null
+      }
+    ],
+    "read": [
+      "Administrator",
+      "Principal"
+    ],
+    "write": [
+      "Administrator"
+    ]
+  },
+  {
+    "kind": "admission-fields",
+    "title": "Admission form",
+    "group": "Admissions",
+    "fields": [
+      {
+        "key": "label",
+        "label": "Question",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "key",
+        "label": "Key",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "type",
+        "label": "Answer type",
+        "type": "select",
+        "required": true,
+        "source": null,
+        "options": [
+          "Text",
+          "Paragraph",
+          "Number",
+          "Date",
+          "Dropdown",
+          "Single choice",
+          "Multiple choice",
+          "Checkbox",
+          "Document"
+        ]
+      },
+      {
+        "key": "options",
+        "label": "Choices (comma separated)",
+        "type": "textarea",
+        "required": false,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "required",
+        "label": "Required",
+        "type": "select",
+        "required": true,
+        "source": null,
+        "options": [
+          "Yes",
+          "No"
+        ]
+      },
+      {
+        "key": "enabled",
+        "label": "Enabled",
+        "type": "select",
+        "required": true,
+        "source": null,
+        "options": [
+          "Yes",
+          "No"
+        ]
+      },
+      {
+        "key": "order",
+        "label": "Order",
+        "type": "number",
+        "required": true,
+        "source": null,
+        "options": null
       }
     ],
     "read": [

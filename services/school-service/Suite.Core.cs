@@ -191,8 +191,10 @@ public static partial class Suite
             }
             d[f.Key]=value;
         }
+        // The admission form's own questions are answered in one object; ValidateAdmission keeps only enabled questions.
+        if(kind=="admissions"&&input["answers"] is JsonObject answers)d["answers"]=answers.DeepClone();
         if(old is not null){
-            foreach(var key in new[]{"studentId","acceptedAt","certificateNumber"})if(old[key]is not null&&!d.ContainsKey(key))d[key]=old[key]!.DeepClone();
+            foreach(var key in new[]{"studentId","acceptedAt","certificateNumber","applicationNumber","history","onboarding","answers","submittedAt","decidedAt","decidedBy","activatedAt","activatedBy","parentId"})if(old[key]is not null&&!d.ContainsKey(key))d[key]=old[key]!.DeepClone();
         }
         Writable(kind,d,a,old);
         await ValidateBusiness(c,a,kind,d,old,id);

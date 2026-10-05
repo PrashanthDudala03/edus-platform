@@ -21,7 +21,7 @@ async function throttled(send:()=>Promise<APIResponse>){for(let i=0;;i++){const 
 async function login(role:string,pw=password){const r=await throttled(()=>api.post('/api/v1/auth/login',{data:{schoolId,username:'suite.'+role.toLowerCase(),password:pw}}));expect(r.status(),await r.text()).toBe(200);sessions[role]=(await r.json()).data}
 async function browserSession(page:Page,role='Administrator'){await page.addInitScript(s=>{localStorage.setItem('accessToken',s.accessToken);localStorage.setItem('refreshToken',s.refreshToken);localStorage.setItem('user',JSON.stringify(s.user))},sessions[role])}
 // Every module the suite serves, in catalog order. A new kind is a deliberate contract change: add it here with its feature.
-const CATALOG=['academic-years','classes','subjects','teaching-assignments','admissions','staff-attendance','leave-types','leave-requests','leave-adjustments','fee-heads','fee-structures','assessment-schemes','exams','marks','circulars','calendar','messages','homework','submissions','period-slots','timetable','substitutions','certificates','account-links','school-config']
+const CATALOG=['academic-years','classes','subjects','teaching-assignments','admissions','admission-fields','staff-attendance','leave-types','leave-requests','leave-adjustments','fee-heads','fee-structures','assessment-schemes','exams','marks','circulars','calendar','messages','homework','submissions','period-slots','timetable','substitutions','certificates','account-links','school-config']
 test.describe.serial('Complete school suite',()=>{
  test.beforeAll(async({playwright})=>{
   test.setTimeout(180000)
@@ -298,4 +298,70 @@ test.describe.serial('Complete school suite',()=>{
   expect(sql("SELECT 'active='||count(*) FROM auth_db.users u JOIN auth_db.roles r ON r.id=u.role_id WHERE u.school_id='"+schoolId+"' AND u.is_active AND u.deleted_at IS NULL AND r.name='Administrator'")).toContain('active=2')
  })
 
+ test('takes one child from application to active student: decisions, duplicates, onboarding, activation and what each role then sees',async()=>{
+  const tag=schoolId.slice(0,8),guardianEmail='omar'+schoolId+'@example.test',childEmail='zara'+schoolId+'@example.test'
+  const application={firstName:'Zara',lastName:'Newton',dateOfBirth:'2015-06-09',gender:'Female',email:childEmail,guardianName:'Omar Newton',guardianEmail,guardianPhone:'8'+Date.now().toString().slice(-9),address:'4 Admission Road',classId:cl,reviewNotes:'Strong interview '+tag}
+  const app=await create('admissions',{...application,status:'Draft'})
+  const draft=(await good('GET','/suite/admissions/'+app));expect(draft.applicationNumber).toMatch(/^APP-\d{4}-\d{6}$/);expect(draft.status).toBe('Draft');expect(draft.application.reviewNotes).toContain('Strong interview')
+  // Families, teachers and students never reach the admissions office.
+  for(const role of ['Teacher','Parent','Student']){expect((await req('GET','/suite/admissions/pipeline',undefined,role)).status()).toBe(403);expect((await req('POST','/suite/admissions/'+app+'/transition',{to:'Submitted'},role)).status()).toBe(403);expect((await req('POST','/suite/admissions/'+app+'/activate',undefined,role)).status()).toBe(403)}
+  // Status moves only through decisions, and a generic edit cannot jump the lifecycle.
+  expect((await req('PUT','/suite/records/admissions/'+app,{...application,status:'Approved',version:draft.version})).status()).toBe(409)
+  await good('POST','/suite/admissions/'+app+'/transition',{to:'Submitted'})
+  await good('POST','/suite/admissions/'+app+'/transition',{to:'Under Review'},'Principal')
+  // A second application for the same child is flagged, never merged; approval needs the duplicate acknowledged.
+  const twin=await create('admissions',{...application,email:'twin'+schoolId+'@example.test',status:'Submitted'})
+  const reviewing=await good('GET','/suite/admissions/'+app);expect(reviewing.duplicates.map((d:any)=>[d.id,d.reasons[0]])).toEqual([[twin,'Same name and date of birth']])
+  expect((await req('POST','/suite/admissions/'+app+'/transition',{to:'Approved'},'Principal')).status()).toBe(409)
+  expect((await req('POST','/suite/admissions/'+twin+'/transition',{to:'Withdrawn'})).status()).toBe(400)
+  await good('POST','/suite/admissions/'+twin+'/transition',{to:'Withdrawn',reason:'Entered twice'})
+  expect((await req('POST','/suite/admissions/'+app+'/transition',{to:'Approved'},'Teacher')).status()).toBe(403)
+  await good('POST','/suite/admissions/'+app+'/transition',{to:'Approved',reason:'Meets criteria'},'Principal')
+  expect((await req('POST','/suite/admissions/'+app+'/transition',{to:'Approved'},'Principal')).status()).toBe(200)
+  // Approval creates nothing; onboarding is the office's, and starting it twice at once is one start.
+  expect((await req('POST','/suite/admissions/'+app+'/onboarding/start',undefined,'Principal')).status()).toBe(403)
+  const starts=await Promise.all([req('POST','/suite/admissions/'+app+'/onboarding/start'),req('POST','/suite/admissions/'+app+'/onboarding/start')])
+  expect(starts.map(r=>r.status())).toEqual([200,200]);expect((await Promise.all(starts.map(async r=>(await r.json()).data.started))).filter(Boolean)).toHaveLength(1)
+  expect(sql("SELECT 'n='||count(*) FROM student_db.students WHERE school_id='"+schoolId+"' AND email='"+childEmail+"'")).toContain('n=0')
+  expect((await req('POST','/suite/admissions/'+app+'/activate')).status()).toBe(409)
+  const put=(body:any)=>req('PUT','/suite/admissions/'+app+'/onboarding',body)
+  await good('PUT','/suite/admissions/'+app+'/onboarding',{section:'details',confirmed:true,admissionNumber:'ADM-QA-'+tag})
+  // Another family's guardian cannot be linked: only one whose email or phone is on the application.
+  const otherParent=/[0-9a-f-]{36}/.exec(sql("SELECT id FROM parent_db.parents WHERE school_id='"+schoolId+"' AND email='priya"+schoolId+"@example.test'"))![0]
+  expect((await put({section:'guardian',mode:'existing',parentId:otherParent,relationship:'Father',confirmed:true})).status()).toBe(400)
+  await good('PUT','/suite/admissions/'+app+'/onboarding',{section:'guardian',mode:'new',relationship:'Father',confirmed:true})
+  expect((await put({section:'documents',key:'birth-certificate',status:'Verified'})).status()).toBe(400)
+  const upload=await api.post('/api/v1/suite/documents?recordId='+app,{headers:headers(),multipart:{file:{name:'birth.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4\nbirth certificate\n%%EOF')}}});expect(upload.status()).toBe(201);docs.push((await upload.json()).data.id)
+  for(const key of ['birth-certificate','address-proof'])await good('PUT','/suite/admissions/'+app+'/onboarding',{section:'documents',key,status:'Verified'})
+  expect((await put({section:'academics',classId:randomUUID()})).status()).toBe(404)
+  await good('PUT','/suite/admissions/'+app+'/onboarding',{section:'academics',classId:cl})
+  const structure=await create('fee-structures',{name:'Admission fee '+tag,classId:cl,amount:2500.50,installment:'One time',dueDate:day})
+  await good('PUT','/suite/admissions/'+app+'/onboarding',{section:'fees',mode:'assign',structureIds:[structure]})
+  // The family's account comes from the existing account system and is linked only when its email matches.
+  const roles=await good('GET','/roles'),parentPassword='QA-Parent-'+randomUUID()
+  const parentUser=(await good('POST','/users',{schoolId,roleId:roles.find((r:any)=>r.name==='Parent').id,username:'suite.omar.'+tag,email:guardianEmail,firstName:'Omar',lastName:'Newton',password:parentPassword},'Administrator',201)).id
+  expect((await put({section:'accounts',parentUserId:users.Parent})).status()).toBe(400)
+  const ready=await good('PUT','/suite/admissions/'+app+'/onboarding',{section:'accounts',parentUserId:parentUser});expect(ready.status).toBe('Ready');expect(ready.onboarding.blockers).toEqual([])
+  // Activation commits everything at once; repeating it, or accepting it again, creates nothing more.
+  const activated=await good('POST','/suite/admissions/'+app+'/activate');expect(activated.activated).toBe(true)
+  const again=await good('POST','/suite/admissions/'+app+'/activate');expect([again.activated,again.studentId]).toEqual([false,activated.studentId])
+  expect((await req('POST','/suite/admissions/'+app+'/accept')).status()).toBe(409)
+  const child=activated.studentId
+  for(const [table,where] of [['student_db.students',"email='"+childEmail+"'"],['parent_db.parents',"email='"+guardianEmail+"'"],['suite.charges',"student_id='"+child+"'"],['suite.student_classes',"student_id='"+child+"'"],['suite.records',"kind='account-links' AND data->>'userId'='"+parentUser+"'"]] as const)
+   expect(sql("SELECT 'n='||count(*) FROM "+table+" WHERE school_id='"+schoolId+"' AND "+where),table).toContain('n=1')
+  expect((await good('GET','/suite/allocations')).find((r:any)=>r.studentId===child).classId).toBe(cl)
+  const ledger=await good('GET','/suite/fees/ledger/'+child);expect([ledger.totals.net,ledger.charges.length]).toEqual([2500.5,1])
+  // The teacher of the class can mark the student; the office's history explains every step.
+  expect((await good('GET','/suite/student-attendance?day='+day,undefined,'Teacher')).some((s:any)=>s.id===child)).toBe(true)
+  expect(Number(/\d+/.exec(sql("SELECT count(*) FROM suite.audit WHERE school_id='"+schoolId+"' AND entity_id='"+app+"'"))![0])).toBeGreaterThanOrEqual(8)
+  expect((await good('GET','/suite/admissions/'+app)).history.map((h:any)=>h.to)).toEqual(['Draft','Submitted','Under Review','Approved','Onboarding','Ready','Active'])
+  // The new family sees its own child only, with the admission number and nothing from the review.
+  const signIn=await throttled(()=>api.post('/api/v1/auth/login',{data:{schoolId,username:'suite.omar.'+tag,password:parentPassword}}));expect(signIn.status(),await signIn.text()).toBe(200);sessions.NewParent=(await signIn.json()).data
+  const view=await good('GET','/suite/students/'+child+'/360',undefined,'NewParent');expect(view.admission.admissionNumber).toBe('ADM-QA-'+tag)
+  const text=JSON.stringify(view);expect(text).not.toContain('Strong interview');expect(text).not.toContain('Meets criteria');expect(text).not.toContain('Entered twice')
+  expect((await req('GET','/suite/students/'+student+'/360',undefined,'NewParent')).status()).toBe(403)
+  expect((await req('GET','/suite/students/'+child+'/360',undefined,'Parent')).status()).toBe(403)
+  const teacherView=await good('GET','/suite/students/'+child+'/360',undefined,'Teacher');expect(Object.keys(teacherView.admission).sort()).toEqual(['admissionNumber','admittedOn','available'])
+  expect((await req('PUT','/suite/records/admissions/'+app,{...application,status:'Active',version:99})).status()).toBe(409)
+ })
 })

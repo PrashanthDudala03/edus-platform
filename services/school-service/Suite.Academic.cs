@@ -10,7 +10,7 @@ public static partial class Suite
         if(kind=="classes"){Require((Text(d,"name")+" - "+Text(d,"section")).Length<=50,"Class and section label must be at most 50 characters.");Require(Number(d,"capacity")>=1&&Number(d,"capacity")<=500&&decimal.Truncate(Number(d,"capacity"))==Number(d,"capacity"),"Class capacity must be a whole number from 1 to 500.");Unique("name","section","yearId");if(id.HasValue){var count=await Q(c,"SELECT count(*) AS n FROM suite.student_classes WHERE class_id=@id AND school_id=@s",("id",id),("s",a.School));Require(Number(count[0],"n")<=Number(d,"capacity"),"Capacity cannot be lower than current enrollment.");}}
         if(kind=="subjects")Unique("code");
         if(kind=="teaching-assignments")Unique("classId","subjectId","teacherId");
-        if(kind=="admissions"){Require(Text(d,"admissionNumber").Length<=50&&Text(d,"firstName").Length<=100&&Text(d,"lastName").Length<=100,"Admission number or student name is too long.");Require(Text(d,"phoneNumber").Length<=20&&Text(d,"guardianPhone").Length<=20,"Phone numbers must be at most 20 characters.");Require(Text(d,"guardianName").Split(' ',2).All(part=>part.Length<=100),"Guardian name parts must be at most 100 characters.");Unique("admissionNumber");Require(Day(d,"dateOfBirth")<DateOnly.FromDateTime(DateTime.UtcNow),"Date of birth must be in the past.");Require(old is null||Text(old,"status")!="Accepted","Accepted admissions are preserved. Edit the student record instead.",409);}
+        if(kind=="admissions")await ValidateAdmission(c,a,d,old,id,peers);
         if(kind=="staff-attendance"){Unique("teacherId","day");Require(Day(d,"day")<=DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)),"Attendance cannot be entered in the future.");}
         if(kind is "leave-types" or "leave-requests" or "leave-adjustments")await ValidateLeave(c,a,kind,d,old,id,peers);
         if(kind=="fee-heads"){Unique("name");if(Text(d,"active")=="")d["active"]="Yes";}
@@ -138,21 +138,9 @@ public static partial class Suite
         MapAttendance(group);
         MapTimetable(group);
         MapLeave(group);
-        group.MapPost("/admissions/{id:guid}/accept",async(Guid id,HttpContext http)=>{
-            await using var c=await Open();var a=await Access(http,c);Require(a.Admin,"Only administrators can accept admissions.",403);
-            await using var tx=await c.BeginTransactionAsync();await E(c,"SELECT pg_advisory_xact_lock(hashtextextended(@s,0))",("s",a.School.ToString()));
-            var d=await Get(c,a.School,"admissions",id);Require(Text(d,"status")=="Submitted","Submit this application before accepting it.",409);
-            var guardian=await Q(c,"SELECT id FROM parent_db.parents WHERE school_id=@s AND email=@e AND deleted_at IS NULL",("s",a.School),("e",Text(d,"guardianEmail")));
-            var parentId=guardian.Count>0?Guid.Parse(Text(guardian[0],"id")):Guid.NewGuid();
-            if(guardian.Count==0){var parts=Text(d,"guardianName").Split(' ',2);await E(c,"INSERT INTO parent_db.parents(id,school_id,first_name,last_name,email,phone_number) VALUES(@id,@s,@first,@last,@email,@phone)",("id",parentId),("s",a.School),("first",parts[0]),("last",parts.Length>1?parts[1]:"Guardian"),("email",Text(d,"guardianEmail")),("phone",Text(d,"guardianPhone")));}
-            var studentId=Guid.NewGuid();
-            await E(c,"INSERT INTO student_db.students(id,school_id,roll_number,first_name,last_name,date_of_birth,gender,email,phone_number,address,admission_date,status,parent_guardian_id) VALUES(@id,@s,@no,@first,@last,@dob,@gender,@email,@phone,@address,CURRENT_DATE,'Active',@parent)",
-                ("id",studentId),("s",a.School),("no",Text(d,"admissionNumber")),("first",Text(d,"firstName")),("last",Text(d,"lastName")),("dob",Day(d,"dateOfBirth")),("gender",Text(d,"gender")),("email",Text(d,"email")),("phone",Text(d,"phoneNumber")),("address",Text(d,"address")),("parent",parentId));
-            await Allocate(c,a,studentId,Id(d,"classId"));
-            d.Remove("id");d.Remove("version");d.Remove("createdAt");d["status"]="Accepted";d["studentId"]=studentId.ToString();d["acceptedAt"]=DateTime.UtcNow;
-            await E(c,"UPDATE suite.records SET data=@d::jsonb,version=version+1,updated_by=@u,updated_at=now() WHERE id=@id AND school_id=@s",("d",d.ToJsonString()),("u",a.User),("id",id),("s",a.School));
-            await tx.CommitAsync();return Results.Ok(new{data=new{studentId}});
-        });
+        // Express acceptance (pre-2.0): activation in one step for a submitted or approved application. Admissions 2.0 uses onboarding.
+        group.MapPost("/admissions/{id:guid}/accept",async(Guid id,HttpContext http)=>await Activate(id,http,true));
+        MapAdmissions(group);
         group.MapPost("/allocate",async(JsonObject d,HttpContext http)=>{
             await using var c=await Open();var a=await Access(http,c);Require(a.Admin,"Only administrators can allocate or promote students.",403);
             Require(d["studentIds"] is JsonArray,"Student IDs must be an array.");var ids=d["studentIds"]?.AsArray().Select(n=>Guid.Parse(n!.ToString())).Distinct().ToList()??[];

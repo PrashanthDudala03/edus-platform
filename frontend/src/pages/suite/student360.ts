@@ -18,7 +18,8 @@ export type Timeline = { items: Event[], total: number, more: boolean, page: num
 export type Academics = { year: string, yearStatus: string, classId: string, className: string, section: string, classTeacher: string, allocated: boolean, subjects: { subject: string, teacher: string }[] }
 export type TodayPeriod = { id: string, startsAt: string, endsAt: string, subjectName: string, teacherName: string, effectiveTeacherName?: string, room: string, substituted?: boolean }
 export type Today = { date: string, day: string, className: string, periods: TodayPeriod[] }
-export type Student360 = { student: Header, visibility: Visibility, academics: Academics, attendance: Attendance, homework: Homework, exams: Exams, fees: Fees, documents: Document[], notices: Notice[], timetable?: Today, timeline: Timeline, generatedAt: string }
+export type Admission = { available: boolean, admissionNumber?: string, admittedOn?: string, applicationNumber?: string, status?: string, documentsVerified?: number, documentsRequired?: number }
+export type Student360 = { student: Header, visibility: Visibility, academics: Academics, attendance: Attendance, homework: Homework, exams: Exams, fees: Fees, documents: Document[], notices: Notice[], timetable?: Today, admission?: Admission, timeline: Timeline, generatedAt: string }
 
 export type Tab = 'overview' | 'academics' | 'attendance' | 'homework' | 'exams' | 'fees' | 'documents' | 'timeline'
 export const TAB_LABEL: Record<Tab, string> = { overview: 'Overview', academics: 'Academics', attendance: 'Attendance', homework: 'Homework', exams: 'Exams & results', fees: 'Fees', documents: 'Documents', timeline: 'Timeline' }

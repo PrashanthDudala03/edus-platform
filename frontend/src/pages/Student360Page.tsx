@@ -98,7 +98,8 @@ function AcademicsTab({ v }: { v: Student360 }) {
   return <div className="dashboard-grid">
     <section className="panel"><div className="panel-heading"><div><h2>Enrolment</h2><p>Current allocation</p></div></div>
       <dl className="s360-list"><div><dt>Academic year</dt><dd>{a.year || '—'}{a.yearStatus ? ' · ' + a.yearStatus : ''}</dd></div><div><dt>Class</dt><dd>{a.className || '—'}</dd></div><div><dt>Section</dt><dd>{a.section || '—'}</dd></div><div><dt>Class teacher</dt><dd>{a.classTeacher || '—'}</dd></div><div><dt>Admission</dt><dd>{v.student.admissionNumber || '—'}{v.student.admissionDate ? ' · since ' + String(v.student.admissionDate).slice(0, 10) : ''}</dd></div></dl>
-      {!a.allocated && <p className="muted">Not allocated to a class yet.</p>}</section>
+      {!a.allocated && <p className="muted">Not allocated to a class yet.</p>}
+      {v.admission?.available && <dl className="s360-list"><div><dt>Admission number</dt><dd>{v.admission.admissionNumber || '—'}</dd></div><div><dt>Admitted on</dt><dd>{v.admission.admittedOn || '—'}</dd></div>{v.admission.applicationNumber && <div><dt>Application</dt><dd>{v.admission.applicationNumber}</dd></div>}{v.admission.documentsRequired != null && <div><dt>Admission documents</dt><dd>{v.admission.documentsVerified} of {v.admission.documentsRequired} verified</dd></div>}</dl>}</section>
     <section className="panel"><div className="panel-heading"><div><h2>Subjects and teachers</h2><p>From teaching assignments</p></div></div>
       {!a.subjects.length ? <Empty title="No subjects assigned" description="Teaching assignments for the class appear here." /> : <div className="table-scroll"><table><thead><tr><th>Subject</th><th>Teacher</th></tr></thead><tbody>{a.subjects.map((x, i) => <tr key={i}><td>{x.subject}</td><td>{x.teacher || '—'}</td></tr>)}</tbody></table></div>}</section>
   </div>

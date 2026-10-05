@@ -55,7 +55,9 @@ public static class PermissionAccess
             "documents" => read ? "documents.view" : "documents.upload",
             "imports" => p.ElementAtOrDefault(4) + ".create",
             "allocate" => "allocations.manage", "allocations" => "allocations.view",
-            "admissions" => "admissions.manage",
+            // Admissions: reading and decisions start at admissions.view (the service checks manage or approve per decision);
+            // onboarding and activation need onboarding.manage; the express accept and record writes need admissions.manage.
+            "admissions" => read || p.ElementAtOrDefault(5) == "transition" ? "admissions.view" : p.ElementAtOrDefault(5) is "onboarding" or "activate" ? "onboarding.manage" : "admissions.manage",
             "circulars" => read ? "circulars.manage" : "circulars.acknowledge",
             "absence-notifications" => "announcements.manage", _ => "unsupported" };
     }

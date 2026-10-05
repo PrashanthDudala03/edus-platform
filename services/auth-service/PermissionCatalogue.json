@@ -100,6 +100,28 @@
     ]
   },
   {
+    "key": "admission-fields.view",
+    "group": "Admissions",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "admission-fields.manage",
+    "group": "Admissions",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "admission-fields.archive",
+    "group": "Admissions",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
     "key": "staff-attendance.view",
     "group": "Attendance",
     "defaults": [
@@ -808,6 +830,21 @@
     "defaults": [
       "Administrator",
       "Principal"
+    ]
+  },
+  {
+    "key": "admissions.approve",
+    "group": "Admissions",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "onboarding.manage",
+    "group": "Admissions",
+    "defaults": [
+      "Administrator"
     ]
   },
   {
