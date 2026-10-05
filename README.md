@@ -20,7 +20,7 @@ The searchable sidebar exposes the workflows directly; **All school modules** gr
 
 | Area | Available workflow |
 | --- | --- |
-| Admissions | Application form, PDF/image attachments, admission number, guardian details, acceptance that atomically creates the student/guardian and class allocation |
+| Admissions | Configurable admission form, application pipeline with explicit decisions and duplicate warnings, onboarding checklist (guardian, documents, class, fees, accounts) and one-step atomic activation into an active student (see docs/ADMISSIONS.md) |
 | Academics | Academic years, classes/sections, capacity, subjects, class teachers, teaching assignments, allocation and promotion |
 | Attendance | Student registers, teacher-scoped marking, corrections, staff attendance, monthly reports, in-app absence notices |
 | Leave | Configurable leave types, server-side balances with an audited adjustment history, requests with half days, approval queue with balance and timetable impact, approver-only decisions (see docs/TIMETABLE_LEAVE.md) |

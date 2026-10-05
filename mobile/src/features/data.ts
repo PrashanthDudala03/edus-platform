@@ -3,6 +3,7 @@ import { can } from '@/access/experience'
 import { api, useSession } from '@/services'
 import { isoMonth } from '@/utils/format'
 import type { Candidate, Operations, Period, Substitution, TimetableDay } from './timetable'
+import type { AdmissionDetail, AdmissionPipeline } from './admissions'
 import type { Assignment, AttendanceStatus, BoardItem, CalendarEvent, Charge, ChargeState, Child, Circular, ClassRegister, DayRecord, Exam, ExamOverview, ExamStatus, FeeSummary, LedgerTotals, StudentLedger, Homework, HomeworkGroup, HomeworkSubmission, Leave, MarkStatus, Marksheet, Message, OverviewItem, RegisterRow, RegisterTotals, ReportCard, ReportResult, ReviewRow, S360Timeline, Scheme, SheetMark, Student360, Submission, TimetableExam } from './logic'
 
 // Every request the core modules make, in one place. Each is an existing EduOS endpoint that already limits rows to
@@ -267,4 +268,20 @@ export function useAssignSubstitute() {
   return useMutation({ mutationFn: async ({ date, timetableId, teacherId, existing }: { date: string, timetableId: string, teacherId: string, existing?: Substitution }): Promise<unknown> =>
     existing ? api.put('/suite/records/substitutions/' + existing.id, { date, timetableId, teacherId, note: existing.note, version: existing.version }) : api.post('/suite/records/substitutions', { date, timetableId, teacherId }),
     onSettled: () => { cache.invalidateQueries({ queryKey: ['timetable'] }); cache.invalidateQueries({ queryKey: ['leave'] }) } })
+}
+
+// Admissions 2.0: leadership reads the pipeline and an applicant, and decides where its permissions allow.
+export function useAdmissionsPipeline(enabled = true) {
+  const allowed = usePermission('admissions.view'), office = useSession(state => state.user?.dataScope === 'school')
+  return useQuery({ queryKey: ['admissions', 'pipeline'], enabled: enabled && allowed && office, staleTime: 30_000, queryFn: () => get<AdmissionPipeline>('/suite/admissions/pipeline') })
+}
+export function useAdmission(id: string | undefined) {
+  const allowed = usePermission('admissions.view')
+  return useQuery({ queryKey: ['admissions', 'detail', id], enabled: allowed && !!id, staleTime: 30_000, queryFn: () => get<AdmissionDetail>('/suite/admissions/' + id) })
+}
+/** A decision with the record's version, so one already taken by someone else is refused, not repeated. */
+export function useAdmissionDecision() {
+  const cache = useQueryClient()
+  return useMutation({ mutationFn: ({ id, ...body }: { id: string, to: string, reason: string, version: number, acknowledgeDuplicates: boolean }) => api.post('/suite/admissions/' + id + '/transition', body),
+    onSettled: () => cache.invalidateQueries({ queryKey: ['admissions'] }) })
 }

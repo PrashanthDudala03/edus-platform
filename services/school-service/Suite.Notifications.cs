@@ -29,6 +29,7 @@ public static class NotificationRules
         ["leave.requested"] = "leave", ["leave.approved"] = "leave", ["leave.rejected"] = "leave", ["timetable.changed"] = "timetable", ["school-home.published"] = "school",
         ["exam.scheduled"] = "timetable", ["exam.rescheduled"] = "timetable", ["fee.payment_received"] = "fees", ["fee.due_soon"] = "fees",
         ["substitution.assigned"] = "timetable", ["substitution.changed"] = "timetable",
+        ["admission.submitted"] = "school", ["admission.approved"] = "school", ["onboarding.ready"] = "school", ["student.activated"] = "school",
     };
     public static IReadOnlyCollection<string> Types => TypeCategory.Keys;
     public static bool KnownType(string? type) => type is not null && TypeCategory.ContainsKey(type);
