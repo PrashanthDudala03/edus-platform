@@ -307,11 +307,13 @@ test.describe.serial('Complete school suite',()=>{
   const otherClass=await create('classes',{name:'Grade 9',section:'C',yearId:year,teacherId:other,capacity:30})
   // The principal drafts it: nobody but leadership sees a draft, and the audience is counted on the server.
   const body={title:'Severe weather: school closed '+tag,message:'The school stays closed tomorrow.',audience:'Parent',classId:cl,type:'Alert',priority:'Urgent',requiresAcknowledgement:'Yes'}
+  // The audience is named after the class as it is now (renamed earlier in this lifecycle); the snapshot keeps that name from publication on.
+  const classRow=(await list('classes')).find((r:any)=>r.id===cl),audienceLabel='Parents of '+classRow.name+' - '+classRow.section
   const draft=await create('circulars',{...body,status:'Draft'},'Principal')
   expect((await good('GET','/suite/communications/'+draft,undefined,'Principal')).status).toBe('Draft')
   expect((await good('GET','/suite/communications/feed',undefined,'Parent')).items.map((i:any)=>i.id)).not.toContain(draft)
   expect((await list('circulars','Parent')).map((r:any)=>r.id)).not.toContain(draft)
-  expect(await good('POST','/suite/communications/audience',{audience:'Parent',classId:cl},'Principal')).toEqual({count:1,label:'Parents of Grade 6 - A'})
+  expect(await good('POST','/suite/communications/audience',{audience:'Parent',classId:cl},'Principal')).toEqual({count:1,label:audienceLabel})
   expect((await good('POST','/suite/communications/audience',{audience:'Parent',classId:otherClass},'Principal')).count).toBe(0)
   expect((await req('POST','/suite/records/circulars',{...body,status:'Scheduled',publishAt:'2020-01-01T09:00:00Z'},'Principal')).status()).toBe(400)
   // Families and teachers never reach the administrative calls; a student cannot see the draft by id.
@@ -322,9 +324,9 @@ test.describe.serial('Complete school suite',()=>{
   const clicks=await Promise.all([req('POST','/suite/communications/'+draft+'/publish',{version:1},'Principal'),req('POST','/suite/communications/'+draft+'/publish',{version:1},'Principal')])
   expect(clicks.map(r=>r.status())).toEqual([200,200])
   const published=await good('GET','/suite/communications/'+draft,undefined,'Principal')
-  expect([published.status,published.snapshot.count,published.snapshot.audience,published.counts.intended,published.counts.notified,published.counts.read,published.counts.outstanding]).toEqual(['Published',1,'Parents of Grade 6 - A',1,1,0,1])
+  expect([published.status,published.snapshot.count,published.snapshot.audience,published.counts.intended,published.counts.notified,published.counts.read,published.counts.outstanding]).toEqual(['Published',1,audienceLabel,1,1,0,1])
   expect(count("notify.notifications WHERE school_id='"+schoolId+"' AND event_key="+key(draft))).toBe(1);expect(notified(draft)).toBe(1)
-  // Only the parent of Grade 6 - A was told, with the urgency in the title; the student, the teacher and the other class heard nothing.
+  // Only the parent of that class was told, with the urgency in the title; the student, the teacher and the other class heard nothing.
   const inbox=await good('GET','/notifications',undefined,'Parent'),note=inbox.items.find((i:any)=>i.destination?.entityId===draft)
   expect([note.type,note.title,note.readAt,note.destination.route]).toEqual(['circular.published','Urgent: Severe weather: school closed '+tag,null,'notices'])
   expect((await good('GET','/notifications/unread-count',undefined,'Parent')).unread).toBe(inbox.unread);expect(inbox.unread).toBeGreaterThanOrEqual(1)
