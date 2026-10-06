@@ -346,15 +346,10 @@ test.describe.serial('Complete school suite',()=>{
   expect((await req('PUT','/suite/records/circulars/'+draft,{...body,audience:'All',classId:'',status:'Published',version:tracked.version},'Principal')).status()).toBe(409)
   await good('PUT','/suite/records/circulars/'+draft,{...body,message:'The school stays closed tomorrow. Buses do not run.',status:'Published',version:tracked.version},'Principal')
   expect(count("suite.audit WHERE school_id='"+schoolId+"' AND entity_id='"+draft+"' AND action='communication.edited'")).toBe(1);expect(notified(draft)).toBe(1)
-  // A teacher given the permission addresses the families of their own class only, never another class, staff or the school, and never urgently.
-  sql("INSERT INTO auth_db.role_permissions(id,role_id,permission_key) SELECT gen_random_uuid(),id,'circulars.manage' FROM auth_db.roles WHERE school_id='"+schoolId+"' AND name='Teacher'");await login('Teacher')
-  const own=await create('circulars',{title:'Homework diary '+tag,message:'Please sign the diary.',audience:'Parent',classId:cl,status:'Published'},'Teacher')
-  expect(notified(own)).toBe(1)
-  for(const attempt of [{audience:'Parent',classId:otherClass},{audience:'All',classId:cl},{audience:'Staff',classId:cl},{audience:'Parent',classId:cl,priority:'Urgent'},{audience:'Parent',classId:''}])
-   expect((await req('POST','/suite/records/circulars',{title:'Not allowed',message:'x',status:'Published',...attempt},'Teacher')).status(),JSON.stringify(attempt)).toBe(403)
-  // A communication not addressed to the teacher is unknown to them, even with the permission: 404, nothing learned.
-  expect((await req('POST','/suite/communications/'+draft+'/archive',{version:tracked.version+1},'Teacher')).status()).toBe(404)
-  sql("DELETE FROM auth_db.role_permissions WHERE permission_key='circulars.manage' AND role_id IN(SELECT id FROM auth_db.roles WHERE school_id='"+schoolId+"' AND name='Teacher')");await login('Teacher')
+  // Teachers hold no circulars.manage under the fixed role templates (a template's maximum caps what a school may grant), so every
+  // compose and status call is refused at the gateway; the teacher class rules behind it are covered by CommunicationRulesTests.
+  expect((await req('POST','/suite/records/circulars',{title:'Homework diary '+tag,message:'Please sign the diary.',audience:'Parent',classId:cl,status:'Published'},'Teacher')).status()).toBe(403)
+  expect((await req('POST','/suite/communications/'+draft+'/archive',{version:tracked.version+1},'Teacher')).status()).toBe(403)
   // Scheduling is durable state: a scheduled communication tells nobody, needs a reason to cancel, and a cancelled one never goes out.
   const scheduled=await create('circulars',{title:'Sports day '+tag,message:'Volunteers needed.',audience:'All',status:'Scheduled',publishAt:'2030-01-01T09:00:00Z'},'Principal')
   expect((await good('GET','/suite/communications/feed',undefined,'Parent')).items.map((i:any)=>i.id)).not.toContain(scheduled);expect(notified(scheduled)).toBe(0)

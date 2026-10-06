@@ -16,6 +16,7 @@ The notification engine itself is described in [notifications/NOTIFICATION_ARCHI
 | Communications: draft, publish now, schedule, cancel, archive; priority; acknowledgement; expiry; attachments | Online acknowledgement reminders, applicant (no-account) messaging, academic-year audience, hand-picked recipient lists (use Targeted messages) |
 | Audience resolution on the server; audience snapshot at publication; read and acknowledgement counts; outstanding list | Super Admin reading school communications (not authorised by the existing architecture; refused) |
 | Durable scheduler and delivery worker loops inside school-service | A separate worker process, a broker or queue (not needed at this scale) |
+| Teacher class-scoped composition rules on the server (unit-tested) | Letting a school grant teachers `circulars.manage`: needs the Teacher role template's maximum extended by an auth migration, a product decision not taken here |
 
 ## Data model
 
@@ -128,7 +129,7 @@ everything, so no auth migration is needed.
 | Role | May |
 |---|---|
 | Administrator, Principal (`circulars.manage`) | compose, publish, schedule, cancel, archive any audience; see the attention summary, counts and who is outstanding |
-| Teacher | read what is addressed to them; if the school grants `circulars.manage`, address the parents or students (or both) of one of their own classes, never staff, the school, another class or Urgent |
+| Teacher | read what is addressed to them. The server also limits a teacher holding `circulars.manage` to the parents or students (or both) of one of their own classes, never staff, the school, another class or Urgent; under the fixed role templates that key is outside the Teacher template's maximum, so no school can grant it today (see Deferred) |
 | Parent, Student | read their feed and inbox, acknowledge where asked; see nothing of drafts, scheduled or cancelled communications, history or figures |
 | Super Admin | nothing: platform accounts are refused by every suite endpoint |
 
