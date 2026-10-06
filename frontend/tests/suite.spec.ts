@@ -351,7 +351,9 @@ test.describe.serial('Complete school suite',()=>{
   expect((await req('POST','/suite/records/circulars',{title:'Homework diary '+tag,message:'Please sign the diary.',audience:'Parent',classId:cl,status:'Published'},'Teacher')).status()).toBe(403)
   expect((await req('POST','/suite/communications/'+draft+'/archive',{version:tracked.version+1},'Teacher')).status()).toBe(403)
   // Scheduling is durable state: a scheduled communication tells nobody, needs a reason to cancel, and a cancelled one never goes out.
-  const scheduled=await create('circulars',{title:'Sports day '+tag,message:'Volunteers needed.',audience:'All',status:'Scheduled',publishAt:'2030-01-01T09:00:00Z'},'Principal')
+  // A week ahead in UTC: always in the future and well inside the one-year scheduling window, whenever this runs.
+  const nextWeek=new Date(Date.now()+7*24*60*60*1000).toISOString()
+  const scheduled=await create('circulars',{title:'Sports day '+tag,message:'Volunteers needed.',audience:'All',status:'Scheduled',publishAt:nextWeek},'Principal')
   expect((await good('GET','/suite/communications/feed',undefined,'Parent')).items.map((i:any)=>i.id)).not.toContain(scheduled);expect(notified(scheduled)).toBe(0)
   expect((await req('POST','/suite/communications/'+scheduled+'/cancel',{version:1},'Principal')).status()).toBe(400)
   await good('POST','/suite/communications/'+scheduled+'/cancel',{version:1,reason:'Postponed'},'Principal')
