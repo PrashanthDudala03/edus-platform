@@ -17,7 +17,7 @@ None of the SQL has run against a database.**
 | Producers: circular published, leave requested / approved / rejected, student absent, homework assigned, result published, fee due | Written |
 | Producers: homework due, fee overdue | Blocked: need a scheduler (see the event catalogue) |
 | Idempotency: event key, unique per school, single writer | Written |
-| Delivery outbox (status, attempts, last error, next attempt, delivered time) and delivery rules | Written; no worker |
+| Delivery outbox (status, attempts, last error, next attempt, delivered time) and delivery rules | Written; worker written (2026-10-06), no outside channel registered |
 | Device registration API (register, list, remove) | Written; nothing is sent to devices |
 | Delivery history API | Written |
 | Feature gate: a school without notifications in its boundary has no inbox and receives nothing | Written |
@@ -25,8 +25,8 @@ None of the SQL has run against a database.**
 | `GET /control/features` (auth-service) | Written |
 | Web: Notification wording and Notification history pages | Written; checked in a browser against a mocked API |
 | Mobile Notification Centre | Written earlier; shows "not switched on yet" until the backend is deployed. Not changed in this pass |
-| Web inbox | Not started |
-| Delivery worker, FCM adapter, push wording, mobile device registration | Not started (see PUSH_SETUP.md) |
+| Web inbox | Written (2026-10-06): `/notifications` with the bell in the header |
+| Delivery worker | Written (`Suite.NotificationWorker.cs`); FCM adapter, push wording, mobile device registration: not started (see PUSH_SETUP.md) |
 | Email, WhatsApp, SMS adapters | Not started |
 | Editing EduOS defaults from the Super Admin console; Super Admin history across schools | Not started |
 

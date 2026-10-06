@@ -8,7 +8,7 @@ using Xunit;
 public class NotificationTenancyTests
 {
     static readonly string Folder = Path.Combine(AppContext.BaseDirectory, "Sources");
-    static readonly string[] Sources = [.. Directory.GetFiles(Folder, "Suite.Notification*.cs"), Path.Combine(Folder, "Suite.Attendance.cs"), Path.Combine(Folder, "Suite.Homework.cs"), Path.Combine(Folder, "Suite.Exams.cs"), Path.Combine(Folder, "Suite.Student360.cs"), Path.Combine(Folder, "Suite.Fees.cs")];
+    static readonly string[] Sources = [.. Directory.GetFiles(Folder, "Suite.Notification*.cs"), Path.Combine(Folder, "Suite.Attendance.cs"), Path.Combine(Folder, "Suite.Homework.cs"), Path.Combine(Folder, "Suite.Exams.cs"), Path.Combine(Folder, "Suite.Student360.cs"), Path.Combine(Folder, "Suite.Fees.cs"), Path.Combine(Folder, "Suite.Communications.cs")];
     static readonly string Engine = File.ReadAllText(Path.Combine(Folder, "Suite.Notifications.cs")), Schema = File.ReadAllText(Path.Combine(Folder, "NotificationSchema.sql"));
     static readonly string[] PerSchool = ["notifications", "recipients", "deliveries", "preferences", "template_overrides", "devices"];
 
@@ -22,8 +22,10 @@ public class NotificationTenancyTests
     [Fact]
     public void TheSourcesAreRead()
     {
-        Assert.Equal(8, Sources.Length);
-        Assert.True(Statements().Count() >= 25);
+        // Engine, templates, history and the delivery worker (by pattern) plus the producers and communications named above.
+        Assert.Equal(10, Sources.Length);
+        Assert.Contains(Sources, source => source.EndsWith("Suite.NotificationWorker.cs"));
+        Assert.True(Statements().Count() >= 35);
         Assert.All(PerSchool, table => Assert.Contains(Statements(), statement => statement.Table == table));
         Assert.All(PerSchool, table => Assert.Contains($"CREATE TABLE IF NOT EXISTS notify.{table}(", Schema));
     }

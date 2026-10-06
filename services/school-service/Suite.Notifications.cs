@@ -211,13 +211,14 @@ public static partial class Suite
     /// The notification, its recipients and its delivery rows are one transaction, so a channel can never be owed a
     /// delivery for a notification that does not exist. Nothing is sent to an outside provider from here.
     /// </summary>
-    static async Task<int> Notify(NpgsqlConnection c, Guid school, string type, string eventKey, Composed text, string route, Guid? entity, IEnumerable<Guid> candidates, Guid? actor, string source)
+    static async Task<int> Notify(NpgsqlConnection c, Guid school, string type, string eventKey, Composed text, string route, Guid? entity, IEnumerable<Guid> candidates, Guid? actor, string source, bool required = false)
     {
         Require(NotificationRules.KnownType(type) && eventKey.StartsWith(type + ":"), "Unknown notification type.");
         var category = NotificationRules.Category(type); var wanted = candidates.Distinct().ToArray();
         if (wanted.Length == 0 || !await FeatureEnabled(c, school, "notifications")) return 0;
         var members = await Ids(c, "SELECT id::text AS id FROM auth_db.users WHERE school_id=@s AND id=ANY(@ids) AND is_active AND deleted_at IS NULL", ("s", school), ("ids", wanted));
-        var muted = await Ids(c, "SELECT user_id::text AS id FROM notify.preferences WHERE school_id=@s AND category=@c AND channel='in-app' AND NOT enabled AND user_id=ANY(@ids)", ("s", school), ("c", category), ("ids", wanted));
+        // A school-required communication (urgent, or needing acknowledgement) reaches everyone it is for; a personal mute applies to the rest.
+        var muted = required ? [] : await Ids(c, "SELECT user_id::text AS id FROM notify.preferences WHERE school_id=@s AND category=@c AND channel='in-app' AND NOT enabled AND user_id=ANY(@ids)", ("s", school), ("c", category), ("ids", wanted));
         var targets = NotificationRules.Targets(members, actor, muted);
         if (targets.Length == 0) return 0;
         var id = Guid.NewGuid();
@@ -266,21 +267,16 @@ public static partial class Suite
                 }
                 return;
             }
-            if (kind == "circulars" && old is null)
+            if (kind == "circulars" && CommunicationRules.Live(Text(d, "status")) && (old is null || !CommunicationRules.Live(Text(old, "status"))))
             {
-                // The same people who may read the circular: its audience, narrowed to the class when one is set.
-                var scopes = NotificationRules.AudienceScopes(Text(d, "audience")); var audience = await UsersWith(c, a.School, "circulars.view", scopes);
-                JsonObject? cls = null;
-                if (Guid.TryParse(Text(d, "classId"), out var classId))
-                {
-                    cls = await Get(c, a.School, "classes", classId);
-                    var teaching = (await Records(c, a.School, "teaching-assignments")).Where(t => Text(t, "classId") == classId.ToString()).Select(t => Text(t, "teacherId")).Append(Text(cls, "teacherId")).Where(t => t != "").Distinct().ToArray();
-                    var inClass = (await FamiliesOfClass(c, a.School, classId)).Concat(await UsersForTeachers(c, a.School, teaching)).ToHashSet();
-                    var leadership = scopes.Contains("school") ? (await UsersWith(c, a.School, "circulars.view", ["school"])).ToHashSet() : [];
-                    audience = audience.Where(user => inClass.Contains(user) || leadership.Contains(user)).ToList();
-                }
-                await Send(c, a.School, "circular.published", NotificationRules.EventKey("circular.published", id), new() { ["circularTitle"] = Text(d, "title"), ["circularMessage"] = Text(d, "message"),
-                    ["className"] = cls is null ? "" : Label("classes", cls), ["schoolName"] = await SchoolName(c, a.School), ["date"] = NotificationTemplates.Day(DateTime.UtcNow.ToString("yyyy-MM-dd")) }, id, audience, a.User, "suite.circulars");
+                // Publication is the moment a communication is given to its audience (a draft or a scheduled one tells
+                // nobody). The audience is resolved on the server exactly as the snapshot was; the event key is the
+                // record, so publishing, retrying or the scheduler running twice can never announce it twice.
+                var audience = await CommunicationAudience(c, a.School, d);
+                var cls = Guid.TryParse(Text(d, "classId"), out var classId) ? await Get(c, a.School, "classes", classId) : null;
+                var required = CommunicationRules.Required(Text(d, "priority"), Text(d, "requiresAcknowledgement"), Text(d, "dueDate"));
+                await Send(c, a.School, "circular.published", NotificationRules.EventKey("circular.published", id), new() { ["circularTitle"] = CommunicationRules.Headline(Text(d, "priority"), Text(d, "title")), ["circularMessage"] = Text(d, "message"),
+                    ["className"] = cls is null ? "" : Label("classes", cls), ["schoolName"] = await SchoolName(c, a.School), ["date"] = NotificationTemplates.Day(DateTime.UtcNow.ToString("yyyy-MM-dd")) }, id, audience, a.User, "suite.circulars", required);
             }
             if (kind == "homework" && HomeworkRules.Status(Text(d, "status")) == "Published" && (old is null || HomeworkRules.Status(Text(old, "status")) != "Published"))
             {

@@ -90,6 +90,8 @@ await Suite.InitializeAttendance();
 await Suite.InitializeFees();
 Suite.MapNotifications(app);
 Suite.MapFeeWebhooks(app);
+// Scheduled communications and the delivery outbox are worked from the database on a timer; stopping the service stops the loop.
+Suite.StartBackgroundWork(app.Lifetime.ApplicationStopping);
 app.Run();
 
 #region Models

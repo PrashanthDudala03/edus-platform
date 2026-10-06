@@ -26,7 +26,7 @@ The searchable sidebar exposes the workflows directly; **All school modules** gr
 | Leave | Configurable leave types, server-side balances with an audited adjustment history, requests with half days, approval queue with balance and timetable impact, approver-only decisions (see docs/TIMETABLE_LEAVE.md) |
 | Fees | Class fee structures and instalments, concessions, charges, received payments, permanent numbered receipts, outstanding balances, in-app reminders |
 | Exams | Schedules, draft/published results, bounded marks, remarks, configurable grade thresholds, report cards printable or saved as PDF |
-| Communication | Administration notices, targeted circulars, acknowledgements, calendar, messages to linked accounts |
+| Communication | Communications with draft, schedule, publish, priority, acknowledgement and expiry to server-resolved audiences (school, staff, class families), audience snapshot, read and acknowledgement tracking, in-app inbox with bell on web and mobile, delivery worker (in-app only; push, email, SMS and WhatsApp architecture-ready), calendar, messages to linked accounts (see docs/COMMUNICATION.md) |
 | Homework | Class/subject assignments, due dates, attachments, parent/student submissions, teacher feedback and grades |
 | Teachers | Profiles, class/subject assignments, attendance and leave approval |
 | Timetable | School period structure, lessons by period with teacher, class and room clash detection, class/teacher/room weeks, effective daily timetable with substitutes, uncovered-lesson view and substitute assignment |

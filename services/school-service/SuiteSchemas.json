@@ -1200,9 +1200,11 @@
         "source": null,
         "options": [
           "All",
+          "Staff",
           "Teacher",
           "Parent",
-          "Student"
+          "Student",
+          "Family"
         ]
       },
       {
@@ -1216,6 +1218,73 @@
       {
         "key": "dueDate",
         "label": "Acknowledge by",
+        "type": "date",
+        "required": false,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "type",
+        "label": "Type",
+        "type": "select",
+        "required": false,
+        "source": null,
+        "options": [
+          "Circular",
+          "Notice",
+          "Announcement",
+          "Alert",
+          "Event"
+        ]
+      },
+      {
+        "key": "priority",
+        "label": "Priority",
+        "type": "select",
+        "required": false,
+        "source": null,
+        "options": [
+          "Normal",
+          "Important",
+          "Urgent"
+        ]
+      },
+      {
+        "key": "requiresAcknowledgement",
+        "label": "Needs acknowledgement",
+        "type": "select",
+        "required": false,
+        "source": null,
+        "options": [
+          "No",
+          "Yes"
+        ]
+      },
+      {
+        "key": "status",
+        "label": "Status",
+        "type": "select",
+        "required": false,
+        "source": null,
+        "options": [
+          "Draft",
+          "Scheduled",
+          "Published",
+          "Archived",
+          "Cancelled"
+        ]
+      },
+      {
+        "key": "publishAt",
+        "label": "Publish at (UTC, e.g. 2026-10-07T09:00)",
+        "type": "text",
+        "required": false,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "expiresOn",
+        "label": "Expires on",
         "type": "date",
         "required": false,
         "source": null,

@@ -6,7 +6,7 @@ export function permissionForPath(path:string):string|undefined {
  const fixed:Record<string,string>={'/students':'students.view','/teachers':'teachers.view','/parents':'parents.view','/attendance':'attendance.view','/announcements':'announcements.view','/audit':'audit.view','/settings':'school.settings.manage','/subscription':'subscription.view','/home/manage':'school-home.manage','/home/preview':'school-home.manage','/notifications/templates':'notifications.manage','/notifications/history':'notifications.manage','/admin':'overview.view','/principal':'overview.view','/suite/fees':'fees.view','/suite/register':'attendance.mark','/suite/reports':'reports.view','/suite/allocation':'allocations.manage'}
  if(path.startsWith('/student360'))return 'reports.view'
  // Configuration modules that belong to a parent module share its permission, exactly as the server maps them.
- const alias:Record<string,string>={'fee-heads':'fee-structures','assessment-schemes':'exams'}
+ const alias:Record<string,string>={'fee-heads':'fee-structures','assessment-schemes':'exams','communications':'circulars'}
  const kind=path.startsWith('/suite/')?path.split('/')[2]:''
  return fixed[path]||(kind?(alias[kind]||kind)+'.view':undefined)
 }

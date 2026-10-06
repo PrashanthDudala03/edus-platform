@@ -15,8 +15,8 @@ to its own screen.
 
 | Event | Event key | Recipient (resolved on the server) | Destination | Variables | Status |
 |---|---|---|---|---|---|
-| Circular published | `circular.published` | The circular's audience by data scope, holding `circulars.view`; with a class set, that class's families and teachers (plus leadership when the audience is All) | `notices` | circularTitle, circularMessage, className, schoolName, date | IMPLEMENTED |
-| Announcement | none yet | To decide: announcements (`/operations/announcements`) are a staff-side list that overlaps with circulars | `notices` | to define | FUTURE |
+| Communication published | `circular.published` | The communication's audience by data scope (All, Staff, Teacher, Parent, Student, Family), holding `circulars.view`; with a class set, that class's families and teachers (plus leadership for All and Staff). Urgent or acknowledgement-required communications ignore a personal mute (see ../COMMUNICATION.md) | `notices` | circularTitle (prefixed "Urgent:" when urgent), circularMessage, className, schoolName, date | IMPLEMENTED |
+| Announcement | covered by Communication 2.0 | A communication of type Announcement is the same event; the legacy noticeboard (`/operations/announcements`) stays a staff-side list and sends nothing | `notices` | as above | IMPLEMENTED |
 | Student absent | `attendance.absent` | Parent accounts linked to the student (account link `relationship = parent`) whose role holds `reports.view` | `attendance` | studentName, className, date, schoolName | IMPLEMENTED |
 | Student late | `attendance.late` | As student absent | `attendance` | studentName, className, date, schoolName | IMPLEMENTED |
 | Attendance corrected | `attendance.corrected` | As student absent, when a submitted register is corrected for the student and the status changed | `attendance` | studentName, className, date, status, reason, schoolName | IMPLEMENTED |
@@ -46,7 +46,7 @@ to its own screen.
 
 | Event | Raised by | After | Sent once per |
 |---|---|---|---|
-| Circular published | a circular record is created | the record save commits | circular |
+| Communication published | a circular record becomes Published: created as Published, published by hand, or published by the scheduler at its time | the write commits | communication. Editing the wording afterwards, archiving, or the scheduler running twice never repeats it |
 | Leave requested | a leave request record is created | the record save commits | request |
 | Leave approved / rejected | a leave request's status changes to Approved or Rejected | the record save commits | request version (a later, different decision is announced; the same save never twice) |
 | Student absent / late | `POST /suite/student-attendance` stores a student as Absent or Late for the first time that day | the register transaction commits | student and day, for a register of today or yesterday only. Saving again does not repeat it; a later correction is announced as a correction instead. Older registers notify nobody |

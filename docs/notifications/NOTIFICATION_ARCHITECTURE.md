@@ -12,7 +12,7 @@ Business transaction commits (a record, a register, a charge)
         notify.notifications   the final text, once per event key
         notify.recipients      one row per person = the in-app inbox (available at once)
         notify.deliveries      the outbox: one row per person, channel and target
-  -> delivery worker     (not built) takes due outbox rows -> channel adapter -> result, retry or give up
+  -> delivery worker     (Suite.NotificationWorker.cs) takes due outbox rows -> registered channel -> result, retry or give up
 ```
 
 Nothing is sent to an outside provider from the request that caused the event. In-app needs no sending: it is
@@ -28,6 +28,8 @@ data the suite already has. No queue or broker is used; the outbox is a table in
 | `services/school-service/Suite.Notifications.cs` | rules, event keys, outbox and device rules, the writer, producers, inbox and device API |
 | `services/school-service/Suite.NotificationTemplates.cs` | wording: defaults, placeholder rules, school wording, template API |
 | `services/school-service/Suite.NotificationHistory.cs` | delivery history API |
+| `services/school-service/Suite.NotificationWorker.cs` | channel contract (`IDeliveryChannel`), channel registry, the delivery worker |
+| `services/school-service/Suite.Communications.cs` | Communication 2.0: lifecycle, audience, publication, scheduling, read and acknowledgement tracking (see ../COMMUNICATION.md) |
 | `services/school-service/NotificationSchema.sql` | schema `notify` (idempotent, applied by the service on start) |
 | `services/shared/EduOS.ServiceAuth/FeatureCatalogue.cs` | which permission keys make up a module (shared with auth-service) |
 

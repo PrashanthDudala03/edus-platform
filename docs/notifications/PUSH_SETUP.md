@@ -13,7 +13,8 @@ says what is prepared, what the owner must create later, and the order to switch
 | Delivery rules (claim, retry gaps, give up, permanent failure, abandoned claim) | Written and tested (`DeliveryRules`) |
 | Push length limits (title 65, message 240) | In `NotificationRules.Limits` |
 | Mobile | A no-op seam only (`deviceRegistration` in `mobile/src/notifications/routes.ts`, already called at sign-out) |
-| Delivery worker, FCM adapter, push wording, mobile registration code | Not built |
+| Delivery worker and channel contract (`IDeliveryChannel`, `DeliveryChannels.Register`) | Built; no channel registered |
+| FCM adapter, push wording, mobile registration code | Not built |
 
 ## Device registration contract
 

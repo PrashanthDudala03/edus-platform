@@ -59,6 +59,8 @@ public static class PermissionAccess
             // onboarding and activation need onboarding.manage; the express accept and record writes need admissions.manage.
             "admissions" => read || p.ElementAtOrDefault(5) == "transition" ? "admissions.view" : p.ElementAtOrDefault(5) is "onboarding" or "activate" ? "onboarding.manage" : "admissions.manage",
             "circulars" => read ? "circulars.manage" : "circulars.acknowledge",
+            // Communications: a recipient's own feed and read marks need circulars.view; the workspace, summary, audience preview and every status move need circulars.manage.
+            "communications" => p.ElementAtOrDefault(4) == "feed" || p.ElementAtOrDefault(5) == "read" ? "circulars.view" : "circulars.manage",
             "absence-notifications" => "announcements.manage", _ => "unsupported" };
     }
 

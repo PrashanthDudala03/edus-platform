@@ -169,12 +169,12 @@ public static partial class Suite
     static TemplateOverride Own(JsonObject row) => new(Text(row, "title"), Text(row, "body"), Flag(row["enabled"]), (int)Number(row, "version"));
 
     /// <summary>Creates a notification from a template: the school's wording when it has one, otherwise the EduOS default.</summary>
-    static async Task<int> Send(NpgsqlConnection c, Guid school, string key, string eventKey, Dictionary<string, string?> values, Guid? entity, IEnumerable<Guid> candidates, Guid? actor, string source)
+    static async Task<int> Send(NpgsqlConnection c, Guid school, string key, string eventKey, Dictionary<string, string?> values, Guid? entity, IEnumerable<Guid> candidates, Guid? actor, string source, bool required = false)
     {
         var template = NotificationTemplates.Find(key); Require(template is not null, "Unknown notification template.");
         var own = (await Q(c, "SELECT title,body,enabled,version FROM notify.template_overrides WHERE school_id=@s AND template_key=@k AND channel='in-app'", ("s", school), ("k", key))).FirstOrDefault();
         var text = NotificationTemplates.Compose(template!, "in-app", own is null ? null : Own(own), values)!;
-        return await Notify(c, school, key, eventKey, text, template!.Route, entity, candidates, actor, source);
+        return await Notify(c, school, key, eventKey, text, template!.Route, entity, candidates, actor, source, required);
     }
 
     static async Task<string> SchoolName(NpgsqlConnection c, Guid school) => (await Q(c, "SELECT name FROM school_db.schools WHERE id=@s", ("s", school))).Select(row => Text(row, "name")).FirstOrDefault() ?? "";
