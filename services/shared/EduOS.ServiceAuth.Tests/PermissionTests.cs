@@ -115,6 +115,26 @@ public class PermissionTests
         Assert.Equal(permission,PermissionAccess.Required(path,method));
         Assert.False(PermissionAccess.Allows(Context("Custom","parent",path,method,"circulars.view")));
     }
+    [Theory]
+    [InlineData("/api/suite/communications","GET","circulars.manage")][InlineData("/api/v1/suite/communications/attention","GET","circulars.manage")][InlineData("/api/suite/communications/audience","POST","circulars.manage")]
+    [InlineData("/api/suite/communications/7c1d0000-0000-4000-8000-0000000000c1","GET","circulars.manage")][InlineData("/api/v1/suite/communications/7c1d0000-0000-4000-8000-0000000000c1/acknowledgements","GET","circulars.manage")]
+    [InlineData("/api/suite/communications/7c1d0000-0000-4000-8000-0000000000c1/publish","POST","circulars.manage")][InlineData("/api/suite/communications/7c1d0000-0000-4000-8000-0000000000c1/schedule","POST","circulars.manage")]
+    [InlineData("/api/suite/communications/7c1d0000-0000-4000-8000-0000000000c1/cancel","POST","circulars.manage")][InlineData("/api/v1/suite/communications/7c1d0000-0000-4000-8000-0000000000c1/archive","POST","circulars.manage")]
+    public void CommunicationManagementNeedsTheCircularsManagePermission(string path,string method,string permission)
+    {
+        Assert.Equal(permission,PermissionAccess.Required(path,method));
+        // Recipients hold view (and acknowledge); neither reaches the workspace, the summary, the audience preview or a status move.
+        foreach(var scope in new[]{"parent","student","teacher"})Assert.False(PermissionAccess.Allows(Context("Custom",scope,path,method,"circulars.view","circulars.acknowledge")));
+        Assert.True(PermissionAccess.Allows(Context("Custom","school",path,method,"circulars.manage")));
+    }
+    [Theory]
+    [InlineData("/api/suite/communications/feed","GET")][InlineData("/api/v1/suite/communications/7c1d0000-0000-4000-8000-0000000000c1/read","POST")]
+    public void ARecipientsOwnFeedAndReadMarksNeedOnlyTheViewPermission(string path,string method)
+    {
+        Assert.Equal("circulars.view",PermissionAccess.Required(path,method));
+        Assert.True(PermissionAccess.Allows(Context("Custom","parent",path,method,"circulars.view")));
+        Assert.False(PermissionAccess.Allows(Context("Custom","parent",path,method,"homework.view")));
+    }
     [Fact]
     public void UnknownEndpointsFailClosed()=>Assert.False(PermissionAccess.Allows(Context("Administrator","school","/api/future-module","GET")));
     [Fact]

@@ -92,7 +92,8 @@ public static partial class Suite
             "homework"=>a.Homework.Contains(Text(d,"id"))&&(a.Role=="Teacher"||HomeworkRules.Status(Text(d,"status"))!="Draft"),
             "submissions"=>a.Students.Contains(Text(d,"studentId"))&&a.Homework.Contains(Text(d,"homeworkId")),
             "certificates"=>a.Students.Contains(Text(d,"studentId")),
-            "circulars"=>(Text(d,"audience")=="All"||Text(d,"audience")==a.Role)&&(Text(d,"classId")==""||a.Classes.Contains(Text(d,"classId"))),
+            // A published communication is read by the people it addresses; a draft, scheduled or cancelled one only by its author (CommunicationRules).
+            "circulars"=>CommunicationRules.Visible(Text(d,"status"),Text(d,"audience"),Text(d,"classId"),a.Role,a.Classes,Text(d,"authorId")==a.User.ToString()),
             "messages"=>Text(d,"recipientUserId")==a.User.ToString(),
             "timetable"=>a.Classes.Contains(Text(d,"classId")),
             _=>false
@@ -107,6 +108,8 @@ public static partial class Suite
             else if(kind=="homework")Require(a.Classes.Contains(Text(d,"classId")),"This class is not assigned to you.",403);
             else if(kind=="marks")Require(a.Exams.Contains(Text(d,"examId"))&&a.Students.Contains(Text(d,"studentId")),"This result is outside your classes.",403);
             else if(kind=="submissions")Require(old is not null&&a.Homework.Contains(Text(d,"homeworkId"))&&a.Students.Contains(Text(d,"studentId"))&&Text(d,"response")==Text(old,"response")&&Text(d,"homeworkId")==Text(old,"homeworkId")&&Text(d,"studentId")==Text(old,"studentId"),"Teachers may add feedback to assigned submissions only.",403);
+            // A teacher given circulars.manage addresses the families of one of their own classes and changes only what they wrote.
+            else if(kind=="circulars")Require(Text(d,"classId")!=""&&a.Classes.Contains(Text(d,"classId"))&&CommunicationRules.TeacherAudiences.Contains(Text(d,"audience"))&&(old is null||Text(old,"authorId")==a.User.ToString()),"Teachers may address the families of their own classes only.",403);
             else if(kind!="messages")throw new SuiteError(403,"Action is not allowed.");
         } else {
             Require(kind=="submissions"&&a.Students.Contains(Text(d,"studentId"))&&a.Homework.Contains(Text(d,"homeworkId")),"Submission is outside your assigned student records.",403);
@@ -212,6 +215,7 @@ public static partial class Suite
             await E(c,"UPDATE auth_db.refresh_tokens SET revoked_at=now() WHERE user_id=@id AND school_id=@s AND revoked_at IS NULL",("id",Id(d,"userId")),("s",a.School));
             await E(c,"INSERT INTO auth_db.iam_audit(school_id,actor_id,actor_role,action,target_id,old_value,new_value) VALUES(@s,@u,@r,'profile.linked',@id,@old::jsonb,@new::jsonb)",("s",a.School),("u",a.User),("r",http.GetTenant().Role),("id",Id(d,"userId")),("old",old?.ToJsonString()??"null"),("new",d.ToJsonString()));
         }
+        if(kind=="circulars")await AuditCommunication(c,a,id.Value,d,old);
         await tx.CommitAsync();
         // Notifications follow the committed record; they can never undo or block the save.
         await Announce(kind,id.Value,d,old,a);

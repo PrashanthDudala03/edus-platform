@@ -41,7 +41,7 @@ backend code that is written but not deployed (see `docs/notifications/`).
 | Timetable | IMPLEMENTED | `GET /suite/records/timetable`, `GET /suite/options` | Weekly, by day. |
 | Results | IMPLEMENTED | `GET /suite/report-cards/{student}` | Published exams with components (Theory + Practical), grade, absent/exempt, overall percent and grade, attendance for the year. Printable report card: web only. |
 | Fees | IMPLEMENTED (view) | `GET /suite/fees/ledger/{student}` | Per child: outstanding, overdue, net and paid, instalments with their state, payments with receipt numbers and status. Online payment and receipt printing: web portal (shown only when the school has switched its provider on). |
-| Notices | PARTIAL | `circulars`, `calendar`, `messages` records, `POST /suite/circulars/{id}/acknowledge` | Read and acknowledge. Whether a circular was already acknowledged: BLOCKED BY API (no endpoint returns it), so the tick lasts for the session only. |
+| Notices | IMPLEMENTED | `GET /suite/communications/feed`, `POST /suite/communications/{id}/read`, `POST /suite/circulars/{id}/acknowledge`, `calendar`, `messages` records | Communication 2.0 feed with priority and acknowledgement badges; opening records the read; acknowledgement state comes from the server, so it survives sign-out. Leadership sees a "needs attention" card (`GET /suite/communications/attention`). Composing, scheduling and history: web. |
 | Calendar / events | IMPLEMENTED | `GET /suite/records/calendar` | Inside Notices. |
 | Exams | IMPLEMENTED | `GET /suite/exams/timetable` | Timetable: upcoming and held, with time and room; never a draft. |
 
@@ -55,7 +55,7 @@ backend code that is written but not deployed (see `docs/notifications/`).
 | Homework | IMPLEMENTED | `GET /suite/homework/overview`, `GET /suite/homework/{id}/submissions`, `PUT /suite/homework/{id}/verify|review/{studentId}` | Every assignment with handed in, to review and missing counts; student-by-student check (Completed, Late, Missing, Excused) and marks with feedback. Setting homework stays on the web. |
 | Timetable | IMPLEMENTED | `GET /suite/records/timetable` | |
 | Student / class view | PARTIAL | register rows | Students appear in the register by class. A student profile screen: FUTURE. |
-| Notices | PARTIAL | as Parent | |
+| Notices | IMPLEMENTED | as Parent | |
 | Leave | IMPLEMENTED | `leave-requests` records | Own requests and "Request leave". Needs the account linked to a staff profile. |
 | Exams | IMPLEMENTED | `GET /suite/exams/timetable`, `GET /suite/exams/overview`, `GET`/`POST /suite/exams/{id}/marksheet`, `POST /suite/exams/{id}/transition` | Timetable; marks entry per class with Present / Absent / Exempt, component fields, running total and grade; save as draft; submit for approval. Exam setup stays on the web. |
 
@@ -67,7 +67,7 @@ backend code that is written but not deployed (see `docs/notifications/`).
 | Homework | IMPLEMENTED | `GET /suite/homework/board`, `POST`/`PUT /suite/records/submissions` | Board with state per assignment; Mark as done, hand in a written answer, hand in again (earlier work kept on the server), late decided by the server; the teacher's check, marks and feedback. File uploads: web only (counted in the app). |
 | Attendance | IMPLEMENTED | `GET /suite/reports/attendance`, `GET /suite/reports/attendance/days` | Monthly totals and each marked day with its reason. |
 | Results | IMPLEMENTED | `GET /suite/report-cards/{student}` | As for parents, own record only. |
-| Notices, calendar | PARTIAL / IMPLEMENTED | as Parent | |
+| Notices, calendar | IMPLEMENTED | as Parent | |
 | Exams | IMPLEMENTED | `GET /suite/exams/timetable` | Scheduled exams (server rule); results only once published. |
 
 ## Principal / Administrator
@@ -79,7 +79,7 @@ backend code that is written but not deployed (see `docs/notifications/`).
 | Academics | IMPLEMENTED | `GET /suite/exams/timetable`, `GET /suite/exams/overview`, `GET /suite/exams/{id}/marksheet`, `POST /suite/exams/{id}/transition` | Timetable; every exam's stage with marks entered, awaiting approval and published counts; open a sheet to approve, return with a reason, or publish. Analytics and exam setup stay on the web. |
 | Fee overview | IMPLEMENTED (view) | `GET /suite/fees` | Totals and charges. Issuing charges and recording payments stay on the web. |
 | Leave approvals | IMPLEMENTED | `PUT /suite/records/leave-requests/{id}` | Approve or reject with a remark; version-checked. |
-| Notices, calendar | PARTIAL / IMPLEMENTED | as Parent | Publishing circulars from the app: FUTURE. |
+| Notices, calendar | IMPLEMENTED | as Parent, plus the needs-attention card | Publishing communications from the app: FUTURE (web only). |
 | Configuration, users, admissions, imports, certificates | Not for mobile | | Web only by design. |
 
 ## API gaps (documented, not worked around)

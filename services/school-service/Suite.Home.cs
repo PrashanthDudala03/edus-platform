@@ -136,7 +136,7 @@ public static partial class Suite
             }
             else if(key=="announcements"&&a.Can("circulars.view")){
                 // The same audience and class rules as the circulars module decide what this caller may read.
-                var notices=(await Records(c,a.School,"circulars")).Where(n=>Readable("circulars",n,a)).Take(Shown(part["count"]));
+                var notices=(await Records(c,a.School,"circulars")).Where(n=>CommunicationRules.Live(Text(n,"status"))&&Readable("circulars",n,a)).Take(Shown(part["count"]));
                 content=new JsonObject{["items"]=List(notices.Select(n=>new JsonObject{["title"]=Text(n,"title"),["message"]=Text(n,"message"),["createdAt"]=n["createdAt"]?.DeepClone()}))};
             }
             if(content is not null)sections.Add(new JsonObject{["key"]=key,["content"]=content});

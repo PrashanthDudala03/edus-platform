@@ -298,6 +298,81 @@ test.describe.serial('Complete school suite',()=>{
   expect(sql("SELECT 'active='||count(*) FROM auth_db.users u JOIN auth_db.roles r ON r.id=u.role_id WHERE u.school_id='"+schoolId+"' AND u.is_active AND u.deleted_at IS NULL AND r.name='Administrator'")).toContain('active=2')
  })
 
+ test('publishes an urgent communication to the parents of one class, exactly once, and tracks who read and acknowledged it',async()=>{
+  const tag=schoolId.slice(0,8),key=(id:string)=>"'circular.published:"+id+"'"
+  const count=(where:string)=>Number(/n=(\d+)/.exec(sql("SELECT 'n='||count(*) FROM "+where))![1])
+  const notified=(id:string)=>count("notify.recipients r JOIN notify.notifications n ON n.id=r.notification_id WHERE n.school_id='"+schoolId+"' AND n.event_key="+key(id))
+  // A second class with its own teacher and no families: it must receive nothing.
+  const other=(await good('POST','/teachers',{schoolId,employeeCode:'ST-9'+tag,firstName:'Other',lastName:'Teacher',email:'other'+schoolId+'@example.test',phoneNumber:'9000000012',department:'Arts'},'Administrator',201)).id
+  const otherClass=await create('classes',{name:'Grade 9',section:'C',yearId:year,teacherId:other,capacity:30})
+  // The principal drafts it: nobody but leadership sees a draft, and the audience is counted on the server.
+  const body={title:'Severe weather: school closed '+tag,message:'The school stays closed tomorrow.',audience:'Parent',classId:cl,type:'Alert',priority:'Urgent',requiresAcknowledgement:'Yes'}
+  const draft=await create('circulars',{...body,status:'Draft'},'Principal')
+  expect((await good('GET','/suite/communications/'+draft,undefined,'Principal')).status).toBe('Draft')
+  expect((await good('GET','/suite/communications/feed',undefined,'Parent')).items.map((i:any)=>i.id)).not.toContain(draft)
+  expect((await list('circulars','Parent')).map((r:any)=>r.id)).not.toContain(draft)
+  expect(await good('POST','/suite/communications/audience',{audience:'Parent',classId:cl},'Principal')).toEqual({count:1,label:'Parents of Grade 6 - A'})
+  expect((await good('POST','/suite/communications/audience',{audience:'Parent',classId:otherClass},'Principal')).count).toBe(0)
+  expect((await req('POST','/suite/records/circulars',{...body,status:'Scheduled',publishAt:'2020-01-01T09:00:00Z'},'Principal')).status()).toBe(400)
+  // Families and teachers never reach the administrative calls; a student cannot see the draft by id.
+  for(const role of ['Teacher','Parent','Student']){for(const url of ['/suite/communications','/suite/communications/attention','/suite/communications/'+draft,'/suite/communications/'+draft+'/acknowledgements'])expect((await req('GET',url,undefined,role)).status(),role+' '+url).toBe(403)
+   expect((await req('POST','/suite/communications/'+draft+'/publish',{version:1},role)).status()).toBe(403);expect((await req('POST','/suite/communications/audience',{audience:'All'},role)).status()).toBe(403)}
+  expect((await req('POST','/suite/communications/'+draft+'/read',undefined,'Parent')).status()).toBe(404)
+  // A double click publishes once: both requests succeed, one notification exists, one person was told.
+  const clicks=await Promise.all([req('POST','/suite/communications/'+draft+'/publish',{version:1},'Principal'),req('POST','/suite/communications/'+draft+'/publish',{version:1},'Principal')])
+  expect(clicks.map(r=>r.status())).toEqual([200,200])
+  const published=await good('GET','/suite/communications/'+draft,undefined,'Principal')
+  expect([published.status,published.snapshot.count,published.snapshot.audience,published.counts.intended,published.counts.notified,published.counts.read,published.counts.outstanding]).toEqual(['Published',1,'Parents of Grade 6 - A',1,1,0,1])
+  expect(count("notify.notifications WHERE school_id='"+schoolId+"' AND event_key="+key(draft))).toBe(1);expect(notified(draft)).toBe(1)
+  // Only the parent of Grade 6 - A was told, with the urgency in the title; the student, the teacher and the other class heard nothing.
+  const inbox=await good('GET','/notifications',undefined,'Parent'),note=inbox.items.find((i:any)=>i.destination?.entityId===draft)
+  expect([note.type,note.title,note.readAt,note.destination.route]).toEqual(['circular.published','Urgent: Severe weather: school closed '+tag,null,'notices'])
+  expect((await good('GET','/notifications/unread-count',undefined,'Parent')).unread).toBe(inbox.unread);expect(inbox.unread).toBeGreaterThanOrEqual(1)
+  for(const role of ['Student','Teacher','Principal'])expect((await good('GET','/notifications',undefined,role)).items.some((i:any)=>i.destination?.entityId===draft),role).toBe(false)
+  // The parent opens it (read recorded once) and acknowledges twice (recorded once); leadership sees the figures and the names, never contact details.
+  const feed=await good('GET','/suite/communications/feed',undefined,'Parent'),mine=feed.items.find((i:any)=>i.id===draft)
+  expect([mine.priority,mine.requiresAcknowledgement,mine.readAt,mine.acknowledgedAt,mine.canAcknowledge]).toEqual(['Urgent',true,null,null,true]);expect(feed.acknowledgementsDue).toBeGreaterThanOrEqual(1)
+  expect((await good('POST','/suite/communications/'+draft+'/read',undefined,'Parent')).readAt).toBeTruthy()
+  await good('POST','/suite/circulars/'+draft+'/acknowledge',undefined,'Parent');await good('POST','/suite/circulars/'+draft+'/acknowledge',undefined,'Parent')
+  expect((await req('POST','/suite/circulars/'+draft+'/acknowledge',undefined,'Student')).status()).toBe(403)
+  const tracked=await good('GET','/suite/communications/'+draft,undefined,'Principal');expect([tracked.counts.read,tracked.counts.acknowledged,tracked.counts.outstanding]).toEqual([1,1,0])
+  const who=await good('GET','/suite/communications/'+draft+'/acknowledgements',undefined,'Principal');expect([who.intended,who.acknowledged.length,who.outstanding]).toEqual([1,1,[]]);expect(JSON.stringify(who)).not.toContain('@')
+  expect((await good('GET','/notifications',undefined,'Parent')).items.find((i:any)=>i.destination?.entityId===draft).readAt).toBeTruthy()
+  expect(count("suite.acknowledgements WHERE school_id='"+schoolId+"' AND record_id='"+draft+"'")).toBe(1)
+  expect(count("suite.audit WHERE school_id='"+schoolId+"' AND entity_id='"+draft+"' AND action='communication.published'")).toBe(1)
+  // After publication the audience is frozen; the wording may change (audited) and that never notifies again.
+  expect((await req('PUT','/suite/records/circulars/'+draft,{...body,audience:'All',classId:'',status:'Published',version:tracked.version},'Principal')).status()).toBe(409)
+  await good('PUT','/suite/records/circulars/'+draft,{...body,message:'The school stays closed tomorrow. Buses do not run.',status:'Published',version:tracked.version},'Principal')
+  expect(count("suite.audit WHERE school_id='"+schoolId+"' AND entity_id='"+draft+"' AND action='communication.edited'")).toBe(1);expect(notified(draft)).toBe(1)
+  // A teacher given the permission addresses the families of their own class only, never another class, staff or the school, and never urgently.
+  sql("INSERT INTO auth_db.role_permissions(id,role_id,permission_key) SELECT gen_random_uuid(),id,'circulars.manage' FROM auth_db.roles WHERE school_id='"+schoolId+"' AND name='Teacher'");await login('Teacher')
+  const own=await create('circulars',{title:'Homework diary '+tag,message:'Please sign the diary.',audience:'Parent',classId:cl,status:'Published'},'Teacher')
+  expect(notified(own)).toBe(1)
+  for(const attempt of [{audience:'Parent',classId:otherClass},{audience:'All',classId:cl},{audience:'Staff',classId:cl},{audience:'Parent',classId:cl,priority:'Urgent'},{audience:'Parent',classId:''}])
+   expect((await req('POST','/suite/records/circulars',{title:'Not allowed',message:'x',status:'Published',...attempt},'Teacher')).status(),JSON.stringify(attempt)).toBe(403)
+  expect((await req('POST','/suite/communications/'+draft+'/archive',{version:tracked.version+1},'Teacher')).status()).toBe(403)
+  sql("DELETE FROM auth_db.role_permissions WHERE permission_key='circulars.manage' AND role_id IN(SELECT id FROM auth_db.roles WHERE school_id='"+schoolId+"' AND name='Teacher')");await login('Teacher')
+  // Scheduling is durable state: a scheduled communication tells nobody, needs a reason to cancel, and a cancelled one never goes out.
+  const scheduled=await create('circulars',{title:'Sports day '+tag,message:'Volunteers needed.',audience:'All',status:'Scheduled',publishAt:'2030-01-01T09:00:00Z'},'Principal')
+  expect((await good('GET','/suite/communications/feed',undefined,'Parent')).items.map((i:any)=>i.id)).not.toContain(scheduled);expect(notified(scheduled)).toBe(0)
+  expect((await req('POST','/suite/communications/'+scheduled+'/cancel',{version:1},'Principal')).status()).toBe(400)
+  await good('POST','/suite/communications/'+scheduled+'/cancel',{version:1,reason:'Postponed'},'Principal')
+  expect((await good('GET','/suite/communications/'+scheduled,undefined,'Principal')).status).toBe('Cancelled');expect(notified(scheduled)).toBe(0)
+  expect((await req('POST','/suite/communications/'+scheduled+'/publish',{version:2},'Principal')).status()).toBe(409)
+  const attention=await good('GET','/suite/communications/attention',undefined,'Principal');expect(attention.urgent.some((i:any)=>i.id===draft)).toBe(true);expect(attention.deliveries.channels).toEqual(['in-app'])
+  // One existing business event, end to end: the published exam reached the family's inbox with a destination the family may open.
+  const result=(await good('GET','/notifications',undefined,'Parent')).items.find((i:any)=>i.type==='result.published')
+  expect([result.destination.route,result.destination.entityId]).toEqual(['results',exam]);expect(result.title).toContain('Term 1')
+  expect((await good('GET','/notifications',undefined,'Student')).items.some((i:any)=>i.type==='result.published')).toBe(true)
+  expect((await good('GET','/notifications',undefined,'Teacher')).items.some((i:any)=>i.type==='result.published')).toBe(false)
+  expect(count("notify.notifications WHERE school_id='"+schoolId+"' AND event_key='result.published:"+exam+"'")).toBe(1)
+  expect((await list('marks','Parent')).map((m:any)=>m.examId)).toContain(exam)
+  // Archiving keeps the history and takes it out of the feed.
+  await good('POST','/suite/communications/'+draft+'/archive',{version:tracked.version+1},'Principal')
+  expect((await good('GET','/suite/communications/'+draft,undefined,'Principal')).history.map((h:any)=>h.to)).toEqual(['Draft','Published','Archived'])
+  expect((await good('GET','/suite/communications/feed',undefined,'Parent')).items.map((i:any)=>i.id)).not.toContain(draft)
+ })
+
  test('takes one child from application to active student: decisions, duplicates, onboarding, activation and what each role then sees',async()=>{
   const tag=schoolId.slice(0,8),guardianEmail='omar'+schoolId+'@example.test',childEmail='zara'+schoolId+'@example.test'
   const application={firstName:'Zara',lastName:'Newton',dateOfBirth:'2015-06-09',gender:'Female',email:childEmail,guardianName:'Omar Newton',guardianEmail,guardianPhone:'8'+Date.now().toString().slice(-9),address:'4 Admission Road',classId:cl,reviewNotes:'Strong interview '+tag}

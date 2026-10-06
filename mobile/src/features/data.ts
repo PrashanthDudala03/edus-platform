@@ -4,6 +4,7 @@ import { api, useSession } from '@/services'
 import { isoMonth } from '@/utils/format'
 import type { Candidate, Operations, Period, Substitution, TimetableDay } from './timetable'
 import type { AdmissionDetail, AdmissionPipeline } from './admissions'
+import { dedupe, type CommunicationAttention, type CommunicationFeed } from './communications'
 import type { Assignment, AttendanceStatus, BoardItem, CalendarEvent, Charge, ChargeState, Child, Circular, ClassRegister, DayRecord, Exam, ExamOverview, ExamStatus, FeeSummary, LedgerTotals, StudentLedger, Homework, HomeworkGroup, HomeworkSubmission, Leave, MarkStatus, Marksheet, Message, OverviewItem, RegisterRow, RegisterTotals, ReportCard, ReportResult, ReviewRow, S360Timeline, Scheme, SheetMark, Student360, Submission, TimetableExam } from './logic'
 
 // Every request the core modules make, in one place. Each is an existing EduOS endpoint that already limits rows to
@@ -166,7 +167,25 @@ export function useSaveRegister(day: string) {
   return useMutation({ mutationFn: async (input: { entries: { studentId: string, status: AttendanceStatus, reason?: string, remark?: string }[], submit?: boolean, reason?: string, remark?: string }) => (await api.post('/suite/student-attendance', { day, ...input })).data as { message?: string },
     onSuccess: () => Promise.all([cache.invalidateQueries({ queryKey: ['register', day] }), cache.invalidateQueries({ queryKey: ['registers', day] }), cache.invalidateQueries({ queryKey: ['operations-overview'] }), cache.invalidateQueries({ queryKey: ['attendance-report'] }), cache.invalidateQueries({ queryKey: ['attendance-days'] })]) })
 }
-export function useAcknowledge() { return useMutation({ mutationFn: (circularId: string) => api.post(`/suite/circulars/${circularId}/acknowledge`) }) }
+/** Acknowledging is idempotent on the server; the feed is re-read so the recorded state, not a local tick, is shown. */
+export function useAcknowledge() { const cache = useQueryClient(); return useMutation({ mutationFn: (circularId: string) => api.post(`/suite/circulars/${circularId}/acknowledge`), onSettled: () => cache.invalidateQueries({ queryKey: ['communications'] }) }) }
+/** The communications addressed to this account with its own read and acknowledgement state (Communication 2.0). */
+export function useCommunicationFeed(enabled = true) {
+  const allowed = usePermission('circulars.view')
+  return useQuery({ queryKey: ['communications', 'feed'], enabled: enabled && allowed, staleTime: 30_000, queryFn: async (): Promise<CommunicationFeed> => {
+    const d = await get<Row>('/suite/communications/feed', { page: 1 })
+    const items = (Array.isArray(d.items) ? d.items as Row[] : []).map(r => ({ id: s(r.id), title: s(r.title), message: s(r.message), type: s(r.type), priority: s(r.priority) || 'Normal', audience: s(r.audience), className: s(r.className), publishedAt: s(r.publishedAt), expiresOn: s(r.expiresOn), expired: r.expired === true,
+      requiresAcknowledgement: r.requiresAcknowledgement === true, acknowledgeBy: s(r.acknowledgeBy), readAt: r.readAt ? s(r.readAt) : null, acknowledgedAt: r.acknowledgedAt ? s(r.acknowledgedAt) : null, canAcknowledge: r.canAcknowledge === true }))
+    return { items: dedupe(items), total: n(d.total), acknowledgementsDue: n(d.acknowledgementsDue) }
+  } })
+}
+/** Opening a communication records that this account read it; nothing else changes. */
+export function useMarkCommunicationRead() { const cache = useQueryClient(); return useMutation({ mutationFn: (id: string) => api.post(`/suite/communications/${id}/read`), onSettled: () => Promise.all([cache.invalidateQueries({ queryKey: ['communications'] }), cache.invalidateQueries({ queryKey: ['notifications'] })]) }) }
+/** Leadership's communication summary: what needs attention. Only a school-wide account that manages communications may read it. */
+export function useCommunicationAttention(enabled = true) {
+  const allowed = usePermission('circulars.manage'), schoolWide = useSession(state => state.user?.dataScope === 'school')
+  return useQuery({ queryKey: ['communications', 'attention'], enabled: enabled && allowed && schoolWide, staleTime: 60_000, queryFn: () => get<CommunicationAttention>('/suite/communications/attention') })
+}
 const assignment = (r: Row): Assignment => ({ id: s(r.id), title: s(r.title), className: s(r.className), subjectName: s(r.subjectName), teacher: s(r.teacher), instructions: s(r.instructions), dueDate: s(r.dueDate).slice(0, 10), dueTime: s(r.dueTime), maxMarks: s(r.maxMarks), submissionMode: (['None', 'Done', 'Text', 'File', 'Physical'].includes(s(r.submissionMode)) ? s(r.submissionMode) : 'Text') as Assignment['submissionMode'], status: (s(r.status) || 'Published') as Assignment['status'], attachments: n(r.attachments) })
 const submission = (r: unknown): HomeworkSubmission | null => { if (!r || typeof r !== 'object') return null; const x = r as Row; return { id: s(x.id), version: n(x.version), status: s(x.status) === 'Reviewed' ? 'Reviewed' : s(x.status) === 'Submitted' ? 'Submitted' : '', submittedAt: s(x.submittedAt), late: x.late === true, outcome: (['Completed', 'Late', 'Missing', 'Excused'].includes(s(x.outcome)) ? s(x.outcome) : '') as HomeworkSubmission['outcome'], response: s(x.response), grade: s(x.grade), feedback: s(x.feedback), resubmissions: n(x.resubmissions), attachments: n(x.attachments) } }
 /** One student's assignments with their state (due today, upcoming, submitted, reviewed, late, missing). The server limits it to linked students. */

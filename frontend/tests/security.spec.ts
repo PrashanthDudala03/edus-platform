@@ -273,6 +273,44 @@ test.describe.serial('Security boundaries against real Docker services',()=>{
   expect((await ok(B,'Administrator','GET','/users')).data.map((u:any)=>u.isActive)).toEqual([true,true,true,true])
  })
 
+ test('communications stay inside the school and the family',async()=>{
+  // A draft of school A: unknown to school B by id, and to every role of A that does not manage communications.
+  const aDraft=(await ok(A,'Administrator','POST','/suite/records/circulars',{title:'Draft a',message:'Not yet.',audience:'All',status:'Draft'},201)).id
+  await denied(B,'Administrator','GET','/suite/communications/'+aDraft,undefined,404)
+  await denied(B,'Administrator','GET','/suite/communications/'+aDraft+'/acknowledgements',undefined,404)
+  for(const action of ['publish','schedule','cancel','archive'])await denied(B,'Administrator','POST','/suite/communications/'+aDraft+'/'+action,{version:1,reason:'x',publishAt:'2030-01-01T09:00:00Z'},404)
+  await denied(B,'Administrator','PUT','/suite/records/circulars/'+aDraft,{title:'Hijacked',message:'x',audience:'All',status:'Published',version:1},404)
+  // School B's class cannot be an audience of school A, and B's communications cannot be read, marked read or acknowledged from A.
+  await denied(A,'Administrator','POST','/suite/records/circulars',{title:'Cross',message:'x',audience:'Parent',classId:B.cl,status:'Published'},404)
+  await denied(A,'Administrator','POST','/suite/communications/audience',{audience:'Parent',classId:B.cl},404)
+  await denied(A,'Administrator','GET','/suite/communications/'+B.circular,undefined,404)
+  await denied(A,'Administrator','GET','/suite/communications/'+B.circular+'/acknowledgements',undefined,404)
+  await denied(A,'Administrator','POST','/suite/communications/'+B.circular+'/archive',{version:1},404)
+  await denied(A,'Parent','POST','/suite/communications/'+B.circular+'/read',undefined,404)
+  await denied(A,'Parent','POST','/suite/circulars/'+B.circular+'/acknowledge',undefined,404)
+  expect((await ok(A,'Parent','GET','/suite/communications/feed')).items.map((i:any)=>i.id)).toEqual([A.circular])
+  expect(JSON.stringify(await ok(B,'Administrator','GET','/suite/communications'))).not.toContain('Draft a')
+  expect(JSON.stringify(await ok(A,'Administrator','GET','/suite/communications/attention'))).not.toContain('Notice b')
+  // Within school A: teacher, parent and student hold no administrative communication capability; a parent cannot see a draft by any route.
+  for(const role of lower){
+   await denied(A,role,'GET','/suite/communications');await denied(A,role,'GET','/suite/communications/attention');await denied(A,role,'GET','/suite/communications/'+aDraft)
+   await denied(A,role,'POST','/suite/communications/audience',{audience:'All'});await denied(A,role,'POST','/suite/communications/'+A.circular+'/archive',{version:1})
+   await denied(A,role,'POST','/suite/communications/'+aDraft+'/publish',{version:1});await denied(A,role,'POST','/suite/communications/'+aDraft+'/read',undefined,404)
+   expect((await ok(A,role,'GET','/suite/communications/feed')).items.map((i:any)=>i.id)).toEqual([A.circular])
+  }
+  // The family boundary: school B's parent sees only B's communication and cannot touch A's; nobody acknowledges for anyone else.
+  await login(B,'Parent')
+  expect((await ok(B,'Parent','GET','/suite/communications/feed')).items.map((i:any)=>i.id)).toEqual([B.circular])
+  await denied(B,'Parent','POST','/suite/communications/'+A.circular+'/read',undefined,404);await denied(B,'Parent','POST','/suite/circulars/'+A.circular+'/acknowledge',undefined,404)
+  await ok(B,'Parent','POST','/suite/circulars/'+B.circular+'/acknowledge')
+  expect((await ok(A,'Administrator','GET','/suite/circulars/'+A.circular+'/acknowledgements')).map((r:any)=>r.name)).not.toContain('Parent QA b')
+  const inboxA=await ok(A,'Parent','GET','/notifications');expect(inboxA.items.some((i:any)=>i.destination?.entityId===B.circular)).toBe(false)
+  await denied(A,'Parent','POST','/notifications/'+randomUUID()+'/read',undefined,404)
+  // School A's draft never became visible or sent while being refused everywhere above.
+  expect((await ok(A,'Administrator','GET','/suite/communications/'+aDraft)).status).toBe('Draft')
+  expect(sql("SELECT 'n='||count(*) FROM notify.notifications WHERE school_id='"+A.id+"' AND event_key='circular.published:"+aDraft+"'")).toContain('n=0')
+ })
+
  test('disable and delete end sessions and refresh cannot resurrect them after re-enable',async()=>{
   const before=A.tokens.Teacher
   await ok(A,'Teacher','GET','/suite/catalog')

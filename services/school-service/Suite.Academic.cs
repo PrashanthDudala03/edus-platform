@@ -51,7 +51,7 @@ public static partial class Suite
             }else if(old?["history"] is not null)d["history"]=old["history"]!.DeepClone();
             d["enteredBy"]=a.User.ToString();d["enteredAt"]=DateTime.UtcNow.ToString("o");
         }
-        if(kind=="circulars"&&Text(d,"dueDate")!="")Require(Day(d,"dueDate")>=DateOnly.FromDateTime(DateTime.UtcNow),"Acknowledgement deadline cannot be in the past.");
+        if(kind=="circulars")await ValidateCommunication(c,a,d,old,id);
         if(kind=="calendar")Require(Day(d,"startsOn")<=Day(d,"endsOn"),"Event end date must follow its start.");
         if(kind=="messages"&&!a.SchoolWide){
             var links=await Records(c,a.School,"account-links");Require(links.Any(l=>Text(l,"userId")==Text(d,"recipientUserId")&&a.Students.Contains(Text(l,"studentId"))),"Teachers may message linked accounts in their assigned classes only.",403);
@@ -141,6 +141,7 @@ public static partial class Suite
         // Express acceptance (pre-2.0): activation in one step for a submitted or approved application. Admissions 2.0 uses onboarding.
         group.MapPost("/admissions/{id:guid}/accept",async(Guid id,HttpContext http)=>await Activate(id,http,true));
         MapAdmissions(group);
+        MapCommunications(group);
         group.MapPost("/allocate",async(JsonObject d,HttpContext http)=>{
             await using var c=await Open();var a=await Access(http,c);Require(a.Admin,"Only administrators can allocate or promote students.",403);
             Require(d["studentIds"] is JsonArray,"Student IDs must be an array.");var ids=d["studentIds"]?.AsArray().Select(n=>Guid.Parse(n!.ToString())).Distinct().ToList()??[];
@@ -156,6 +157,8 @@ public static partial class Suite
         });
         group.MapPost("/circulars/{id:guid}/acknowledge",async(Guid id,HttpContext http)=>{
             await using var c=await Open();var a=await Access(http,c);var record=await Get(c,a.School,"circulars",id);Require(Readable("circulars",record,a),"Circular is not addressed to your account.",403);
+            Require(CommunicationRules.Live(Text(record,"status")),"This communication is not open for acknowledgement.",409);
+            // Acknowledging is idempotent: the primary key makes a second tap a no-op, and nobody can acknowledge for another person.
             await E(c,"INSERT INTO suite.acknowledgements(school_id,record_id,user_id) VALUES(@s,@r,@u) ON CONFLICT DO NOTHING",("s",a.School),("r",id),("u",a.User));return Results.Ok(new{message="Acknowledgement recorded."});
         });
         group.MapGet("/circulars/{id:guid}/acknowledgements",async(Guid id,HttpContext http)=>{
