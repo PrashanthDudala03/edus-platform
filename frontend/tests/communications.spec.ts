@@ -132,7 +132,8 @@ test.describe('Communication 2.0', () => {
     await d.getByRole('button', { name: 'Next' }).click()
     await expect(d.getByLabel('Priority').locator('option')).toHaveText(['Normal', 'Important'])
     await d.getByRole('button', { name: 'Next' }).click()
-    await expect(d.getByRole('alert')).toContainText('Choose one of your classes.')
+    // The review lists the blockers; the server's own refusal of the audience preview may show beside it, so name the list.
+    await expect(d.locator('ul[role=alert]')).toContainText('Choose one of your classes.')
     await expect(d.getByRole('button', { name: 'Publish', exact: true })).toBeDisabled()
     await d.getByRole('button', { name: 'Back' }).click(); await d.getByRole('button', { name: 'Back' }).click()
     await d.getByLabel('Class', { exact: true }).selectOption(C1)
