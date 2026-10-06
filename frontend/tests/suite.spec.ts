@@ -352,7 +352,8 @@ test.describe.serial('Complete school suite',()=>{
   expect(notified(own)).toBe(1)
   for(const attempt of [{audience:'Parent',classId:otherClass},{audience:'All',classId:cl},{audience:'Staff',classId:cl},{audience:'Parent',classId:cl,priority:'Urgent'},{audience:'Parent',classId:''}])
    expect((await req('POST','/suite/records/circulars',{title:'Not allowed',message:'x',status:'Published',...attempt},'Teacher')).status(),JSON.stringify(attempt)).toBe(403)
-  expect((await req('POST','/suite/communications/'+draft+'/archive',{version:tracked.version+1},'Teacher')).status()).toBe(403)
+  // A communication not addressed to the teacher is unknown to them, even with the permission: 404, nothing learned.
+  expect((await req('POST','/suite/communications/'+draft+'/archive',{version:tracked.version+1},'Teacher')).status()).toBe(404)
   sql("DELETE FROM auth_db.role_permissions WHERE permission_key='circulars.manage' AND role_id IN(SELECT id FROM auth_db.roles WHERE school_id='"+schoolId+"' AND name='Teacher')");await login('Teacher')
   // Scheduling is durable state: a scheduled communication tells nobody, needs a reason to cancel, and a cancelled one never goes out.
   const scheduled=await create('circulars',{title:'Sports day '+tag,message:'Volunteers needed.',audience:'All',status:'Scheduled',publishAt:'2030-01-01T09:00:00Z'},'Principal')
