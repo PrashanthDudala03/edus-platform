@@ -18,7 +18,7 @@ public static class EduOSAuthenticationExtensions
     /// <summary>
     /// Validation rules shared by the gateway and every service: RSA-SHA256
     /// signature against the auth-service public key, exact issuer and
-    /// audience, lifetime with no clock skew.
+    /// audience, bounded not-before tolerance and strict expiration.
     /// </summary>
     public static TokenValidationParameters BuildTokenValidationParameters(string publicKeyPem, string issuer, string audience)
     {
@@ -35,6 +35,7 @@ public static class EduOSAuthenticationExtensions
             ValidAudience = audience,
             ValidateLifetime = true,
             ClockSkew = TimeSpan.Zero,
+            LifetimeValidator = (notBefore, expires, _, _) => JwtLifetime.IsValid(notBefore, expires, DateTime.UtcNow),
             RoleClaimType = ClaimTypes.Role,
             NameClaimType = ClaimTypes.NameIdentifier,
         };

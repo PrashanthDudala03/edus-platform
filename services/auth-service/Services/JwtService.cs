@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using Microsoft.IdentityModel.Tokens;
 using Services.Auth.Models;
+using EduOS.ServiceAuth;
 
 namespace Services.Auth.Services;
 
@@ -27,15 +28,16 @@ public class JwtService : IJwtService
 {
     private readonly JwtSettings _settings;
     private readonly RSA _privateKey;
-    private readonly RSA _publicKey;
+    private readonly TokenValidationParameters _validationParameters;
 
     public JwtService(JwtSettings settings)
     {
         _settings = settings;
         _privateKey = RSA.Create();
-        _publicKey = RSA.Create();
         _privateKey.ImportFromPem(_settings.PrivateKeyPem.AsSpan());
-        _publicKey.ImportFromPem(_settings.PublicKeyPem.AsSpan());
+        _validationParameters = EduOSAuthenticationExtensions.BuildTokenValidationParameters(
+            _settings.PublicKeyPem, _settings.Issuer, _settings.Audience);
+        _validationParameters.NameClaimType = ClaimTypes.Name;
     }
 
     public JwtTokenResponse IssueTokens(User user)
@@ -95,19 +97,7 @@ public class JwtService : IJwtService
         try
         {
             var handler = new JwtSecurityTokenHandler();
-            var validationParameters = new TokenValidationParameters
-            {
-                ValidateIssuerSigningKey = true,
-                IssuerSigningKey = new RsaSecurityKey(_publicKey),
-                ValidateIssuer = true,
-                ValidIssuer = _settings.Issuer,
-                ValidateAudience = true,
-                ValidAudience = _settings.Audience,
-                ValidateLifetime = true,
-                ClockSkew = TimeSpan.Zero
-            };
-
-            var principal = handler.ValidateToken(token, validationParameters, out var validatedToken);
+            var principal = handler.ValidateToken(token, _validationParameters, out var validatedToken);
             return principal;
         }
         catch

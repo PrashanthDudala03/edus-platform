@@ -195,14 +195,15 @@ CREATE TABLE IF NOT EXISTS parent_db.parents (
     first_name VARCHAR(100) NOT NULL,
     last_name VARCHAR(100) NOT NULL,
     email VARCHAR(255) NOT NULL UNIQUE,
-    phone_number VARCHAR(20) NOT NULL UNIQUE,
+    phone_number VARCHAR(20) NOT NULL,
     occupation VARCHAR(100),
     address TEXT,
     alternate_phone VARCHAR(20),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMPTZ,
-    created_by_user_id UUID
+    created_by_user_id UUID,
+    CONSTRAINT parents_school_phone_number_key UNIQUE (school_id, phone_number)
 );
 
 CREATE INDEX idx_parents_school_id ON parent_db.parents(school_id);
