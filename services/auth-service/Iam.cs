@@ -69,6 +69,8 @@ public static class Iam
         await db.Database.ExecuteSqlRawAsync(timetableLeave.Replace("{","{{").Replace("}","}}"));
         var admissions=await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory,"Migrations/20261006_01_admissions_onboarding.sql"));
         await db.Database.ExecuteSqlRawAsync(admissions.Replace("{","{{").Replace("}","}}"));
+        var guardianPhone=await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory,"Migrations/20261007_01_guardian_phone_scope.sql"));
+        await db.Database.ExecuteSqlRawAsync(guardianPhone.Replace("{","{{").Replace("}","}}"));
         await tx.CommitAsync();
     }
 

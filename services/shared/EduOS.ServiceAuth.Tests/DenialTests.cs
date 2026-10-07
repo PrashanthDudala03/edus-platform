@@ -28,8 +28,12 @@ public sealed class ServiceHost : IAsyncLifetime
     public Guid School { get; } = Guid.NewGuid();
     public HttpClient Client { get; private set; } = null!;
     private WebApplication? app;
+    public int SessionVersion { get; set; }
+    public HttpStatusCode SessionStatus { get; set; } = HttpStatusCode.OK;
 
-    public async Task InitializeAsync()
+    public Task InitializeAsync() => InitializeAsync(false);
+
+    public async Task InitializeAsync(bool validateSession)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
@@ -41,7 +45,12 @@ public sealed class ServiceHost : IAsyncLifetime
             ["JWT_AUDIENCE"] = "edus-api",
         });
         // Signature/tenant tests isolate the session backend; live revocation is covered by IAM integration tests.
-        builder.Services.AddEduOSAuthentication(builder.Configuration, events=>events.OnTokenValidated=_=>Task.CompletedTask);
+        if (validateSession)
+        {
+            builder.Services.AddEduOSAuthentication(builder.Configuration);
+            builder.Services.AddHttpClient("eduos-session").ConfigurePrimaryHttpMessageHandler(() => new SessionHandler(this));
+        }
+        else builder.Services.AddEduOSAuthentication(builder.Configuration, events=>events.OnTokenValidated=_=>Task.CompletedTask);
 
         app = builder.Build();
         app.UseRouting();
@@ -82,7 +91,8 @@ public sealed class ServiceHost : IAsyncLifetime
 
     /// <summary>Mirrors auth-service JwtService: same claim types, algorithm, issuer and audience.</summary>
     public string Token(string role, Guid? school = null, Guid? user = null, RSA? signer = null,
-        string issuer = "edus-auth-service", string audience = "edus-api", bool expired = false, bool includeSchool = true)
+        string issuer = "edus-auth-service", string audience = "edus-api", bool expired = false, bool includeSchool = true,
+        int? notBeforeSeconds = null, int? expiresSeconds = null, string? dataScope = null)
     {
         var now = DateTime.UtcNow;
         var claims = new List<Claim>
@@ -91,13 +101,13 @@ public sealed class ServiceHost : IAsyncLifetime
             new(ClaimTypes.Role, role),
             new(EduOSClaims.TokenVersion, "0"),
         };
-        claims.Add(new Claim("data_scope",role switch {"SuperAdmin"=>"platform","Teacher"=>"teacher","Parent"=>"parent","Student"=>"student",_=>"school"}));
+        claims.Add(new Claim("data_scope",dataScope ?? (role switch {"SuperAdmin"=>"platform","Teacher"=>"teacher","Parent"=>"parent","Student"=>"student",_=>"school"})));
         var grants=role switch {"SuperAdmin"=>new[]{"platform.manage"},"Administrator"=>new[]{"users.view","overview.view","attendance.view","school.settings.view"},"Principal"=>new[]{"overview.view","attendance.view","school.settings.view"},"Teacher"=>new[]{"attendance.view"},_=>Array.Empty<string>()};
         claims.AddRange(grants.Select(p=>new Claim("permission",p)));
         if (includeSchool) claims.Add(new Claim(EduOSClaims.SchoolId, (school ?? School).ToString()));
         var token = new JwtSecurityToken(issuer, audience, claims,
-            notBefore: expired ? now.AddHours(-2) : now.AddMinutes(-1),
-            expires: expired ? now.AddHours(-1) : now.AddMinutes(30),
+            notBefore: notBeforeSeconds.HasValue ? now.AddSeconds(notBeforeSeconds.Value) : expired ? now.AddHours(-2) : now.AddMinutes(-1),
+            expires: expiresSeconds.HasValue ? now.AddSeconds(expiresSeconds.Value) : expired ? now.AddHours(-1) : now.AddMinutes(30),
             signingCredentials: new SigningCredentials(new RsaSecurityKey(signer ?? SigningKey), SecurityAlgorithms.RsaSha256));
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
@@ -108,6 +118,15 @@ public sealed class ServiceHost : IAsyncLifetime
         if (token is not null) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         if (json is not null) request.Content = new StringContent(json, Encoding.UTF8, "application/json");
         return request;
+    }
+
+    private sealed class SessionHandler(ServiceHost host) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(host.SessionStatus)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(new { role = "Administrator", version = host.SessionVersion }), Encoding.UTF8, "application/json")
+            });
     }
 }
 

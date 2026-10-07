@@ -180,6 +180,7 @@ public class ParentDbContext : DbContext
             e.Property(p => p.UpdatedAt).HasColumnName("updated_at").HasConversion(v => v, v => v.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(v, DateTimeKind.Utc) : v);
             e.Property(p => p.DeletedAt).HasColumnName("deleted_at");
             e.HasIndex(p => new { p.SchoolId });
+            e.HasIndex(p => new { p.SchoolId, p.PhoneNumber }).IsUnique().HasDatabaseName("parents_school_phone_number_key");
             e.HasQueryFilter(p => p.DeletedAt == null);
         });
     }
