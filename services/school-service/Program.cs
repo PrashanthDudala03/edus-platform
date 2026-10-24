@@ -19,6 +19,7 @@ builder.Services.AddDbContext<SchoolDbContext>(options =>
         .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
 
 builder.Services.AddHealthChecks();
+builder.Services.AddSignalR(options=>options.MaximumReceiveMessageSize=4096);
 
 // This service verifies access tokens itself; it does not trust gateway headers.
 builder.Services.AddEduOSAuthentication(builder.Configuration);

@@ -7,6 +7,7 @@ import { canVisit } from '../access'
 import { authAPI } from '../api/auth'
 import client from '../api/client'
 import { homeFor, isLeadership, navigation, portalName, roleOf, type Role } from '../roles'
+import { useSchoolBranding } from './SchoolBranding'
 import { AskEduOSAI } from '../ai/AskEduOSAI'
 import { accountInitials, accountKind, accountName, accountPath } from '../pages/account'
 import { NotificationBell } from '../pages/notifications/NotificationInboxPage'
@@ -33,7 +34,7 @@ function useLabelledTables(){
 }
 export function Shell({children}:{children:ReactNode}) {
  const [open,setOpen]=useState(false),[menuSearch,setMenuSearch]=useState("")
- const {user}=useAuthStore(),logout=useSignOut()
+ const {user}=useAuthStore(),logout=useSignOut(),branding=useSchoolBranding()
  useLabelledTables()
  const role=roleOf(user) as Role,home=homeFor(role,user?.dataScope),platform=user?.dataScope==='platform'
  const seen=new Set<string>()
@@ -53,7 +54,7 @@ export function Shell({children}:{children:ReactNode}) {
  const links=sections.flatMap(s=>s.links)
  const active=links.find(([path])=>path===location.pathname)?.[1] || (location.pathname===accountPath(user)?'My account':'Workspace')
  const term=menuSearch.toLowerCase()
- return <div className="app-shell"><a className="skip-link" href="#main">Skip to content</a>
+ return <div className={"app-shell"+(branding ? " school-branded" : "")} style={branding}><a className="skip-link" href="#main">Skip to content</a>
  {open && <button aria-label="Close navigation" className="nav-overlay" onClick={()=>setOpen(false)} />}
  <aside className={'sidebar '+(open?'is-open':'')}><NavLink to={home} className="brand" onClick={()=>setOpen(false)}><span className="brand-mark"><GraduationCap size={25}/></span><span>edu<span className="brand-light">os</span><small>{(portalName[role]||'School workspace').toUpperCase()}</small></span></NavLink>
  <button className="mobile-close icon-button" aria-label="Close navigation" onClick={()=>setOpen(false)}><X size={20}/></button><div className="workspace-label">YOUR WORKSPACE</div>

@@ -13,6 +13,7 @@ public sealed class AiAssistantOptions
 {
     public const string Section = "Ai:Assistant";
     /// <summary>The retrieval limit on a query (Ai:Retrieval:MaxQueryChars) applies as well; the lower one wins.</summary>
+    public bool ToolSelectionEnabled { get; set; }
     public int MaxQuestionChars { get; set; } = 1000;
     /// <summary>The most the assistant may generate per answer. A model with a lower limit lowers it further.</summary>
     public int MaxOutputTokens { get; set; } = 256;
@@ -47,7 +48,7 @@ public sealed record AssistantOutcome(string? Invalid, string? Unavailable, Mode
 /// handles is the knowledge retrieval returns, and it neither logs nor stores the question, the context or the answer.
 /// </summary>
 public sealed class AiGateway(IOptions<AiOptions> ai, IOptions<AiAssistantOptions> assistant, IOptions<AiRetrievalOptions> retrieval, IOptions<AiProviderOptions> providers, AiDatabaseState database,
-    IModelProvider model, KnowledgeRetriever retriever, AiToolRegistry tools, AiRateLimiter limiter, AiCircuitBreaker breaker, IAiUsageStore usage, TimeProvider clock, ILogger<AiGateway> logger)
+    IModelProvider model, KnowledgeRetriever retriever, AiToolRegistry tools, AiToolSelector selector, AiRateLimiter limiter, AiCircuitBreaker breaker, IAiUsageStore usage, TimeProvider clock, ILogger<AiGateway> logger)
 {
     public const string SystemPrompt = RagContextBuilder.Instruction;
     const string Feature = "assistant.ask";
@@ -105,6 +106,13 @@ public sealed class AiGateway(IOptions<AiOptions> ai, IOptions<AiAssistantOption
         // need no model; everything else goes to the school's documents first.
         var route = AssistantRouter.Route(question, DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime));
         if (route.Kind != AssistantRouteKind.Knowledge) return await Direct(tenant, audience, route, caller, cancellation);
+        if (caller is not null)
+        {
+            var selection = await selector.Select(caller, audience, question, cancellation);
+            if (selection.Unavailable is {} selectionError) return AssistantOutcome.Off(selectionError);
+            if (selection.Route is {} selected) return await Direct(tenant, audience, selected, caller, cancellation);
+            if (selection.Clarify) return AssistantOutcome.Said("I couldn't match that to a lookup permitted for your account. Please name the school module and the information you need. Questions needing a specific date, status or person may need its module page.");
+        }
         if (breaker.IsOpen(model.Descriptor.Provider)) return AssistantOutcome.Off("provider-unavailable");
 
         // The school's knowledge for this reader, found before any allowance is held. Nothing in the request can

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowUpRight, BookOpen, CalendarCheck, ClipboardList, FileText, Printer, Search, Users, Wallet } from 'lucide-react'
 import client, { errorMessage } from '../api/client'
@@ -18,10 +18,10 @@ export function Student360Link({ studentId, label = 'Student 360' }: { studentId
 
 export default function Student360Page() {
   const { id } = useParams(), user = useAuthStore(s => s.user), role = user?.roles[0] ?? ''
-  const options = useQuery<Options>({ queryKey: ['suite', 'options'], queryFn: () => data('/options') }), navigate = useNavigate(), [search, setSearch] = useState('')
+  const options = useQuery<Options>({ queryKey: ['suite', 'options'], queryFn: () => data('/options') }), [search, setSearch] = useState('')
   const students = options.data?.students ?? []
   // A student has one record and goes straight to it; a parent with one child too.
-  if (!id && !options.isPending && students.length === 1) { navigate('/student360/' + students[0].id, { replace: true }); return <Loading /> }
+  if (!id && options.isSuccess && students.length === 1 && (role === 'Student' || role === 'Parent')) return <Navigate to={'/student360/' + students[0].id} replace />
   if (id) return <Student360View id={id} role={role} />
   const shown = students.filter(s => s.label.toLowerCase().includes(search.trim().toLowerCase())).slice(0, 50)
   return <><PageHeader eyebrow={role === 'Parent' ? 'MY CHILDREN' : 'STUDENT 360'} title={role === 'Parent' ? 'Choose a child' : 'Find a student'} description={role === 'Teacher' ? 'Students in your classes.' : role === 'Parent' ? 'Everything about each child in one place.' : 'Everything about a student in one place: attendance, homework, exams, fees, documents and a timeline.'} />

@@ -22,6 +22,7 @@ import BillingPage from './pages/billing/BillingPage'
 import SubscriptionPage from './pages/billing/SubscriptionPage'
 import SchoolHomePage, { SchoolHomePreviewPage } from './pages/home/SchoolHomePage'
 import SchoolHomeManagePage from './pages/home/SchoolHomeManagePage'
+import NotificationSettingsPage from './pages/notifications/NotificationSettingsPage'
 import NotificationTemplatesPage from './pages/notifications/NotificationTemplatesPage'
 import NotificationHistoryPage from './pages/notifications/NotificationHistoryPage'
 import NotificationInboxPage from './pages/notifications/NotificationInboxPage'
@@ -82,6 +83,7 @@ export default function App() {
         <Route path="home/manage" element={<SchoolHomeManagePage />} />
         <Route path="home/preview" element={<SchoolHomePreviewPage />} />
         <Route path="notifications" element={<NotificationInboxPage />} />
+        <Route path="notifications/settings" element={<NotificationSettingsPage />} />
         <Route path="notifications/templates" element={<NotificationTemplatesPage />} />
         <Route path="notifications/history" element={<NotificationHistoryPage />} />
         <Route path="student360" element={<Student360Page />} />

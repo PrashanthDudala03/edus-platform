@@ -56,7 +56,7 @@ public class AiToolLiveTests(ITestOutputHelper output)
         Assert.DoesNotMatch(@"[0-9a-f]{8}-[0-9a-f]{4}-|studentId|Sharma|Aarav|Diya", string.Concat(new[] { count, attendance, fees, exams }.Select(r => r.Data!.ToJsonString())));
 
         // A teacher holds only exams.view of the four: the other tools are refused here, before any request.
-        Assert.Equal(new[] { "exam_schedule" }, registry.Offered(teacher.Caller).Select(d => d.Name).Where(n => n != "current_user_profile"));
+        Assert.Equal(new[] { "exam_schedule", "records_assessment_schemes", "records_exams" }, registry.Offered(teacher.Caller).Select(d => d.Name).Where(n => n != "current_user_profile"));
         var me = await Run(teacher.Caller, "teacher", "current_user_profile");
         Assert.Equal((ToolResult.Ok, "Teacher"), (me.Status, (string?)me.Data!["role"]));
         Assert.Equal(ToolResult.Ok, (await Run(teacher.Caller, "teacher", "exam_schedule")).Status);
@@ -70,7 +70,7 @@ public class AiToolLiveTests(ITestOutputHelper output)
         Assert.Equal(ToolResult.Denied, (await Run(new ToolCaller(admin.Caller.Tenant, "not-a-token", admin.Permissions), "invalid token", "student_count")).Status);
 
         // A parent sees the totals of the linked children only; EduOS does that scoping.
-        Assert.Equal(new[] { "exam_schedule", "fee_summary" }, registry.Offered(parent.Caller).Select(d => d.Name).Where(n => n != "current_user_profile"));
+        Assert.Equal(new[] { "exam_schedule", "fee_summary", "records_assessment_schemes", "records_exams" }, registry.Offered(parent.Caller).Select(d => d.Name).Where(n => n != "current_user_profile"));
         Assert.Equal(ToolResult.Ok, (await Run(parent.Caller, "parent", "fee_summary")).Status);
         Assert.Equal(ToolResult.NotPermitted, (await Run(parent.Caller, "parent", "attendance_summary")).Status);
         output.WriteLine("audit: " + string.Join(" | ", audit.Rows.GroupBy(r => r.Tool + " " + r.Status).Select(g => g.Key + " x" + g.Count())));

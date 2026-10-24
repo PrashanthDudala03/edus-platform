@@ -994,5 +994,118 @@
     "defaults": [
       "SuperAdmin"
     ]
+  },
+  {
+    "key": "library-books.view",
+    "group": "Library & inventory",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "library-books.manage",
+    "group": "Library & inventory",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "library-loans.view",
+    "group": "Library & inventory",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "library-loans.manage",
+    "group": "Library & inventory",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "inventory-items.view",
+    "group": "Library & inventory",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "inventory-items.manage",
+    "group": "Library & inventory",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "inventory-assignments.view",
+    "group": "Library & inventory",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "inventory-assignments.manage",
+    "group": "Library & inventory",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "transport-routes.view",
+    "group": "Transport",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "transport-routes.manage",
+    "group": "Transport",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "transport-stops.view",
+    "group": "Transport",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "transport-stops.manage",
+    "group": "Transport",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "transport-assignments.view",
+    "group": "Transport",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
+  },
+  {
+    "key": "transport-assignments.manage",
+    "group": "Transport",
+    "defaults": [
+      "Administrator"
+    ]
+  },
+  {
+    "key": "notifications.settings.manage",
+    "group": "Settings",
+    "defaults": [
+      "Administrator",
+      "Principal"
+    ]
   }
 ]

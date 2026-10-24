@@ -53,3 +53,13 @@ CREATE TABLE IF NOT EXISTS notify.devices(
  created_at timestamptz NOT NULL DEFAULT now(), UNIQUE(school_id,user_id,installation_id));
 CREATE INDEX IF NOT EXISTS devices_installation ON notify.devices(installation_id) WHERE revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS devices_token ON notify.devices(push_token) WHERE revoked_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS notify.school_settings(
+ school_id uuid NOT NULL,type varchar(60) NOT NULL,enabled boolean NOT NULL DEFAULT true,
+ version integer NOT NULL DEFAULT 1,updated_by uuid NOT NULL,updated_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(school_id,type));
+CREATE TABLE IF NOT EXISTS notify.settings_history(
+ id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,school_id uuid NOT NULL,type varchar(60) NOT NULL,
+ enabled boolean NOT NULL,actor_id uuid NOT NULL,actor_name varchar(255) NOT NULL,changed_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX IF NOT EXISTS settings_history_school ON notify.settings_history(school_id,changed_at DESC);
+
+CREATE TABLE IF NOT EXISTS notify.communication_settings(school_id uuid NOT NULL PRIMARY KEY,time_zone varchar(100) NOT NULL DEFAULT 'UTC');

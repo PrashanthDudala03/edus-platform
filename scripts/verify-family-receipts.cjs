@@ -1,0 +1,7 @@
+const assert=require('node:assert/strict');const base='http://localhost:8081/api/v1';
+async function get(path,t,status=200){const r=await fetch(base+path,{headers:{Authorization:'Bearer '+t}});assert.equal(r.status,status,path);return status===200?(await r.json()).data:null;}
+(async()=>{const sessions=[];for(const role of ['parent','student']){const r=await fetch(base+'/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:role+'@demo.eduos.local',password:process.env.EDUOS_DEMO_TEST_PASSWORD})});assert.equal(r.status,200);sessions.push((await r.json()).data);}
+const [parent,student]=sessions,studentKids=(await get('/suite/options',student.accessToken)).students,own=new Set(studentKids.map(k=>k.id));let allowed=0,denied=0;
+for(const kid of (await get('/suite/options',parent.accessToken)).students){const ledger=await get('/suite/fees/ledger/'+kid.id,parent.accessToken);for(const payment of ledger.payments.items){const receipt=await get('/suite/fees/receipts/'+payment.id,parent.accessToken);assert(receipt);allowed++;await get('/suite/fees/receipts/'+payment.id,student.accessToken,own.has(kid.id)?200:403);if(!own.has(kid.id))denied++;}}
+console.log(JSON.stringify({parentReceiptsChecked:allowed,studentSiblingReceiptsDenied:denied,note:'Read-only receipt API checks; no payment or print actions.'}));
+})().catch(e=>{console.error(e.message);process.exitCode=1});

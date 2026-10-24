@@ -1,0 +1,252 @@
+{
+  "date": "2026-10-23",
+  "mode": "Read-only navigation; no records changed",
+  "results": [
+    {
+      "path": "/teacher",
+      "label": "Dashboard",
+      "ms": 513,
+      "errors": [],
+      "overflow": false,
+      "stuck": false,
+      "heading": [
+        "Welcome, Ravi."
+      ]
+    },
+    {
+      "path": "/suite/classes",
+      "label": "My classes",
+      "ms": 449,
+      "errors": [],
+      "overflow": false,
+      "stuck": false,
+      "heading": [
+        "Classes & sections"
+      ]
+    },
+    {
+      "path": "/suite/timetable",
+      "label": "Timetable",
+      "ms": 457,
+      "errors": [],
+      "overflow": false,
+      "stuck": false,
+      "heading": [
+        "My timetable"
+      ]
+    },
+    {
+      "path": "/student360",
+      "label": "Student 360",
+      "ms": 443,
+      "errors": [],
+      "overflow": false,
+      "stuck": false,
+      "heading": [
+        "Find a student"
+      ]
+    },
+    {
+      "path": "/suite/register",
+      "label": "Attendance",
+      "ms": 455,
+      "errors": [],
+      "overflow": false,
+      "stuck": false,
+      "heading": [
+        "Student register"
+      ]
+    },
+    {
+      "path": "/suite/homework",
+      "label": "Homework",
+      "ms": 467,
+      "errors": [],
+      "overflow": false,
+      "stuck": false,
+      "heading": [
+        "Homework & assignments"
+      ]
+    },
+    {
+      "path": "/suite/submissions",
+      "label": "Submissions & feedback",
+      "ms": 446,
+      "errors": [],
+      "overflow": false,
+      "stuck": false,
+      "heading": [
+        "Submissions & feedback"
+      ]
+    },
+    {
+      "path": "/suite/exams",
+      "label": "Exams",
+      "ms": 441,
+      "errors": [],
+      "overflow": false,
+      "stuck": false,
+      "heading": [
+        "Exams & marks"
+      ]
+    },
+    {
+      "path": "/suite/marks",
+      "label": "Marks",
+      "ms": 454,
+      "errors": [],
+      "overflow": false,
+      "stuck": false,
+      "heading": [
+        "Exams & marks"
+      ]
+    },
+    {
+      "path": "/suite/reports",
+      "label": "Reports",
+      "ms": 449,
+      "errors": [],
+      "overflow": false,
+      "stuck": false,
+      "heading": [
+        "School reports"
+      ]
+    },
+    {
+      "path": "/suite/communications",
+      "label": "Notices & circulars",
+      "ms": 452,
+      "errors": [],
+      "overflow": false,
+      "stuck": false,
+      "heading": [
+        "Notices & circulars"
+      ]
+    },
+    {
+      "path": "/suite/messages",
+      "label": "Messages",
+      "ms": 447,
+      "errors": [],
+      "overflow": false,
+      "stuck": false,
+      "heading": [
+        "Targeted messages"
+      ]
+    },
+    {
+      "path": "/suite/calendar",
+      "label": "School calendar",
+      "ms": 445,
+      "errors": [],
+      "overflow": false,
+      "stuck": false,
+      "heading": [
+        "School calendar"
+      ]
+    },
+    {
+      "path": "/suite/leave-requests",
+      "label": "My leave",
+      "ms": 447,
+      "errors": [],
+      "overflow": false,
+      "stuck": false,
+      "heading": [
+        "My leave"
+      ]
+    },
+    {
+      "path": "/suite",
+      "label": "All school modules",
+      "ms": 442,
+      "errors": [],
+      "overflow": false,
+      "stuck": false,
+      "heading": [
+        "Your teaching workspace"
+      ]
+    },
+    {
+      "path": "/suite/academic-years",
+      "label": "Academic years",
+      "ms": 446,
+      "errors": [],
+      "overflow": false,
+      "stuck": false,
+      "heading": [
+        "Academic years"
+      ]
+    },
+    {
+      "path": "/suite/subjects",
+      "label": "Subjects",
+      "ms": 446,
+      "errors": [],
+      "overflow": false,
+      "stuck": false,
+      "heading": [
+        "Subjects"
+      ]
+    },
+    {
+      "path": "/suite/teaching-assignments",
+      "label": "Teaching assignments",
+      "ms": 445,
+      "errors": [],
+      "overflow": false,
+      "stuck": false,
+      "heading": [
+        "Teaching assignments"
+      ]
+    },
+    {
+      "path": "/suite/period-slots",
+      "label": "Period structure",
+      "ms": 449,
+      "errors": [],
+      "overflow": false,
+      "stuck": false,
+      "heading": [
+        "Period structure"
+      ]
+    },
+    {
+      "path": "/suite/staff-attendance",
+      "label": "Staff attendance",
+      "ms": 445,
+      "errors": [],
+      "overflow": false,
+      "stuck": false,
+      "heading": [
+        "Staff attendance"
+      ]
+    },
+    {
+      "path": "/suite/leave-types",
+      "label": "Leave types",
+      "ms": 449,
+      "errors": [],
+      "overflow": false,
+      "stuck": false,
+      "heading": [
+        "Leave types"
+      ]
+    },
+    {
+      "path": "/suite/certificates",
+      "label": "Certificates & ID cards",
+      "ms": 448,
+      "errors": [],
+      "overflow": false,
+      "stuck": false,
+      "heading": [
+        "Certificates & ID cards"
+      ]
+    },
+    {
+      "permissionProbe": "/suite/fees",
+      "status": 403
+    }
+  ]
+}

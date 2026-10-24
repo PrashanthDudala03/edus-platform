@@ -1,0 +1,30 @@
+{
+  "date": "2026-10-23",
+  "results": [
+    {
+      "kind": "students",
+      "requiredFields": true,
+      "createEditReload": true,
+      "archive": true,
+      "principalWriteDenied": true,
+      "mobileOverflow": false
+    },
+    {
+      "kind": "teachers",
+      "requiredFields": true,
+      "createEditReload": true,
+      "archive": true,
+      "principalWriteDenied": true,
+      "mobileOverflow": false
+    },
+    {
+      "kind": "parents",
+      "requiredFields": true,
+      "createEditReload": true,
+      "archive": true,
+      "principalWriteDenied": true,
+      "mobileOverflow": false
+    }
+  ],
+  "temporaryRecordsCleaned": 3
+}

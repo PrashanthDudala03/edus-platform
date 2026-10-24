@@ -25,12 +25,12 @@ const view = (role: string, id: string) => {
     documents: [{ id: 'd1', type: 'Bonafide certificate', number: 'DOC-0001', issuedOn: '2026-08-01', files: 0 }], notices: [{ id: 'n1', title: 'Parent-teacher meeting', audience: 'All', createdAt: '2026-10-01T06:00:00Z', dueDate: '' }],
     timeline: { items: [{ at: '2026-10-05T03:30:00Z', kind: 'attendance', title: 'Marked Absent', detail: '2026-10-05 · Sick', source: 'attendance', entityId: '' }, { at: '2026-10-02T10:00:00Z', kind: 'homework', title: 'Reviewed: Plant cell diagram', detail: 'A · Neat labelling.', source: 'homework', entityId: 'h3' }], total: 3, more: true, page: 1, pageSize: 20 }, generatedAt: '2026-10-05T09:00:00Z' }
 }
-async function mock(page: Page, user = admin) {
+async function mock(page: Page, user = admin, singleStudent = false) {
   const calls: string[] = []
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.addInitScript(([stored]) => { localStorage.setItem('accessToken', 'test-access-token'); localStorage.setItem('refreshToken', 'test-refresh-token'); localStorage.setItem('user', stored); localStorage.setItem('eduos.skipSchoolHome', '1') }, [JSON.stringify(user)])
   const json = (route: Route, body: unknown, code = 200) => route.fulfill({ status: code, contentType: 'application/json', body: JSON.stringify(body) })
-  const students = user.dataScope === 'school' || user.dataScope === 'teacher' || user.dataScope === 'parent' ? [{ id: S1, label: 'Aarav Sharma' }, { id: S2, label: 'Diya Sharma' }] : [{ id: S1, label: 'Aarav Sharma' }]
+  const students = !singleStudent && (user.dataScope === 'school' || user.dataScope === 'teacher' || user.dataScope === 'parent') ? [{ id: S1, label: 'Aarav Sharma' }, { id: S2, label: 'Diya Sharma' }] : [{ id: S1, label: 'Aarav Sharma' }]
   await page.route('**/*', async route => {
     const request = route.request(), url = new URL(request.url()), path = url.pathname.startsWith('/api/') ? url.pathname.replace('/api/v1', '') : '', method = request.method()
     if (path) calls.push(method + ' ' + path + url.search)
@@ -56,6 +56,30 @@ const axe = async (page: Page) => (await new AxeBuilder({ page }).include('#main
 const noOverflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)
 
 test.describe('Student 360', () => {
+  test('teacher navigation with one cached student remains usable after click and refresh', async ({ page }) => {
+    await mock(page, teacher, true)
+    await page.goto('/student360/' + S1)
+    await expect(page.getByRole('heading', { name: 'Aarav Sharma', level: 1 })).toBeVisible()
+    await page.getByRole('link', { name: 'Student 360', exact: true }).click()
+    await expect(page.getByRole('heading', { name: 'Find a student' })).toBeVisible()
+    await main(page).getByRole('link', { name: 'Open', exact: true }).click()
+    await expect(page.getByRole('heading', { name: 'Aarav Sharma', level: 1 })).toBeVisible()
+    await page.getByRole('link', { name: 'Another student' }).click()
+    await expect(page.getByRole('heading', { name: 'Find a student' })).toBeVisible()
+    await page.reload()
+    await expect(page.getByRole('heading', { name: 'Find a student' })).toBeVisible()
+  })
+  test('single-child parent redirects with cached options and after refresh', async ({ page }) => {
+    await mock(page, parent, true)
+    await page.goto('/student360/' + S1)
+    await expect(page.getByRole('heading', { name: 'Aarav Sharma', level: 1 })).toBeVisible()
+    await page.getByRole('link', { name: 'Student 360', exact: true }).click()
+    await expect(page).toHaveURL(new RegExp('/student360/' + S1 + '$'))
+    await expect(page.getByRole('heading', { name: 'Aarav Sharma', level: 1 })).toBeVisible()
+    await page.reload()
+    await expect(page.getByRole('heading', { name: 'Aarav Sharma', level: 1 })).toBeVisible()
+  })
+
   test('the office opens a student from the directory and reads every tab from one request', async ({ page }) => {
     const calls = await mock(page)
     await page.goto('/students')

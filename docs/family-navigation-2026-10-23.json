@@ -1,0 +1,337 @@
+{
+  "date": "2026-10-23",
+  "mode": "read-only; no receipts/read state changed",
+  "results": [
+    {
+      "role": "parent",
+      "childSwitching": 2
+    },
+    {
+      "role": "parent",
+      "path": "/parent",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Hello, Neha."
+      ]
+    },
+    {
+      "role": "parent",
+      "path": "/student360",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Choose a child"
+      ]
+    },
+    {
+      "role": "parent",
+      "path": "/suite/timetable",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Class timetable"
+      ]
+    },
+    {
+      "role": "parent",
+      "path": "/suite/homework",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Homework"
+      ]
+    },
+    {
+      "role": "parent",
+      "path": "/suite/submissions",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Submissions & feedback"
+      ]
+    },
+    {
+      "role": "parent",
+      "path": "/suite/exams",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Exams & results"
+      ]
+    },
+    {
+      "role": "parent",
+      "path": "/suite/marks",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Exams & results"
+      ]
+    },
+    {
+      "role": "parent",
+      "path": "/suite/reports",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "School reports"
+      ]
+    },
+    {
+      "role": "parent",
+      "path": "/suite/fees",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Fees & receipts"
+      ]
+    },
+    {
+      "role": "parent",
+      "path": "/suite/communications",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Notices & circulars"
+      ]
+    },
+    {
+      "role": "parent",
+      "path": "/suite/messages",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Targeted messages"
+      ]
+    },
+    {
+      "role": "parent",
+      "path": "/suite/calendar",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "School calendar"
+      ]
+    },
+    {
+      "role": "parent",
+      "path": "/suite/certificates",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Certificates & ID cards"
+      ]
+    },
+    {
+      "role": "parent",
+      "path": "/suite",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Your family’s school day"
+      ]
+    },
+    {
+      "role": "parent",
+      "path": "/suite/academic-years",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Academic years"
+      ]
+    },
+    {
+      "role": "parent",
+      "path": "/suite/classes",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Classes & sections"
+      ]
+    },
+    {
+      "role": "parent",
+      "path": "/suite/subjects",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Subjects"
+      ]
+    },
+    {
+      "role": "parent",
+      "path": "/suite/period-slots",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Period structure"
+      ]
+    },
+    {
+      "role": "student",
+      "path": "/student",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Hi, Aarav."
+      ]
+    },
+    {
+      "role": "student",
+      "path": "/student360",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Aarav Sharma"
+      ]
+    },
+    {
+      "role": "student",
+      "path": "/suite/timetable",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "My timetable"
+      ]
+    },
+    {
+      "role": "student",
+      "path": "/suite/homework",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Homework"
+      ]
+    },
+    {
+      "role": "student",
+      "path": "/suite/submissions",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Submissions & feedback"
+      ]
+    },
+    {
+      "role": "student",
+      "path": "/suite/exams",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Exams & results"
+      ]
+    },
+    {
+      "role": "student",
+      "path": "/suite/marks",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Exams & results"
+      ]
+    },
+    {
+      "role": "student",
+      "path": "/suite/reports",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "School reports"
+      ]
+    },
+    {
+      "role": "student",
+      "path": "/suite/fees",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Fees & receipts"
+      ]
+    },
+    {
+      "role": "student",
+      "path": "/suite/communications",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Notices & circulars"
+      ]
+    },
+    {
+      "role": "student",
+      "path": "/suite/messages",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Targeted messages"
+      ]
+    },
+    {
+      "role": "student",
+      "path": "/suite/calendar",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "School calendar"
+      ]
+    },
+    {
+      "role": "student",
+      "path": "/suite/certificates",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Certificates & ID cards"
+      ]
+    },
+    {
+      "role": "student",
+      "path": "/suite",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Your learning space"
+      ]
+    },
+    {
+      "role": "student",
+      "path": "/suite/academic-years",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Academic years"
+      ]
+    },
+    {
+      "role": "student",
+      "path": "/suite/classes",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Classes & sections"
+      ]
+    },
+    {
+      "role": "student",
+      "path": "/suite/subjects",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Subjects"
+      ]
+    },
+    {
+      "role": "student",
+      "path": "/suite/period-slots",
+      "errors": [],
+      "overflow": false,
+      "heading": [
+        "Period structure"
+      ]
+    },
+    {
+      "studentSiblingAccess": "denied"
+    }
+  ]
+}

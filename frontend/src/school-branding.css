@@ -1,0 +1,24 @@
+/* Keep error/warning colours meaningful while branding interactive surfaces. */
+.school-branded{background:var(--school-tint);--border:var(--school-soft)}
+.school-branded .workspace,.school-branded .main-content{background:var(--school-tint)}
+.school-branded .brand-mark,.school-branded .button.primary{background:var(--school-primary);color:#fff}
+.school-branded .button.primary:hover{background:var(--school-deep)}
+.school-branded .topbar{border-bottom:3px solid var(--school-primary)}
+.school-branded .sidebar .nav-link.active,.school-branded .module-tabs .active{background:var(--school-soft);color:var(--school-deep);border-color:var(--school-primary)}
+.school-branded .sidebar .nav-link:hover,.school-branded .button.secondary:hover{background:var(--school-tint);color:var(--school-deep)}
+.school-branded .sidebar .school-card,.school-branded .avatar,.school-branded .teal,.school-branded .school-icon{background:var(--school-soft);color:var(--school-deep)}
+.school-branded .text-link,.school-branded .panel-link,.school-branded .school-card a{color:var(--school-primary)}
+.school-branded .stat-card>strong,.school-branded .s360-big{color:var(--school-deep)}
+.school-branded .welcome-banner{background:var(--school-soft);border-color:var(--school-soft)}
+.school-branded .class-bars i{background:var(--school-primary)}
+.school-branded input,.school-branded select,.school-branded textarea{accent-color:var(--school-primary)}
+.school-branded :is(input,select,textarea):focus{border-color:var(--school-primary);outline-color:var(--school-primary)}
+.school-branded :is(button,a):focus-visible{outline-color:var(--school-primary)}
+.school-branded .ai-fab,.school-branded .ai-send,.school-branded .ai-avatar{background:var(--school-primary);color:#fff}
+.school-branded .s360-card:hover{border-color:var(--school-primary)}
+
+.school-branded .avatar,.school-branded .teal{background:var(--school-accent);color:var(--school-on-accent)}
+.school-branded .sidebar .nav-link.active{box-shadow:inset 3px 0 var(--school-accent)}
+
+.school-branded .ai-entry,.school-branded .ai-mark,.school-branded .ai-message.from-user{background:var(--school-primary);color:#fff}
+.school-branded .ai-input:focus-within{border-color:var(--school-primary)}

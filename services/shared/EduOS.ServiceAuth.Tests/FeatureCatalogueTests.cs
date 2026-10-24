@@ -13,7 +13,7 @@ public class FeatureCatalogueTests
     [Fact]
     public void EveryFeatureIsMadeOfRealPermissionKeys()
     {
-        Assert.Equal(new[] { "school-home", "notifications", "attendance", "homework", "results", "fees", "exams", "leave", "ai", "transport", "lms" }, FeatureCatalogue.All.Select(f => f.Key));
+        Assert.Equal(new[] { "school-home", "notifications", "attendance", "homework", "results", "fees", "exams", "leave", "ai", "transport", "library", "inventory", "lms" }, FeatureCatalogue.All.Select(f => f.Key));
         foreach (var feature in FeatureCatalogue.All)
         {
             Assert.All(feature.Permissions, key => Assert.Contains(key, Catalogue));
@@ -22,7 +22,7 @@ public class FeatureCatalogueTests
         }
         Assert.Equal(Everything.Length, Everything.Distinct().Count());
         Assert.Throws<ArgumentException>(() => FeatureCatalogue.Keys("payroll"));
-        Assert.Equal(new[] { "notifications.manage" }, FeatureCatalogue.Keys("notifications"));
+        Assert.Equal(new[] { "notifications.manage", "notifications.settings.manage" }, FeatureCatalogue.Keys("notifications"));
     }
 
     [Fact]
@@ -57,7 +57,7 @@ public class FeatureCatalogueTests
         var administrator = FeatureCatalogue.Evaluate(Everything, ["notifications.manage", "school-home.manage"]);
         Assert.Equal(new[] { "notifications.manage" }, State(administrator, "notifications").Permissions);
         // The Super Admin took notifications out of this school's boundary: nobody has them, whatever a role lists.
-        var without = FeatureCatalogue.Evaluate(Everything.Except(["notifications.manage"]), ["notifications.manage", "fees.view"]);
+        var without = FeatureCatalogue.Evaluate(Everything.Except(["notifications.manage", "notifications.settings.manage"]), ["notifications.manage", "fees.view"]);
         Assert.Equal((false, false), (State(without, "notifications").Enabled, State(without, "notifications").Allowed));
         Assert.Empty(State(without, "notifications").Permissions);
         Assert.True(State(without, "school-home").Allowed);
@@ -66,7 +66,7 @@ public class FeatureCatalogueTests
     [Fact]
     public void FutureModulesAreNeverAvailable()
     {
-        foreach (var key in new[] { "transport", "lms" })
+        foreach (var key in new[] { "lms" })
         {
             var state = State(FeatureCatalogue.Evaluate(Catalogue, Catalogue), key);
             Assert.Equal(("future", false, false), (state.Status, state.Enabled, state.Allowed));

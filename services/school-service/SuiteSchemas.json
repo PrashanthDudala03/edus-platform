@@ -1992,5 +1992,457 @@
     "write": [
       "Administrator"
     ]
+  },
+  {
+    "kind": "library-books",
+    "title": "Library catalogue",
+    "group": "Library & inventory",
+    "fields": [
+      {
+        "key": "title",
+        "label": "Book title",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "code",
+        "label": "Catalogue code",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "author",
+        "label": "Author",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "isbn",
+        "label": "ISBN",
+        "type": "text",
+        "required": false,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "copies",
+        "label": "Total copies",
+        "type": "number",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "status",
+        "label": "Status",
+        "type": "select",
+        "required": true,
+        "source": null,
+        "options": [
+          "Available",
+          "Retired"
+        ]
+      }
+    ],
+    "read": [
+      "Administrator",
+      "Principal"
+    ],
+    "write": [
+      "Administrator"
+    ]
+  },
+  {
+    "kind": "library-loans",
+    "title": "Book loans & returns",
+    "group": "Library & inventory",
+    "fields": [
+      {
+        "key": "bookId",
+        "label": "Book",
+        "type": "reference",
+        "required": true,
+        "source": "library-books",
+        "options": null
+      },
+      {
+        "key": "studentId",
+        "label": "Student",
+        "type": "reference",
+        "required": true,
+        "source": "students",
+        "options": null
+      },
+      {
+        "key": "issuedOn",
+        "label": "Issued on",
+        "type": "date",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "dueOn",
+        "label": "Due on",
+        "type": "date",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "status",
+        "label": "Status",
+        "type": "select",
+        "required": true,
+        "source": null,
+        "options": [
+          "Issued",
+          "Returned"
+        ]
+      },
+      {
+        "key": "returnedOn",
+        "label": "Returned on",
+        "type": "date",
+        "required": false,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "notes",
+        "label": "Notes",
+        "type": "textarea",
+        "required": false,
+        "source": null,
+        "options": null
+      }
+    ],
+    "read": [
+      "Administrator",
+      "Principal"
+    ],
+    "write": [
+      "Administrator"
+    ]
+  },
+  {
+    "kind": "inventory-items",
+    "title": "Inventory & assets",
+    "group": "Library & inventory",
+    "fields": [
+      {
+        "key": "name",
+        "label": "Item name",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "code",
+        "label": "Asset / stock code",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "category",
+        "label": "Category",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "quantity",
+        "label": "Total quantity",
+        "type": "number",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "location",
+        "label": "Storage location",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "status",
+        "label": "Status",
+        "type": "select",
+        "required": true,
+        "source": null,
+        "options": [
+          "Active",
+          "Retired"
+        ]
+      }
+    ],
+    "read": [
+      "Administrator",
+      "Principal"
+    ],
+    "write": [
+      "Administrator"
+    ]
+  },
+  {
+    "kind": "inventory-assignments",
+    "title": "Asset assignments & returns",
+    "group": "Library & inventory",
+    "fields": [
+      {
+        "key": "itemId",
+        "label": "Item",
+        "type": "reference",
+        "required": true,
+        "source": "inventory-items",
+        "options": null
+      },
+      {
+        "key": "teacherId",
+        "label": "Assigned staff member",
+        "type": "reference",
+        "required": true,
+        "source": "teachers",
+        "options": null
+      },
+      {
+        "key": "quantity",
+        "label": "Quantity",
+        "type": "number",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "issuedOn",
+        "label": "Issued on",
+        "type": "date",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "status",
+        "label": "Status",
+        "type": "select",
+        "required": true,
+        "source": null,
+        "options": [
+          "Assigned",
+          "Returned"
+        ]
+      },
+      {
+        "key": "returnedOn",
+        "label": "Returned on",
+        "type": "date",
+        "required": false,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "notes",
+        "label": "Notes",
+        "type": "textarea",
+        "required": false,
+        "source": null,
+        "options": null
+      }
+    ],
+    "read": [
+      "Administrator",
+      "Principal"
+    ],
+    "write": [
+      "Administrator"
+    ]
+  },
+  {
+    "kind": "transport-routes",
+    "title": "Transport routes",
+    "group": "Transport",
+    "fields": [
+      {
+        "key": "name",
+        "label": "Route name",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "vehicle",
+        "label": "Vehicle registration",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "driver",
+        "label": "Driver name",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "phone",
+        "label": "Contact number",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "capacity",
+        "label": "Passenger capacity",
+        "type": "number",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "status",
+        "label": "Status",
+        "type": "select",
+        "required": true,
+        "source": null,
+        "options": [
+          "Active",
+          "Inactive"
+        ]
+      }
+    ],
+    "read": [
+      "Administrator",
+      "Principal"
+    ],
+    "write": [
+      "Administrator"
+    ]
+  },
+  {
+    "kind": "transport-stops",
+    "title": "Route stops",
+    "group": "Transport",
+    "fields": [
+      {
+        "key": "name",
+        "label": "Stop name",
+        "type": "text",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "routeId",
+        "label": "Route",
+        "type": "reference",
+        "required": true,
+        "source": "transport-routes",
+        "options": null
+      },
+      {
+        "key": "sequence",
+        "label": "Stop order",
+        "type": "number",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "pickup",
+        "label": "Pickup time",
+        "type": "time",
+        "required": true,
+        "source": null,
+        "options": null
+      },
+      {
+        "key": "dropoff",
+        "label": "Drop-off time",
+        "type": "time",
+        "required": true,
+        "source": null,
+        "options": null
+      }
+    ],
+    "read": [
+      "Administrator",
+      "Principal"
+    ],
+    "write": [
+      "Administrator"
+    ]
+  },
+  {
+    "kind": "transport-assignments",
+    "title": "Student transport assignments",
+    "group": "Transport",
+    "fields": [
+      {
+        "key": "studentId",
+        "label": "Student",
+        "type": "reference",
+        "required": true,
+        "source": "students",
+        "options": null
+      },
+      {
+        "key": "routeId",
+        "label": "Route",
+        "type": "reference",
+        "required": true,
+        "source": "transport-routes",
+        "options": null
+      },
+      {
+        "key": "stopId",
+        "label": "Stop",
+        "type": "reference",
+        "required": true,
+        "source": "transport-stops",
+        "options": null
+      },
+      {
+        "key": "status",
+        "label": "Status",
+        "type": "select",
+        "required": true,
+        "source": null,
+        "options": [
+          "Active",
+          "Inactive"
+        ]
+      },
+      {
+        "key": "notes",
+        "label": "Notes",
+        "type": "textarea",
+        "required": false,
+        "source": null,
+        "options": null
+      }
+    ],
+    "read": [
+      "Administrator",
+      "Principal"
+    ],
+    "write": [
+      "Administrator"
+    ]
   }
 ]

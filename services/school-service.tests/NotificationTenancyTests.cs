@@ -10,7 +10,7 @@ public class NotificationTenancyTests
     static readonly string Folder = Path.Combine(AppContext.BaseDirectory, "Sources");
     static readonly string[] Sources = [.. Directory.GetFiles(Folder, "Suite.Notification*.cs"), Path.Combine(Folder, "Suite.Attendance.cs"), Path.Combine(Folder, "Suite.Homework.cs"), Path.Combine(Folder, "Suite.Exams.cs"), Path.Combine(Folder, "Suite.Student360.cs"), Path.Combine(Folder, "Suite.Fees.cs"), Path.Combine(Folder, "Suite.Communications.cs")];
     static readonly string Engine = File.ReadAllText(Path.Combine(Folder, "Suite.Notifications.cs")), Schema = File.ReadAllText(Path.Combine(Folder, "NotificationSchema.sql"));
-    static readonly string[] PerSchool = ["notifications", "recipients", "deliveries", "preferences", "template_overrides", "devices"];
+    static readonly string[] PerSchool = ["notifications", "recipients", "deliveries", "preferences", "template_overrides", "devices", "school_settings", "settings_history", "communication_settings"];
 
     /// <summary>Each use of a notify table with the rest of its SQL string (SQL strings here hold no quote after the table name).</summary>
     static IEnumerable<(string Verb, string Table, string Sql)> Statements(params string[] texts) =>
@@ -23,7 +23,8 @@ public class NotificationTenancyTests
     public void TheSourcesAreRead()
     {
         // Engine, templates, history and the delivery worker (by pattern) plus the producers and communications named above.
-        Assert.Equal(10, Sources.Length);
+        Assert.Equal(12, Sources.Length);
+        Assert.Contains(Sources, source => source.EndsWith("Suite.NotificationLive.cs"));
         Assert.Contains(Sources, source => source.EndsWith("Suite.NotificationWorker.cs"));
         Assert.True(Statements().Count() >= 35);
         Assert.All(PerSchool, table => Assert.Contains(Statements(), statement => statement.Table == table));

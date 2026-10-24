@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSchoolClock, SchoolClockSettings } from './useSchoolClock'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, ArrowLeft, Check, AlertTriangle, Megaphone, Clock } from 'lucide-react'
@@ -24,11 +25,13 @@ const useOptions = () => useQuery<Options>({ queryKey: ['suite', 'options'], que
 const Tag = ({ item }: { item: { type: string, priority: string } }) => <span className="com-tags"><span className="status-tag">{item.type}</span>{item.priority !== 'Normal' && <span className={'status-tag ' + priorityTone(item.priority)}>{item.priority}</span>}</span>
 
 function WorkspaceView({ perms, open }: { perms: Perms, open: (id: string) => void }) {
+  const {whenLabel}=useSchoolClock()
   const [tab, setTab] = useState<Status>('Published'), [page, setPage] = useState(1), [compose, setCompose] = useState(false)
   const list = useQuery<Workspace>({ queryKey: ['suite', 'communications', tab, page], queryFn: () => data('/communications', { status: tab, page }) })
   const attention = useQuery<Attention>({ queryKey: ['suite', 'communications', 'attention'], enabled: perms.schoolWide, queryFn: () => data('/communications/attention') })
   return <><PageHeader eyebrow="COMMUNICATION" title="Communications" description="Notices, circulars and announcements to the right people, with what happened to each one.">
     <button className="button primary" onClick={() => setCompose(true)}><Plus size={17} />New communication</button></PageHeader>
+    <SchoolClockSettings editable={perms.schoolWide}/>
     {perms.schoolWide && attention.data && <section className="panel com-panel" aria-label="Needs attention"><div className="panel-heading"><div><h2>What needs attention</h2><p>Scheduled, urgent, awaiting acknowledgement and delivery problems</p></div></div>
       <ul className="com-attention">{attentionLines(attention.data).map(l => <li key={l.key}><strong className={l.tone ? 'tone-' + l.tone : ''}>{l.count}</strong><span>{l.label}</span></li>)}</ul>
       {attention.data.outstanding.length > 0 && <ul className="dash-list com-list">{attention.data.outstanding.slice(0, 5).map(i => <li key={i.id}><span className="stat-icon peach"><AlertTriangle size={15} /></span><div><strong>{i.title}</strong><small>{i.audienceLabel} · {i.counts.outstanding} still to acknowledge</small></div><button className="button small secondary" onClick={() => open(i.id)}>Open</button></li>)}</ul>}
@@ -45,6 +48,7 @@ function WorkspaceView({ perms, open }: { perms: Perms, open: (id: string) => vo
 }
 
 function DetailView({ id, perms, back }: { id: string, perms: Perms, back: () => void }) {
+  const {shortWhen,whenLabel,query:clock}=useSchoolClock()
   const cache = useQueryClient(), detail = useQuery<Detail>({ queryKey: ['suite', 'communications', 'detail', id], queryFn: () => data('/communications/' + id) })
   const [acting, setActing] = useState<{ action: string, label: string, reason?: boolean, time?: boolean } | null>(null), [edit, setEdit] = useState(false), [people, setPeople] = useState(false), [message, setMessage] = useState(''), [error, setError] = useState('')
   async function refresh(m: string) { setMessage(m); setError(''); await cache.invalidateQueries({ queryKey: ['suite', 'communications'] }) }
@@ -52,7 +56,7 @@ function DetailView({ id, perms, back }: { id: string, perms: Perms, back: () =>
   if (detail.isError) return <><button className="button secondary" onClick={back}><ArrowLeft size={16} />All communications</button><ErrorBox message={errorMessage(detail.error)} /></>
   const d = detail.data
   return <><PageHeader eyebrow={d.type.toUpperCase()} title={d.title} description={d.audienceLabel + ' · ' + whenLabel(d)}>
-    <button className="button secondary" onClick={back}><ArrowLeft size={16} />All communications</button>{editableFields(d.status).length > 0 && <button className="button secondary" onClick={() => setEdit(true)}>Edit</button>}</PageHeader>
+    <button className="button secondary" onClick={back}><ArrowLeft size={16} />All communications</button>{editableFields(d.status).length > 0 && <button className="button secondary" disabled={!clock.isSuccess} onClick={() => setEdit(true)}>Edit</button>}</PageHeader>
     {error && <ErrorBox message={error} />}{message && <div className="success-box" role="status">{message}</div>}
     <section className="panel com-panel"><div className="panel-heading"><div><h2><span className={'status-tag ' + statusTone(d.status)}>{d.status}</span> <Tag item={d} /></h2><p>{d.status === 'Published' ? progress(d.counts, d.requiresAcknowledgement) : d.status === 'Scheduled' ? 'Goes out ' + shortWhen(d.publishAt) + ' to ' + d.audienceLabel.toLowerCase() : d.status === 'Cancelled' ? 'Cancelled' + (d.cancelReason ? ': ' + d.cancelReason : '') : 'Only you and school leadership can see this.'}</p></div>
       <div className="row-actions">{actionsFor(d.status, perms).map(x => <button key={x.action} className={'button small ' + (x.primary ? 'primary' : 'secondary')} onClick={() => setActing(x)}>{x.label}</button>)}</div></div>
@@ -80,13 +84,15 @@ function People({ id }: { id: string }) {
     {a.acknowledged.length > 0 && <details><summary>Acknowledged ({a.acknowledged.length})</summary><ul className="com-ack">{a.acknowledged.map((p, i) => <li key={i}>{p.name} · {p.scope} · {shortWhen(p.at)}</li>)}</ul></details>}</div>
 }
 function ActionDialog({ d, act, onClose, onDone }: { d: Detail, act: { action: string, label: string, reason?: boolean, time?: boolean }, onClose: () => void, onDone: (m: string) => void }) {
+  const {scheduleIso,zone,query}=useSchoolClock()
   const [error, setError] = useState(''), [busy, setBusy] = useState(false), [reason, setReason] = useState(''), [when, setWhen] = useState('')
   async function go() {
     setBusy(true); setError('')
+    if(act.time&&(!scheduleIso(when)||new Date(scheduleIso(when))<=new Date()||!query.isSuccess)){setError('Choose a future, unambiguous time in '+zone+'. Avoid daylight-saving clock changes.');setBusy(false);return}
     try { const r = await client.post('/suite/communications/' + d.id + '/' + act.action, { version: d.version, reason, publishAt: act.time ? scheduleIso(when) : undefined }); onDone(r.data.message || act.label + ': done.') } catch (e) { setError(errorMessage(e)) } finally { setBusy(false) }
   }
   return <Dialog title={act.label + ' · ' + d.title} onClose={() => !busy && onClose()}>{error && <ErrorBox message={error} />}
-    {act.time && <label className="full-width">Publish at<input type="datetime-local" value={when} onChange={e => setWhen(e.target.value)} /></label>}
+    {act.time && <label className="full-width">Publish at ({zone})<input type="datetime-local" value={when} onChange={e => setWhen(e.target.value)} /></label>}
     {act.reason && <label className="full-width">Reason<textarea value={reason} maxLength={500} rows={3} onChange={e => setReason(e.target.value)} /></label>}
     {act.action === 'publish' && <p className="modal-copy">Publishing resolves the audience now ({d.audienceLabel.toLowerCase()}) and places one notification in each person’s inbox. It cannot be unsent; it can be archived.</p>}
     {act.action === 'archive' && <p className="modal-copy">Archiving keeps the communication and its history. It stays readable to the people it was sent to, as history.</p>}
@@ -95,13 +101,14 @@ function ActionDialog({ d, act, onClose, onDone }: { d: Detail, act: { action: s
 
 /** Compose: Message → Audience → Delivery → Review, then save as draft, publish now or schedule. Editing reuses it with the frozen fields disabled. */
 function ComposeDialog({ perms, detail, onClose, onSaved }: { perms: Perms, detail?: Detail, onClose: () => void, onSaved: (id: string) => void }) {
+  const {scheduleIso,shortWhen,fromDetail,recordBody,composeProblems,zone}=useSchoolClock()
   const options = useOptions(), cache = useQueryClient(), user = useAuthStore(s => s.user)
   const [c, setC] = useState<Composition>(detail ? fromDetail(detail) : { ...emptyComposition(), audience: perms.schoolWide ? 'All' : 'Parent' }), [step, setStep] = useState(0), [error, setError] = useState(''), [busy, setBusy] = useState(false), [count, setCount] = useState<{ count: number, label: string } | null>(null)
   const set = (patch: Partial<Composition>) => { setC(prev => ({ ...prev, ...patch })); setCount(null) }
   const allowed = detail ? editableFields(detail.status) : null, can = (field: string) => !allowed || allowed.includes(field)
   // Classes shown are those the options call already limits to the person's scope; a teacher's list is their own classes.
   const classes = options.data?.classes ?? [], problems = composeProblems(c, perms)
-  useEffect(() => { if (step !== 3 || detail) return; let live = true
+  useEffect(() => { if (step !== 3) return; let live = true
     client.post('/suite/communications/audience', { audience: c.audience, classId: c.classId }).then(r => { if (live) setCount(r.data.data) }).catch(e => { if (live) setError(errorMessage(e)) })
     return () => { live = false } }, [step, c.audience, c.classId, detail])
   async function save() {
@@ -120,20 +127,20 @@ function ComposeDialog({ perms, detail, onClose, onSaved }: { perms: Perms, deta
       <label>Type<select aria-label="Type" value={c.type} disabled={!can('type')} onChange={e => set({ type: e.target.value })}>{TYPES.map(t => <option key={t}>{t}</option>)}</select></label></div>}
     {step === 1 && <div className="form-stack"><label>Audience<select aria-label="Audience" value={c.audience} disabled={!can('audience')} onChange={e => set({ audience: e.target.value })}>{audienceOptions(perms).map(a => <option key={a.key} value={a.key}>{a.label}</option>)}</select></label>
       <label>Class{needsClass ? '' : <span className="optional"> (optional: narrows the audience to one class)</span>}<select aria-label="Class" value={c.classId} disabled={!can('classId')} onChange={e => set({ classId: e.target.value })}><option value="">{needsClass ? 'Choose a class…' : 'Whole school'}</option>{classes.map(cl => <option key={cl.id} value={cl.id}>{cl.label}</option>)}</select></label>
-      <p className="muted">The server resolves the people from their roles and reviewed account links when the communication is published. Nobody outside your school can be addressed.</p></div>}
+      <p className="muted">Recipient counts are estimates; the final audience is resolved at publication. The server resolves the people from their roles and reviewed account links when the communication is published. Nobody outside your school can be addressed.</p></div>}
     {step === 2 && <div className="form-stack"><label>Priority<select aria-label="Priority" value={c.priority} disabled={!can('priority')} onChange={e => set({ priority: e.target.value })}>{priorityOptions(perms).map(p => <option key={p}>{p}</option>)}</select><small>Urgent communications reach everyone addressed even if they muted notices; the inbox title says Urgent.</small></label>
       <label className="adm-check"><input type="checkbox" checked={c.requiresAcknowledgement} disabled={!can('requiresAcknowledgement')} onChange={e => set({ requiresAcknowledgement: e.target.checked })} />Ask each recipient to acknowledge</label>
       {c.requiresAcknowledgement && <label>Acknowledge by<span className="optional"> (optional)</span><input type="date" value={c.acknowledgeBy} disabled={!can('acknowledgeBy')} onChange={e => set({ acknowledgeBy: e.target.value })} /></label>}
       <label>Expires on<span className="optional"> (optional)</span><input type="date" value={c.expiresOn} disabled={!can('expiresOn')} onChange={e => set({ expiresOn: e.target.value })} /></label>
       {!detail && <fieldset className="adm-choices com-when"><legend>Delivery</legend>{([['now', 'Publish now'], ['schedule', 'Schedule for later'], ['draft', 'Save as draft']] as const).map(([k, l]) => <label key={k} className="adm-check"><input type="radio" name="when" checked={c.when === k} onChange={() => set({ when: k })} />{l}</label>)}</fieldset>}
-      {(c.when === 'schedule' && (!detail || detail.status === 'Scheduled')) && <label>Publish at<input type="datetime-local" value={c.publishAt} onChange={e => set({ publishAt: e.target.value })} /></label>}</div>}
+      {(c.when === 'schedule' && (!detail || detail.status === 'Scheduled')) && <label>Publish at ({zone})<input type="datetime-local" value={c.publishAt} onChange={e => set({ publishAt: e.target.value })} /></label>}</div>}
     {step === 3 && <div className="form-stack com-review"><h3>{c.title || 'Untitled'}</h3><Tag item={c} /><div className="com-message">{c.message}</div>
       <dl className="record-details"><div><dt>Audience</dt><dd>{count ? count.label + ' · ' + count.count + ' people' : detail ? detail.audienceLabel : 'Counting…'}</dd></div><div><dt>Delivery</dt><dd>{c.when === 'now' ? 'Publish now: in-app inbox, once per person' : c.when === 'schedule' ? 'Scheduled for ' + (c.publishAt ? shortWhen(scheduleIso(c.publishAt)) : '—') : 'Saved as a draft; nobody is told'}</dd></div>{c.requiresAcknowledgement && <div><dt>Acknowledgement</dt><dd>Required{c.acknowledgeBy ? ' by ' + c.acknowledgeBy : ''}</dd></div>}</dl>
       {problems.length > 0 && <ul className="adm-blockers" role="alert">{problems.map(p => <li key={p}>{p}</li>)}</ul>}
-      <p className="muted">Signed in as {user?.firstName}. Publication is recorded in the activity log.</p></div>}
+      <p className="muted">School delivery switches and personal preferences control alerts. The original communication stays available to its audience.</p><p className="muted">Signed in as {user?.firstName}. Publication is recorded in the activity log.</p></div>}
     <div className="modal-footer"><button type="button" className="button secondary" disabled={busy} onClick={step === 0 ? onClose : () => setStep(step - 1)}>{step === 0 ? 'Cancel' : 'Back'}</button>
       {step < 3 ? <button type="button" className="button primary" onClick={() => setStep(step + 1)}>Next</button>
-        : <button type="button" className="button primary" disabled={busy || problems.length > 0} onClick={save}>{busy ? 'Saving…' : detail ? 'Save changes' : c.when === 'now' ? 'Publish' : c.when === 'schedule' ? 'Schedule' : 'Save draft'}</button>}</div></Dialog>
+        : <button type="button" className="button primary" disabled={busy || problems.length > 0 || !count} onClick={save}>{busy ? 'Saving…' : detail ? 'Save changes' : c.when === 'now' ? 'Publish' : c.when === 'schedule' ? 'Schedule' : 'Save draft'}</button>}</div></Dialog>
 }
 
 /** Recipients: what the school addressed to this person, with their own read and acknowledgement state. */

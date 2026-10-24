@@ -4,6 +4,7 @@ public static partial class Suite
 {
     static async Task ValidateBusiness(NpgsqlConnection c,SchoolAccess a,string kind,JsonObject d,JsonObject? old,Guid? id)
     {
+        await ValidateAdvanced(c,a,kind,d,old,id);
         var peers=(await Records(c,a.School,kind)).Where(x=>Text(x,"id")!=id?.ToString()).ToList();
         void Unique(params string[] keys)=>Require(!peers.Any(p=>keys.All(k=>string.Equals(Text(p,k),Text(d,k),StringComparison.OrdinalIgnoreCase))),"A record with these details already exists.",409);
         if(kind=="academic-years"){Require(Day(d,"startsOn")<Day(d,"endsOn"),"Academic year must end after it starts.");Unique("name");if(Text(d,"status")=="Current")Require(!peers.Any(p=>Text(p,"status")=="Current"),"Close the current academic year before selecting a new one.",409);}

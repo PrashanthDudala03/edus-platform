@@ -39,6 +39,7 @@ jobs:
       - run: dotnet test services/ai-service.tests/ai-service.tests.csproj --configuration Release
       - run: dotnet build services/auth-service/auth-service.csproj --configuration Release
       - run: dotnet build services/api-gateway/api-gateway.csproj --configuration Release
+      - run: dotnet test services/school-service.tests/school-service.tests.csproj --configuration Release
       - run: dotnet build services/school-service/school-service.csproj --configuration Release
       - run: dotnet build services/student-service/student-service.csproj --configuration Release
       - run: dotnet build services/teacher-service/teacher-service.csproj --configuration Release

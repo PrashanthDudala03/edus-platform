@@ -50,6 +50,7 @@ public class PermissionTests
     [Fact]
     public void AiHealthNeedsNoPermission()=>Assert.Null(PermissionAccess.Required("/api/ai/health","GET"));
     [Theory]
+    [InlineData("/api/suite/branding","GET")][InlineData("/api/v1/suite/branding","HEAD")]
     [InlineData("/api/suite/home","GET")][InlineData("/api/v1/suite/home/images/7c1d0000-0000-4000-8000-0000000000d1","GET")]
     public void EverySchoolUserReadsSchoolHome(string path,string method)
     {
@@ -147,4 +148,25 @@ public class PermissionTests
     }
     [Fact]
     public void PermissionMappingMatchesAcrossGatewayAndDirectService()=>Assert.Equal(PermissionAccess.Required("/api/v1/suite/records/homework","PUT"),PermissionAccess.Required("/api/suite/records/homework","PUT"));
+
+    [Theory]
+    [InlineData("/api/notifications/settings","GET")]
+    [InlineData("/api/v1/notifications/settings/history","GET")]
+    [InlineData("/api/notifications/settings/circular.published","PUT")]
+    public void DeliverySettingsHaveASeparatePermission(string path,string method)
+    {
+        Assert.Equal("notifications.settings.manage",PermissionAccess.Required(path,method));
+        Assert.True(PermissionAccess.Allows(Context("Custom","school",path,method,"notifications.settings.manage")));
+        Assert.False(PermissionAccess.Allows(Context("Administrator","school",path,method,"notifications.manage")));
+    }
+
+    [Theory]
+    [InlineData("/api/suite/student-setup/00000000-0000-0000-0000-000000000001","GET")]
+    [InlineData("/api/v1/suite/student-setup/00000000-0000-0000-0000-000000000001","POST")]
+    public void StudentSetupRequiresProfileManagement(string path,string method)
+    {
+        Assert.Equal("account-links.manage",PermissionAccess.Required(path,method));
+        Assert.False(PermissionAccess.Allows(Context("Custom","student",path,method,"students.view")));
+        Assert.True(PermissionAccess.Allows(Context("Custom","school",path,method,"account-links.manage")));
+    }
 }

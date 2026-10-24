@@ -1,6 +1,6 @@
 // The web notification inbox: the shapes the inbox API returns and where a notification leads. A notification carries
 // a destination key, never a path; the app chooses the first permitted page for it. Pure, so it is unit tested.
-export type InboxItem = { id: string, type: string, category: string, title: string, body: string, destination: { route: string, entityId?: string } | null, createdAt: string, readAt: string | null }
+export type InboxItem = { requiresAcknowledgement?: boolean, acknowledgedAt?:string|null, id: string, type: string, category: string, title: string, body: string, destination: { route: string, entityId?: string } | null, createdAt: string, readAt: string | null }
 export type Inbox = { items: InboxItem[], unread: number, totalCount: number, page: number, pageSize: number }
 
 export const CATEGORY_LABELS: Record<string, string> = { attendance: 'Attendance', homework: 'Homework', results: 'Results', fees: 'Fees', notices: 'Notices', leave: 'Leave', timetable: 'Timetable', school: 'School' }

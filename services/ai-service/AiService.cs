@@ -81,9 +81,13 @@ public static class AiService
         builder.Services.AddSingleton<IAiTool, FeeSummaryTool>();
         builder.Services.AddSingleton<IAiTool, ExamScheduleTool>();
         builder.Services.AddSingleton<IAiTool, CurrentUserProfileTool>();
+        builder.Services.AddSingleton<IAiTool, StaffDirectoryTool>();
+        builder.Services.AddSingleton<IAiTool, StaffLeaveBalancesTool>();
+        foreach(var spec in SchoolLookupCatalogue.All) builder.Services.AddSingleton<IAiTool>(new RecordLookupTool(spec));
         builder.Services.AddSingleton<IEduOsApi>(s => new EduOsApi(EduOsApi.Client(s.GetRequiredService<IOptions<AiToolsOptions>>().Value), s.GetServices<IAiTool>()));
         builder.Services.AddSingleton<IAiToolAudit, PostgresAiToolAudit>();
         builder.Services.AddSingleton<AiToolRegistry>();
+        builder.Services.AddSingleton<AiToolSelector>();
     }
 
     // Checked against the chunk size, so the best chunk always fits in the context budget.
@@ -230,7 +234,14 @@ public static class AiService
         {
             if (Denied(tenant, http)) return Forbidden();
             // The caller's token is forwarded only to EduOS itself, for live figures the caller is permitted to read.
-            var outcome = await gateway.Ask(tenant, http.User.FindFirst("data_scope")?.Value ?? "", ask, cancellation, ToolCaller.From(http, tenant));
+            using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+            budget.CancelAfter(TimeSpan.FromSeconds(115));
+            AssistantOutcome outcome;
+            try { outcome = await gateway.Ask(tenant, http.User.FindFirst("data_scope")?.Value ?? "", ask, budget.Token, ToolCaller.From(http, tenant)); }
+            catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
+            {
+                return Unavailable("provider-timeout");
+            }
             if (outcome.Invalid is string message) return Results.BadRequest(new { message });
             if (outcome.RetryAfterSeconds is int wait) return Results.Ok(new { data = new { available = false, reason = outcome.Unavailable, retryAfterSeconds = wait } });
             if (outcome.Response is not ModelResponse answer) return Results.Ok(new { data = new { available = false, reason = outcome.Unavailable } });

@@ -293,6 +293,22 @@ public static partial class Suite
 
     static void MapCommunications(RouteGroupBuilder group)
     {
+        group.MapGet("/communications/config", async (HttpContext http) =>
+        {
+            await using var c = await Open(); var a = Manager(await Access(http, c));
+            var row = (await Q(c, "SELECT time_zone FROM notify.communication_settings WHERE school_id=@s", ("s", a.School))).FirstOrDefault();
+            return Results.Ok(new { data = new { timeZone = row is null ? "UTC" : Text(row, "time_zone") } });
+        });
+        group.MapPut("/communications/config", async (JsonObject input, HttpContext http) =>
+        {
+            await using var c = await Open(); var a = Manager(await Access(http, c));
+            Require(a.SchoolWide, "Only school leadership can change the school timezone.", 403);
+            var zone = Text(input, "timeZone"); Require(zone.Length is > 0 and <= 100 && (zone == "UTC" || zone.Contains('/')), "Choose an IANA timezone.");
+            try { TimeZoneInfo.FindSystemTimeZoneById(zone); } catch (TimeZoneNotFoundException) { throw new SuiteError(400, "Unknown timezone."); } catch (InvalidTimeZoneException) { throw new SuiteError(400, "Invalid timezone."); }
+            await E(c, "INSERT INTO notify.communication_settings(school_id,time_zone) VALUES(@s,@z) ON CONFLICT(school_id) DO UPDATE SET time_zone=excluded.time_zone", ("s", a.School), ("z", zone));
+            return Results.Ok(new { message = "School timezone saved." });
+        });
+
         // The workspace: every communication a manager may see, newest first, by status, with what happened to each.
         group.MapGet("/communications", async (HttpContext http, string? status = null, int page = 1) =>
         {

@@ -145,10 +145,17 @@ public static partial class Suite
     }
 
     static void MapHome(RouteGroupBuilder group){
+        // Expose colours only, never unpublished page content.
+        group.MapGet("/branding",async(HttpContext http)=>{
+            await using var c=await Open();var a=await Access(http,c);var home=await HomeLoad(c,a.School);
+            return Results.Ok(new{data=new{schoolId=a.School,brand=home?.Data["draft"]?["brand"]?.DeepClone()}});
+        });
         group.MapGet("/home",async(HttpContext http)=>{
             // A school whose boundary does not include School Home has none, exactly like a school that published nothing.
             await using var c=await Open();var a=await Access(http,c);var home=await FeatureEnabled(c,a.School,"school-home")?await HomeLoad(c,a.School):null;
-            return Results.Ok(new{data=new{home=home?.Data["published"] is JsonObject published?await HomeView(c,a,published):null,canManage=a.Can(HomeManage)}});
+            var view=home?.Data["published"] is JsonObject published?await HomeView(c,a,published):null;
+            if(view is not null)view["brand"]=home?.Data["draft"]?["brand"]?.DeepClone();
+            return Results.Ok(new{data=new{home=view,canManage=a.Can(HomeManage)}});
         });
         group.MapGet("/home/manage",async(HttpContext http)=>{
             await using var c=await Open();var a=HomeCaller(http,true);

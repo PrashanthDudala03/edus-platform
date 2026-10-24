@@ -19,6 +19,8 @@ public class AssistantRouterTests
     [InlineData("explain photosynthesis", AssistantRouteKind.Knowledge)] [InlineData("What does the school policy say about attendance?", AssistantRouteKind.Knowledge)]
     [InlineData("What attendance percentage must students maintain?", AssistantRouteKind.Knowledge)] [InlineData("What are the fees?", AssistantRouteKind.Knowledge)] [InlineData("When are fees due?", AssistantRouteKind.Knowledge)]
     [InlineData("What time does the swimming pool open?", AssistantRouteKind.Knowledge)] [InlineData("What are the exam rules?", AssistantRouteKind.Knowledge)] [InlineData("hi, what is the leave policy?", AssistantRouteKind.Knowledge)]
+    [InlineData("What is the policy for the amount collected?", AssistantRouteKind.Knowledge)]
+    [InlineData("Explain how rainwater is collected", AssistantRouteKind.Knowledge)]
     public void AQuestionIsRoutedByFixedRules(string question, AssistantRouteKind kind) => Assert.Equal(kind, AssistantRouter.Route(question, Today).Kind);
 
     [Theory]
@@ -34,6 +36,17 @@ public class AssistantRouterTests
     [InlineData("What is my name?", "current_user_profile", null)] [InlineData("who am i", "current_user_profile", null)] [InlineData("tell me about myself", "current_user_profile", null)] [InlineData("what's my role?", "current_user_profile", null)]
     [InlineData("pending fees", "fee_summary", null)] [InlineData("How much fee is outstanding?", "fee_summary", null)] [InlineData("total fees collected", "fee_summary", null)]
     [InlineData("upcoming exams", "exam_schedule", "{\"period\":\"upcoming\"}")] [InlineData("When is the next exam?", "exam_schedule", "{\"period\":\"upcoming\"}")] [InlineData("recent tests", "exam_schedule", "{\"period\":\"recent\"}")]
+    [InlineData("what is the amount collected?", "fee_summary", null)]
+    [InlineData("How much have we collected?", "fee_summary", null)]
+    [InlineData("Show the total collection", "fee_summary", null)]
+    [InlineData("What is the collected amount?", "fee_summary", null)]
+    [InlineData("money received", "fee_summary", null)]
+    [InlineData("give me all the staff details", "staff_directory", null)]
+    [InlineData("what are the leave types ?", "records_leave_types", null)]
+    [InlineData("Can i see the life balance attendance adjustments?", "records_leave_adjustments", null)]
+    [InlineData("show staff attendance", "records_staff_attendance", null)]
+    [InlineData("show leave balances", "staff_leave_balances", null)]
+    [InlineData("list academic years", "records_academic_years", null)]
     public void ALiveQuestionNamesOneRegisteredToolWithArgumentsTheServiceBuilt(string question, string tool, string? arguments)
     {
         var route = AssistantRouter.Route(question, Today);
@@ -45,6 +58,9 @@ public class AssistantRouterTests
     [InlineData("difference between mitosis and meiosis", true)] [InlineData("Summarize the water cycle", true)]
     [InlineData("What time does the swimming pool open?", false)] [InlineData("What is the principal's name?", false)] [InlineData("Summarize the leave policy.", false)] [InlineData("What is our uniform?", false)]
     [InlineData("When is sports day?", false)] [InlineData("Who is the class teacher of 6A?", false)] [InlineData("What are the fees?", false)] [InlineData("what is the school bus route", false)]
+    [InlineData("what is the amount collected?", false)]
+    [InlineData("Explain how rainwater is collected", true)]
+    [InlineData("Explain data collection methods", true)]
     public void OnlyARequestThatNamesNothingOfASchoolMayUseGeneralKnowledge(string question, bool general) => Assert.Equal(general, AssistantRouter.LooksGeneral(question));
 
     [Fact]
@@ -178,6 +194,24 @@ public class AiRoutingTests
             Assert.Equal((true, "assistant", AssistantReplies.Personal), Read((await s.Say(question)).Data));
         Assert.Equal(5, s.EduOS.Calls.Count);
         Assert.Empty(s.Model.Requests); Assert.Equal(0, s.Embeds);
+    }
+
+    [Fact]
+    public async Task CollectedAmountQuestionsUseLiveFeesWithoutEmbeddingOrGeneration()
+    {
+        await using var s = await Start();
+        var token = s.Host.Token("Administrator", "school", permissions: All);
+        foreach (var question in new[] { "what is the amount collected?", "How much have we collected?", "Show the total collection" })
+        {
+            var answer = (await s.Say(question, token)).Data;
+            Assert.Equal((true, "live"), (answer.GetProperty("available").GetBoolean(), answer.GetProperty("kind").GetString()));
+            Assert.Contains("paid 16,001.00", answer.GetProperty("answer").GetString());
+        }
+        var family = Read((await s.Say("what is the amount collected?", s.Host.Token("Parent", "parent", permissions: [Use, "fees.view"]))).Data);
+        Assert.StartsWith("Fee totals for the students linked to your account", family.Answer);
+        var denied = Read((await s.Say("what is the amount collected?", s.Host.Token("Teacher", "teacher", permissions: [Use]))).Data);
+        Assert.Equal(AssistantReplies.NoAccess, denied.Answer);
+        Assert.Empty(s.Model.Requests); Assert.Equal(0, s.Embeds); Assert.Empty(s.Usage.Records);
     }
 
     [Fact]

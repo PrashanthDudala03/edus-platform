@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowDown, ArrowUp, Eye, EyeOff, Image as ImageIcon, Info, Plus, Save, Send, Trash2, Upload } from 'lucide-react'
 import client, { errorMessage } from '../../api/client'
 import { ErrorBox, Loading, PageHeader } from '../../components/UI'
+import { sampleSchool } from './sampleSchool'
 import { HomeImage } from './SchoolHomeView'
 import { CATEGORIES, POSITIONS, SECTION_HINTS, SECTION_LABELS, STAT_SOURCES, DEFAULT_BRAND, brandTheme, move, type Draft, type SectionKey } from './schoolHome'
 type State={version:number,published:boolean,publishedAt:string|null,pending:boolean}
@@ -65,7 +66,7 @@ function Editor({section,draft,set,teachers}:{section:SectionKey,draft:Draft,set
    <div className="home-colours"><label>Primary colour<input type="color" value={brand.primary||DEFAULT_BRAND.primary} onChange={e=>set({brand:{...brand,primary:e.target.value}})}/></label><label>Accent colour<input type="color" value={brand.accent||DEFAULT_BRAND.accent} onChange={e=>set({brand:{...brand,accent:e.target.value}})}/></label>
     <button type="button" className="button secondary small" disabled={!brand.primary&&!brand.accent} onClick={()=>set({brand:{primary:'',accent:''}})}>Use EduOS colours</button></div>
    <div className="home-swatches" aria-hidden="true">On the page:{['--sw-deep','--sw-primary','--sw-soft','--sw-tint'].map(shade=><i key={shade} style={{background:theme[shade]}}/>)}<b style={{background:theme['--sw-accent'],color:theme['--sw-on-accent']}}>Enter Dashboard</b></div>
-   <Note>Your two school colours shape the banner, buttons, figures and section backgrounds. Lighter and darker shades are worked out for you, and text always stays readable.</Note></>
+   <Note>Save your colours to apply them across your school app: navigation, buttons, dashboards and School Home. Lighter and darker shades are worked out for you, and text always stays readable.</Note></>
   case 'identity':return <><Field label="Motto (shown on the banner)" value={identity.motto} max={200} onChange={motto=>set({identity:{...identity,motto}})}/>
    <Field label="Vision" area value={identity.vision} max={1000} onChange={vision=>set({identity:{...identity,vision}})}/>
    <Field label="Mission" area value={identity.mission} max={1000} onChange={mission=>set({identity:{...identity,mission}})}/></>
@@ -118,16 +119,20 @@ export default function SchoolHomeManagePage(){
  async function submit(action:'save'|'publish'|'unpublish',thenPreview=false){
   setBusy(true);setError('');setMessage('')
   try{const saved=(await client.put('/suite/home',{draft,version:state!.version,action})).data.data
-   setDraft(saved.draft);setState(saved);setDirty(false);await cache.invalidateQueries({queryKey:['school-home']})
+   setDraft(saved.draft);setState(saved);setDirty(false);await Promise.all([cache.invalidateQueries({queryKey:['school-home']}),cache.invalidateQueries({queryKey:['school-branding']})])
    if(thenPreview)navigate('/home/preview')
-   else{setMessage(action==='publish'?'School Home is published. Your school community sees it after signing in.':action==='unpublish'?'School Home is no longer shown after sign-in. Your draft is kept.':'Draft saved. Publish it when you are ready.')}
+   else{setMessage(action==='publish'?'School Home is published. Your school community sees it after signing in.':action==='unpublish'?'School Home is no longer shown after sign-in. Your draft is kept.':'Draft saved. School colours are applied across your app. Publish when your welcome page is ready.')}
   }catch(e){setError(errorMessage(e))}finally{setBusy(false)}
+ }
+ async function loadSample(){
+  if(!window.confirm('Replace the banner, portraits and gallery in this draft with sample content? Nothing is published until you publish it.'))return
+  setBusy(true);setError('');try{setDraft(await sampleSchool(draft!,manage.data?.teachers||[]));setDirty(true);setMessage('Sample photos added to your draft. Save or preview to keep them. Replace sample portraits before publishing.')}catch(e){setError(errorMessage(e))}finally{setBusy(false)}
  }
  const status=!state.published?'Not published':dirty||state.pending?'Published · changes not yet published':'Published'
  const publish=<button className="button primary" disabled={busy} onClick={()=>submit('publish')}><Send size={16}/>{state.published?'Publish changes':'Publish'}</button>
  const current=draft.sections.find(s=>s.key===selected)!
  return <><PageHeader eyebrow="SCHOOL CONFIGURATION" title="School Home" description="The welcome page your school community sees after signing in.">
-  <button className="button secondary" disabled={busy} onClick={()=>submit('save',true)}><Eye size={16}/>Preview</button><button className="button secondary" disabled={busy} onClick={()=>submit('save')}><Save size={16}/>Save draft</button>{publish}</PageHeader>
+  <button className="button secondary" disabled={busy} onClick={loadSample}>Load sample photos</button><button className="button secondary" disabled={busy} onClick={()=>submit('save',true)}><Eye size={16}/>Preview</button><button className="button secondary" disabled={busy} onClick={()=>submit('save')}><Save size={16}/>Save draft</button>{publish}</PageHeader>
  {error&&<ErrorBox message={error}/>}{message&&<div className="success-box" role="status">{message}</div>}
  <div className="home-manage"><section className="panel" aria-label="Sections"><div className="panel-heading"><div><h2>Sections</h2><p>Choose what appears, and in what order</p></div></div>
   <ol className="home-section-list">{draft.sections.map((s,i)=>{const label=SECTION_LABELS[s.key];return <li key={s.key} className={s.key===selected?'active':''}>

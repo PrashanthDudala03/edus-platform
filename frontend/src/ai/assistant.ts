@@ -10,7 +10,7 @@ export const ASSISTANT_PERMISSION = 'ai.assistant.use'
  * for them, and no assistant request is made. Production should set this to false, which returns the button to
  * permission-based visibility (canUseAssistant). The backend enforces ai.assistant.use either way.
  */
-export const SHOW_AI_DEMO_ENTRY = true
+export const SHOW_AI_DEMO_ENTRY = false
 /** The backend's limit on a question. */
 export const MAX_QUESTION_CHARS = 1000
 /** From this length on, the remaining characters are shown. */

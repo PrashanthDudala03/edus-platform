@@ -1,0 +1,54 @@
+using System.Text.RegularExpressions;
+namespace EduOS.Ai.Tools;
+public static class SchoolLookupCatalogue
+{
+ public static readonly LookupSpec[] All = [
+  new("records_academic_years","Academic years","academic-years","academic-years.view",[new("name","Year name",null),new("startsOn","Starts on",null),new("endsOn","Ends on",null),new("status","Status",null)],["academic years","academic years"],false),
+  new("records_classes","Classes & sections","classes","classes.view",[new("name","Class name",null),new("section","Section",null),new("yearId","Academic year","academic-years"),new("teacherId","Class teacher","teachers"),new("capacity","Capacity",null)],["classes","classes sections"],false),
+  new("records_subjects","Subjects","subjects","subjects.view",[new("name","Subject",null),new("code","Subject code",null)],["subjects","subjects"],false),
+  new("records_teaching_assignments","Teaching assignments","teaching-assignments","teaching-assignments.view",[new("classId","Class / section","classes"),new("subjectId","Subject","subjects"),new("teacherId","Teacher","teachers")],["teaching assignments","teaching assignments"],false),
+  new("records_admissions","Admissions","admissions","admissions.view",[new("yearId","Academic year","academic-years"),new("classId","Class applied for","classes"),new("firstName","First name",null),new("lastName","Last name",null),new("dateOfBirth","Date of birth",null)],["admissions","admissions"],false),
+  new("records_admission_fields","Admission form","admission-fields","admission-fields.view",[new("label","Question",null),new("key","Key",null),new("type","Answer type",null),new("options","Choices (comma separated)",null),new("required","Required",null)],["admission fields","admission form"],false),
+  new("records_staff_attendance","Staff attendance","staff-attendance","staff-attendance.view",[new("teacherId","Staff member","teachers"),new("day","Date",null),new("status","Attendance",null)],["staff attendance","staff attendance"],true),
+  new("records_leave_types","Leave types","leave-types","leave-types.view",[new("name","Leave type",null),new("code","Code",null),new("paid","Pay",null),new("yearlyAllowance","Days per year",null),new("tracksBalance","Track balance",null),new("active","Active",null)],["leave types","leave types"],true),
+  new("records_leave_requests","Leave requests","leave-requests","leave-requests.view",[new("teacherId","Staff member","teachers"),new("typeId","Leave type","leave-types"),new("fromDate","From",null),new("toDate","Through",null),new("halfDay","Half day",null)],["leave requests","leave requests"],true),
+  new("records_leave_adjustments","Leave balance adjustments","leave-adjustments","leave-adjustments.view",[new("teacherId","Staff member","teachers"),new("typeId","Leave type","leave-types"),new("direction","Direction",null),new("days","Days",null),new("effectiveOn","Effective on",null)],["leave adjustments","leave balance adjustments"],true),
+  new("records_fee_heads","Fee heads","fee-heads","fee-structures.view",[new("name","Fee head",null),new("code","Code",null),new("active","Active",null),new("description","Description",null)],["fee heads","fee heads"],false),
+  new("records_fee_structures","Fee structures & instalments","fee-structures","fee-structures.view",[new("name","Fee name",null),new("headId","Fee head","fee-heads"),new("yearId","Academic year","academic-years"),new("classId","Class","classes"),new("studentId","Student (individual structure, optional)","students")],["fee structures","fee structures instalments"],false),
+  new("records_assessment_schemes","Assessment schemes","assessment-schemes","exams.view",[new("name","Scheme name",null),new("type","Type",null),new("components","Components (Theory:70:28, Practical:30)",null),new("passPercent","Pass percentage (optional)",null),new("grades","Grade scale (A+:90, A:80, B:60, C:40, D:0)",null)],["assessment schemes","assessment schemes"],false),
+  new("records_exams","Exams & timetable","exams","exams.view",[new("name","Exam / term",null),new("yearId","Academic year","academic-years"),new("term","Term",null),new("classId","Class","classes"),new("subjectId","Subject","subjects")],["exams","exams timetable"],false),
+  new("records_marks","Marks & results","marks","marks.view",[new("examId","Exam","exams"),new("studentId","Student","students"),new("status","Attendance",null),new("score","Marks obtained (total)",null),new("components","Component marks (Theory=56; Practical=25)",null)],["marks","marks results"],false),
+  new("records_circulars","Circulars","circulars","circulars.view",[new("title","Title",null),new("message","Circular",null),new("audience","Audience",null),new("classId","Target class (blank for all)","classes"),new("dueDate","Acknowledge by",null)],["circulars","circulars"],false),
+  new("records_calendar","School calendar","calendar","calendar.view",[new("title","Event",null),new("startsOn","Starts on",null),new("endsOn","Ends on",null),new("description","Details",null)],["calendar","school calendar"],false),
+  new("records_homework","Homework & assignments","homework","homework.view",[new("title","Assignment",null),new("classId","Class","classes"),new("subjectId","Subject","subjects"),new("dueDate","Due date",null),new("dueTime","Due time",null)],["homework","homework assignments"],false),
+  new("records_submissions","Submissions & feedback","submissions","submissions.view",[new("homeworkId","Homework","homework"),new("studentId","Student","students"),new("response","Student response",null),new("feedback","Teacher feedback",null),new("grade","Grade / result",null)],["submissions","submissions feedback"],false),
+  new("records_period_slots","Period structure","period-slots","period-slots.view",[new("name","Period",null),new("order","Order",null),new("startsAt","Starts",null),new("endsAt","Ends",null),new("type","Type",null)],["period slots","period structure"],false),
+  new("records_timetable","Timetable","timetable","timetable.view",[new("classId","Class","classes"),new("subjectId","Subject","subjects"),new("teacherId","Teacher","teachers"),new("day","Day",null),new("slotId","Period","period-slots")],["timetable","timetable"],false),
+  new("records_substitutions","Substitutions","substitutions","substitutions.view",[new("date","Date",null),new("timetableId","Period","timetable"),new("teacherId","Substitute teacher","teachers"),new("leaveId","Leave","leave-requests"),new("note","Note",null)],["substitutions","substitutions"],false),
+  new("records_certificates","Certificates & ID cards","certificates","certificates.view",[new("studentId","Student","students"),new("type","Document type",null),new("issuedOn","Issue date",null),new("remarks","Remarks",null)],["certificates","certificates id cards"],false),
+  new("records_library_books","Library catalogue","library-books","library-books.view",[new("title","Book title",null),new("code","Catalogue code",null),new("author","Author",null),new("isbn","ISBN",null),new("copies","Total copies",null)],["library books","library catalogue"],false),
+  new("records_library_loans","Book loans & returns","library-loans","library-loans.view",[new("bookId","Book","library-books"),new("studentId","Student","students"),new("issuedOn","Issued on",null),new("dueOn","Due on",null),new("status","Status",null)],["library loans","book loans returns"],false),
+  new("records_inventory_items","Inventory & assets","inventory-items","inventory-items.view",[new("name","Item name",null),new("code","Asset / stock code",null),new("category","Category",null),new("quantity","Total quantity",null),new("location","Storage location",null)],["inventory items","inventory assets"],false),
+  new("records_inventory_assignments","Asset assignments & returns","inventory-assignments","inventory-assignments.view",[new("itemId","Item","inventory-items"),new("teacherId","Assigned staff member","teachers"),new("quantity","Quantity",null),new("issuedOn","Issued on",null),new("status","Status",null)],["inventory assignments","asset assignments returns"],false),
+  new("records_transport_routes","Transport routes","transport-routes","transport-routes.view",[new("name","Route name",null),new("vehicle","Vehicle registration",null),new("driver","Driver name",null),new("capacity","Passenger capacity",null),new("status","Status",null)],["transport routes","transport routes"],false),
+  new("records_transport_stops","Route stops","transport-stops","transport-stops.view",[new("name","Stop name",null),new("routeId","Route","transport-routes"),new("sequence","Stop order",null),new("pickup","Pickup time",null),new("dropoff","Drop-off time",null)],["transport stops","route stops"],false),
+  new("records_transport_assignments","Student transport assignments","transport-assignments","transport-assignments.view",[new("studentId","Student","students"),new("routeId","Route","transport-routes"),new("stopId","Stop","transport-stops"),new("status","Status",null)],["transport assignments","student transport assignments"],false)
+ ];
+ public static string? Match(string text,bool priorityOnly=false)
+ {
+  if(Regex.IsMatch(text,@"\b(leave|life)\s+balance.*adjustments?\b|\bleave adjustments?\b"))return "records_leave_adjustments";
+  if(Regex.IsMatch(text,@"\b(staff|teachers?|employees?)\b.*\battendance\b|\battendance\b.*\b(staff|teachers?|employees?)\b"))return "records_staff_attendance";
+  if(Regex.IsMatch(text,@"\b(types?|categories) of leave\b|\bleave (types?|categories)\b"))return "records_leave_types";
+  if(Regex.IsMatch(text,@"\bleave balances?\b|\bbalance of (my )?leave\b"))return "staff_leave_balances";
+  if(Regex.IsMatch(text,@"\b(how many|number of|total|count)\b.*\b(teachers?|staff|employees?|instructors?|faculty)\b|\b(teachers?|staff|employees?|instructors?|faculty)\b.*\b(count|total|headcount)\b"))return "staff_directory";
+  if(Regex.IsMatch(text,@"\b(staff|teachers?|employees?)\b.*\b(details|information|directory|list|profiles?)\b|\ball (the )?(staff|teachers?|employees?)\b"))return "staff_directory";
+  return All.Where(s=>!priorityOnly||s.Priority).FirstOrDefault(s=>s.Aliases.Any(a=>Regex.IsMatch(text,@"\b"+Regex.Escape(a)+@"\b")))?.Name;
+ }
+ public static string? Title(string name)=>name=="staff_directory"?"Staff directory":name=="staff_leave_balances"?"Staff leave balances":All.FirstOrDefault(s=>s.Name==name)?.Title;
+ public static string Format(System.Text.Json.Nodes.JsonObject data)
+ {
+  var lines=data["lines"]!.AsArray();var title=(string?)data["title"]??"School records";
+  if(lines.Count==0)return title+": no records are saved in the information your account can access. Open "+data["path"]+" to review or add records.";
+  return title+" ("+data["total"]+" record(s) in your authorized scope):\n"+string.Join("\n",lines.Select(l=>"• "+(string?)l))+((bool?)data["more"]==true?"\nThis is the first page; more records are available.":"")+"\nOpen "+data["path"]+" for the full details.";
+ }
+}

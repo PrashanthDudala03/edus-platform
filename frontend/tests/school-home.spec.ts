@@ -65,7 +65,7 @@ async function signIn(page: Page) {
   await page.goto('/login')
   await page.getByLabel('Email or username').fill('asha.teacher')
   await page.getByLabel('Password', { exact: true }).fill('not-a-real-password')
-  await page.getByRole('button', { name: 'Sign in to workspace' }).click()
+  await page.getByRole('button', { name: 'Continue to workspace' }).click()
 }
 const main = (page: Page) => page.locator('#main')
 
