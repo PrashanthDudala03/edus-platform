@@ -358,13 +358,14 @@ test.describe.serial('Security boundaries against real Docker services',()=>{
   // Other applications may use these host ports; inspect only this Compose project's containers.
   for(const service of ['api-gateway','auth-service','student-service','teacher-service','parent-service','school-service','ai-service','postgres','ai-db']){
    const ids=execFileSync('docker',['compose','--profile','ai','ps','-q',service],{cwd:root,encoding:'utf8'}).trim().split(/\r?\n/).filter(Boolean)
+   if(!ids.length&&['ai-service','ai-db'].includes(service))continue // Optional AI profile may be disabled.
    expect(ids.length,service+' must be running').toBeGreaterThan(0)
    for(const id of ids){const bindings=JSON.parse(execFileSync('docker',['inspect',id,'--format','{{json .HostConfig.PortBindings}}'],{cwd:root,encoding:'utf8'}));expect(Object.keys(bindings||{}),service+' must not publish internal ports').toEqual([])}
   }
  })
  test('free notification live delivery, preferences and tenant isolation',async({page})=>{
   const {HubConnectionBuilder,HttpTransportType,LogLevel}=await import('@microsoft/signalr')
-  const base=process.env.EDUOS_TEST_URL||'http://localhost:8081'
+  const base=process.env.EDUOS_TEST_URL||'http://localhost:8080'
   const received:Record<string,any[]>={parent:[],student:[],other:[]}
   const connections=[['parent',A,'Parent'],['student',A,'Student'],['other',B,'Administrator']].map(([name,school,role]:any[])=>{
    const hub=new HubConnectionBuilder().withUrl(base+'/api/v1/notifications/live',{transport:HttpTransportType.LongPolling,accessTokenFactory:()=>school.tokens[role].accessToken}).configureLogging(LogLevel.None).build()

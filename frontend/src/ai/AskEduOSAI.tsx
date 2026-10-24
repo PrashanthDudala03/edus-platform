@@ -67,7 +67,7 @@ function Panel({ owner, allowed, conversation, busy, onAsk, onStop, onClear, onC
     <div className="ai-log" ref={log} role="log" aria-live="polite" aria-label="Conversation" tabIndex={0}>
       {conversation.length === 0 && <div className="ai-welcome"><span className="ai-mark large"><Sparkles size={24} /></span><h3>How can I help?</h3>
         <p>Ask about your school's documents and policies, school information your account can see, or general study topics.</p>
-        <div className="ai-suggestions" aria-label="Example questions">{suggestions.map(example => <button type="button" key={example} disabled={blocked} onClick={() => { setDraft(example); input.current?.focus() }}>{example}</button>)}</div></div>}
+        <div className="ai-suggestions" role="group" aria-label="Example questions">{suggestions.map(example => <button type="button" key={example} disabled={blocked} onClick={() => { setDraft(example); input.current?.focus() }}>{example}</button>)}</div></div>}
       {conversation.map(message => message.from === 'user'
         ? <div key={message.id} className="ai-message from-user"><p>{message.text}</p></div>
         : <div key={message.id} className={'ai-message from-assistant ' + message.reply.kind}><span className="ai-author">EduOS AI</span>

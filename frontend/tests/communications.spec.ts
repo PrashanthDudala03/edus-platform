@@ -30,7 +30,7 @@ async function mock(page: Page, user = principal) {
   const json = (route: Route, body: unknown, code = 200) => route.fulfill({ status: code, contentType: 'application/json', body: JSON.stringify(body) })
   await page.route('**/*', async route => {
     const req = route.request(), url = new URL(req.url()), path = url.pathname.startsWith('/api/') ? url.pathname.replace('/api/v1', '') : '', method = req.method()
-    if (path && method !== 'GET') calls.push({ method, path, body: req.postData() ? req.postDataJSON() : null })
+    if (path && method !== 'GET' && !path.startsWith('/notifications/live')) calls.push({ method, path, body: req.postData() ? req.postDataJSON() : null })
     if (path === '/suite/communications/config') return json(route,{data:{timeZone:'Asia/Kolkata'}})
     if (path === '/notifications/preferences') return json(route,{data:{categories:['notices'],disabled:[]}})
     if (path.startsWith('/notifications/live')) return json(route,{message:'Live transport is not used by mocked tests.'},503)

@@ -18,7 +18,7 @@ async function throttled(send:()=>Promise<APIResponse>){for(let i=0;;i++){const 
 // the run); when the budget is spent, the page says so and the attempt is repeated after the window, not failed.
 async function signIn(page:import('@playwright/test').Page){
  for(let i=0;;i++){
-  await page.getByRole('button',{name:'Sign in to workspace'}).click()
+  await page.getByRole('button',{name:'Continue to workspace'}).click()
   const limited=page.getByText('Too many sign-in attempts')
   await Promise.race([expect(page.getByRole('heading',{name:/Good .*QA/})).toBeVisible({timeout:20000}).catch(()=>{}),expect(limited).toBeVisible({timeout:20000}).catch(()=>{})])
   if(!(await limited.isVisible())||i>=15)return
@@ -131,7 +131,7 @@ test.describe.serial('School workspace against real Docker services',()=>{
   await page.getByRole('button',{name:'Save attendance'}).click();await expect(page.getByText('Attendance saved successfully.')).toBeVisible()
   await page.getByRole('link',{name:'Admin noticeboard',exact:true}).click();await expect(page.getByRole('heading',{name:'Welcome to the new term'})).toBeVisible()
   await page.getByRole('link',{name:'School settings & accounts',exact:true}).click();await expect(page.getByLabel('School name')).toHaveValue('QA School')
-  await page.getByRole('button',{name:'Sign out',exact:true}).click();await expect(page.getByRole('heading',{name:'Good to see you.'})).toBeVisible()
+  await page.getByRole('button',{name:'Sign out',exact:true}).click();await expect(page.getByRole('heading',{name:'Your day starts here.'})).toBeVisible()
   expect(errors).toEqual([])
  })
  test('mobile layout is usable without page overflow',async({page})=>{

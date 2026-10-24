@@ -30,7 +30,7 @@ async function mock(page: Page, user = admin, login?: (body: Record<string, stri
   const json = (route: Route, body: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
   await page.route('**/*', async route => {
     const request = route.request(), url = new URL(request.url()), path = url.pathname.startsWith('/api/') ? url.pathname.replace('/api/v1', '') : '', method = request.method()
-    if (url.pathname.startsWith('/api/') && method !== 'GET') calls.push({ method, path: path + url.search, body: request.postData() ? request.postDataJSON() : null })
+    if (url.pathname.startsWith('/api/') && method !== 'GET' && !path.startsWith('/notifications/live')) calls.push({ method, path: path + url.search, body: request.postData() ? request.postDataJSON() : null })
     if (path === '/auth/login' && login) { const answer = login(request.postDataJSON()); return json(route, answer.body, answer.status) }
     if (path === '/control/me') return json(route, { data: user })
     if (path === '/notifications/templates') return user.permissions.includes('notifications.manage')

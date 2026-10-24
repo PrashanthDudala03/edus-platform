@@ -29,7 +29,7 @@ async function mock(page: Page, user = principal) {
   const overviewRow = (e: Record<string, unknown>) => ({ ...e, assigned: 2, entered: Object.keys(marks).length, missing: 2 - Object.keys(marks).length, absent: Object.values(marks).filter(m => m.status === 'Absent').length, exempt: 0, average: null, passed: 0, failed: 0, distribution: {}, scheme })
   await page.route('**/*', async route => {
     const request = route.request(), url = new URL(request.url()), path = url.pathname.startsWith('/api/') ? url.pathname.replace('/api/v1', '') : '', method = request.method()
-    if (path && method !== 'GET') calls.push({ method, path, body: request.postData() ? request.postDataJSON() : null })
+    if (path && method !== 'GET' && !path.startsWith('/notifications/live')) calls.push({ method, path, body: request.postData() ? request.postDataJSON() : null })
     if (path === '/control/me') return json(route, { data: user })
     if (path === '/suite/options') return json(route, { data: { students: [{ id: 'st1', label: 'Aarav Sharma' }, { id: 'st2', label: 'Diya Sharma' }], classes: [{ id: 'c1', label: 'Grade 6 - A' }], subjects: [{ id: 's1', label: 'Science' }], 'academic-years': [{ id: 'y1', label: '2026-27' }], 'assessment-schemes': [{ id: 'as1', label: 'Theory 70 + Practical 30' }] } })
     if (path === '/suite/exams/timetable') return json(route, { data: { items: [live(), exam(E2, { name: 'Unit test', subjectName: 'Mathematics', date: '2026-10-22', status: 'Scheduled', startsAt: '', endsAt: '', room: '', schemeId: '', schemeName: '', schemeType: 'Marks' })].filter(e => user.dataScope === 'school' || user.dataScope === 'teacher' || e.status !== 'Draft'), today: '2026-10-05' } })

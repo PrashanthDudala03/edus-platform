@@ -71,3 +71,8 @@ input,select,textarea{border-color:#e0e5e1;border-radius:8px;color:#34453a;backg
 .notification-toasts{position:fixed;right:22px;bottom:90px;width:min(360px,calc(100vw - 32px));z-index:70;display:grid;gap:10px;pointer-events:none}.notification-toast{pointer-events:auto;display:flex;justify-content:space-between;gap:12px;padding:16px;border:1px solid var(--border);border-left:4px solid var(--green);border-radius:12px;background:#fff;box-shadow:0 8px 30px #0002}.notification-toast strong{display:block;font-size:14px;overflow-wrap:anywhere}.notification-toast .text-link{background:none;padding:8px 0 0;text-align:left}.notification-preferences{margin-bottom:20px;padding:18px 22px}.notification-preferences summary{cursor:pointer;font-weight:600}.notification-preferences>div{padding-top:14px}.notification-preferences p{font-size:13px;color:#59675f;margin-bottom:10px}.notification-preference{display:flex;align-items:center;gap:10px;padding:10px 0;font-size:14px}.notification-preference input{display:inline-block;width:18px;height:18px;flex-shrink:0;margin:0}@media(max-width:700px){.notification-toasts{right:16px;bottom:82px}.notification-preferences{padding:16px}}
 
 .student-setup{overflow-wrap:anywhere}.student-setup .adm-choices{display:grid;gap:10px;padding:14px}.student-setup .adm-check{display:flex;align-items:center;gap:10px}.student-setup .adm-check input{width:18px;height:18px;flex:0 0 18px;margin:0}
+
+/* Keep small navigation and section labels readable on the light workspace surfaces. */
+.topbar .breadcrumbs,.topbar .breadcrumb,.topbar .date-pill,.topbar .identity small,.eyebrow{color:#526158}
+
+.sidebar .brand small,.sidebar .workspace-label,.sidebar label,.sidebar .nav-section-title,.sidebar .sign-out,.workspace-footer{color:#526158}
