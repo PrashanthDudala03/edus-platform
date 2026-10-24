@@ -25,7 +25,7 @@ async function mock(page: Page, user = principal) {
   const json = (route: Route, body: unknown, code = 200) => route.fulfill({ status: code, contentType: 'application/json', body: JSON.stringify(body) })
   await page.route('**/*', async route => {
     const req = route.request(), url = new URL(req.url()), path = url.pathname.startsWith('/api/') ? url.pathname.replace('/api/v1', '') : '', method = req.method()
-    if (path && method !== 'GET') calls.push({ method, path, body: req.postData() ? req.postDataJSON() : null })
+    if (path && method !== 'GET' && !path.startsWith('/notifications/live')) calls.push({ method, path, body: req.postData() ? req.postDataJSON() : null })
     if (path === '/control/me') return json(route, { data: user })
     if (path === '/suite/options') return json(route, { data: { teachers: [{ id: T1, label: 'Maya Teacher' }], 'leave-types': [{ id: CL, label: 'Casual leave' }, { id: 'ul', label: 'Unpaid leave' }] } })
     if (path === '/suite/leave/balances') return json(route, { data: balance(status === 'Pending' ? 2 : 0, status === 'Approved' ? 2 : 0) })

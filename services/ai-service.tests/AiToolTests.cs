@@ -54,10 +54,10 @@ public class AiToolTests
     }
 
     [Fact]
-    public async Task TheRegistryHoldsFiveReadOnlyToolsEachWithAPermissionAndBoundedArguments()
+    public async Task TheRegistryHoldsReadOnlyToolsEachWithAPermissionAndBoundedArguments()
     {
         await using var s = await Start();
-        Assert.Equal(new[] { ("attendance_summary", "overview.view"), ("current_user_profile", "ai.assistant.use"), ("exam_schedule", "exams.view"), ("fee_summary", "fees.view"), ("student_count", "students.view") }, s.Registry.All.Select(d => (d.Name, d.Permission)));
+        Assert.Equal(new[] { ("attendance_summary", "overview.view"), ("current_user_profile", "ai.assistant.use"), ("exam_schedule", "exams.view"), ("fee_summary", "fees.view"), ("student_count", "students.view") }, s.Registry.All.Where(d => new[] { "attendance_summary", "current_user_profile", "exam_schedule", "fee_summary", "student_count" }.Contains(d.Name)).Select(d => (d.Name, d.Permission)));
         Assert.All(s.Registry.All, d => { Assert.Matches("^[a-z_]{3,40}$", d.Name); Assert.InRange(d.Purpose.Length, 20, 200); Assert.NotEmpty(d.Output); Assert.InRange(d.Parameters.Count, 0, 2); });
         // Arguments are a date, a bounded number or one of a few words. None is free text, a school, a user or an address.
         var parameters = s.Registry.All.SelectMany(d => d.Parameters).ToList();
@@ -65,15 +65,16 @@ public class AiToolTests
         Assert.DoesNotContain(parameters, p => Regex.IsMatch(p.Name, "(?i)school|tenant|user|student|url|path|query|sql|filter|id$"));
         // No tool writes: the only thing a tool can do to EduOS is a GET.
         Assert.Equal(new[] { "Get" }, typeof(IEduOsApi).GetMethods().Select(m => m.Name));
-        Assert.All(s.Host.Services.GetServices<IAiTool>(), t => Assert.All(t.Paths, p => Assert.Matches("^/api/v1/(students/count|operations/overview|suite/fees|suite/records/exams|control/me)$", p)));
+        var allowed = new[] { "/api/v1/students/count", "/api/v1/operations/overview", "/api/v1/suite/fees", "/api/v1/suite/records/exams", "/api/v1/control/me", "/api/v1/teachers", "/api/v1/suite/leave/balances", "/api/v1/suite/options" }.Concat(SchoolLookupCatalogue.All.Select(x => "/api/v1/suite/records/" + x.Kind)).ToHashSet();
+        Assert.All(s.Host.Services.GetServices<IAiTool>(), t => Assert.All(t.Paths, path => Assert.Contains(path, allowed)));
     }
 
     [Fact]
     public async Task OnlyToolsTheCallersTokenPermitsAreOfferedAndThePlatformIsOfferedNone()
     {
         await using var s = await Start();
-        Assert.Equal(4, s.Registry.Offered(s.Caller()).Count);
-        Assert.Equal(new[] { "current_user_profile", "exam_schedule", "fee_summary" }, s.Registry.Offered(s.Caller(null, "exams.view", "fees.view", "ai.assistant.use")).Select(d => d.Name));
+        Assert.Equal(6, s.Registry.Offered(s.Caller()).Count);
+        Assert.Equal(new[] { "current_user_profile", "exam_schedule", "fee_summary", "records_assessment_schemes", "records_exams" }, s.Registry.Offered(s.Caller(null, "exams.view", "fees.view", "ai.assistant.use")).Select(d => d.Name));
         Assert.Empty(s.Registry.Offered(s.Caller(null, "students.update", "attendance.view")));
         var platform = new ToolCaller(new TenantContext(EduOSTenants.Platform, Guid.NewGuid(), "SuperAdmin") { PlatformAuthority = true }, Token, Everything);
         Assert.Empty(s.Registry.Offered(platform));
@@ -300,7 +301,7 @@ public class AiToolTests
     {
         await using var s = await Start();
         var api = s.Host.Services.GetRequiredService<IEduOsApi>();
-        foreach (var path in new[] { "/api/v1/students", "/api/v1/students/count/../../control/users", "/api/v1/suite/fees/payments", "/api/v1/operations/audit", "http://evil.example/collect", "//evil.example/x", "/api/v1/suite/records/marks", "", "/api/v1/suite/fees?x=1" })
+        foreach (var path in new[] { "/api/v1/students", "/api/v1/students/count/../../control/users", "/api/v1/suite/fees/payments", "/api/v1/operations/audit", "http://evil.example/collect", "//evil.example/x", "/api/v1/suite/records/not-a-module", "", "/api/v1/suite/fees?x=1" })
             await Assert.ThrowsAsync<InvalidOperationException>(() => api.Get(path, null, s.Caller(), default));
         Assert.Empty(s.EduOS.Calls);
         // A value in a query cannot add a parameter or change the path.

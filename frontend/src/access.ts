@@ -3,7 +3,7 @@ import { homeFor, roleOf } from './roles'
 const dashboards=['/admin','/principal','/teacher','/parent','/student']
 export function permissionForPath(path:string):string|undefined {
  if(path.startsWith('/control'))return path.includes('signup-requests')?'signup.review':path.includes('access-history')?'access-history.view':path.includes('/users')?'users.view':path.includes('/permissions')?'permissions.view':'roles.view'
- const fixed:Record<string,string>={'/students':'students.view','/teachers':'teachers.view','/parents':'parents.view','/attendance':'attendance.view','/announcements':'announcements.view','/audit':'audit.view','/settings':'school.settings.manage','/subscription':'subscription.view','/home/manage':'school-home.manage','/home/preview':'school-home.manage','/notifications/templates':'notifications.manage','/notifications/history':'notifications.manage','/admin':'overview.view','/principal':'overview.view','/suite/fees':'fees.view','/suite/register':'attendance.mark','/suite/reports':'reports.view','/suite/allocation':'allocations.manage'}
+ const fixed:Record<string,string>={'/students':'students.view','/teachers':'teachers.view','/parents':'parents.view','/attendance':'attendance.view','/announcements':'announcements.view','/audit':'audit.view','/settings':'school.settings.manage','/subscription':'subscription.view','/home/manage':'school-home.manage','/home/preview':'school-home.manage','/notifications/settings':'notifications.settings.manage','/notifications/templates':'notifications.manage','/notifications/history':'notifications.manage','/admin':'overview.view','/principal':'overview.view','/suite/fees':'fees.view','/suite/register':'attendance.mark','/suite/reports':'reports.view','/suite/analytics':'reports.view','/suite/allocation':'allocations.manage'}
  if(path.startsWith('/student360'))return 'reports.view'
  // Configuration modules that belong to a parent module share its permission, exactly as the server maps them.
  const alias:Record<string,string>={'fee-heads':'fee-structures','assessment-schemes':'exams','communications':'circulars'}
@@ -14,10 +14,11 @@ export function canVisit(user:User|null,path:string):boolean {
  if(!user)return false
  if(path.startsWith('/super-admin'))return user.dataScope==='platform'
  if(user.dataScope==='platform')return false
+ if(path==='/suite/analytics'&&user.dataScope!=='school')return false
  const permission=permissionForPath(path)
  if(permission&&!user.permissions.includes(permission))return false
  // A role dashboard is that role's home page, never a second view for another role.
  if(dashboards.includes(path))return homeFor(roleOf(user),user.dataScope)===path
- if(['/students','/teachers','/parents','/attendance','/announcements','/audit','/settings','/subscription','/notifications/templates','/notifications/history'].includes(path))return user.dataScope==='school'
+ if(['/students','/teachers','/parents','/attendance','/announcements','/audit','/settings','/subscription','/notifications/settings','/notifications/templates','/notifications/history'].includes(path))return user.dataScope==='school'
  return true
 }

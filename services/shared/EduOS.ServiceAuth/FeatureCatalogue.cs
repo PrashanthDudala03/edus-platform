@@ -20,7 +20,7 @@ public static class FeatureCatalogue
     public static readonly Feature[] All =
     [
         new("school-home", "School Home", ["school-home.manage"], Open: true),
-        new("notifications", "Notifications", ["notifications.manage"], Open: true),
+        new("notifications", "Notifications", ["notifications.manage", "notifications.settings.manage"], Open: true),
         new("attendance", "Attendance", ["attendance.view", "attendance.mark"]),
         new("homework", "Homework", ["homework.view", "homework.manage", "submissions.view", "submissions.manage"]),
         new("results", "Results", ["marks.view", "marks.manage"]),
@@ -28,7 +28,9 @@ public static class FeatureCatalogue
         new("exams", "Exams", ["exams.view", "exams.manage"]),
         new("leave", "Leave", ["leave-requests.view", "leave-requests.manage"]),
         new("ai", "AI assistant", ["ai.assistant.use", "ai.knowledge.manage", "ai.usage.view"]),
-        new("transport", "Transport", [], Future: true),
+        new("transport", "Transport", ["transport-routes.view", "transport-routes.manage", "transport-stops.view", "transport-stops.manage", "transport-assignments.view", "transport-assignments.manage"]),
+        new("library", "Library", ["library-books.view", "library-books.manage", "library-loans.view", "library-loans.manage"]),
+        new("inventory", "Inventory", ["inventory-items.view", "inventory-items.manage", "inventory-assignments.view", "inventory-assignments.manage"]),
         new("lms", "Learning management", [], Future: true),
     ];
 

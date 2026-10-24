@@ -76,11 +76,24 @@ test.describe.serial('Security boundaries against real Docker services',()=>{
  })
  test.afterAll(async()=>{
   await api?.dispose()
-  const tables=['suite.documents','suite.acknowledgements','suite.payments','suite.charges','suite.student_classes','suite.records','suite.counters','school_db.attendance','student_db.students','teacher_db.teachers','parent_db.parents','school_db.announcements','auth_db.password_resets','auth_db.refresh_tokens','auth_db.users']
+  const tables=['notify.communication_settings','notify.settings_history','notify.school_settings','notify.deliveries','notify.recipients','notify.notifications','notify.preferences','notify.devices','notify.template_overrides','suite.documents','suite.acknowledgements','suite.payments','suite.charges','suite.student_classes','suite.records','suite.counters','school_db.attendance','student_db.students','teacher_db.teachers','parent_db.parents','school_db.announcements','auth_db.password_resets','auth_db.refresh_tokens','auth_db.users']
   for(const s of [A,B]){
    sql("BEGIN; "+clearIamSql(s.id)+tables.map(t=>"DELETE FROM "+t+" WHERE school_id='"+s.id+"';").join(' ')+" DELETE FROM auth_db.role_permissions WHERE role_id IN(SELECT id FROM auth_db.roles WHERE school_id='"+s.id+"'); DELETE FROM auth_db.roles WHERE school_id='"+s.id+"'; DELETE FROM school_db.schools WHERE id='"+s.id+"'; DELETE FROM school_db.audit_logs WHERE school_id='"+s.id+"'; DELETE FROM suite.audit WHERE school_id='"+s.id+"'; COMMIT;")
    if(s.document)execFileSync('docker',['compose','exec','-T','school-service','rm','-f','--','/app/documents/'+s.document.replaceAll('-','')+'.bin'],{cwd:root,stdio:'pipe'})
   }
+ })
+
+ test('school branding is isolated, readable by school roles and protected from teacher edits',async()=>{
+  const manage=await ok(A,'Administrator','GET','/suite/home/manage')
+  const draft={...manage.draft,brand:{primary:'#7a1f2b',accent:'#d4a53a'}}
+  await ok(A,'Administrator','PUT','/suite/home',{draft,version:manage.version,action:'save'})
+  const branded=await ok(A,'Teacher','GET','/suite/branding')
+  expect(branded.schoolId).toBe(A.id);expect(branded.brand).toEqual(draft.brand)
+  await denied(B,'Administrator','GET','/suite/branding?schoolId='+A.id)
+  const other=await ok(B,'Administrator','GET','/suite/branding')
+  expect(other.schoolId).toBe(B.id);expect(other.brand).toBeNull()
+  await denied(A,'Teacher','PUT','/suite/home',{draft,version:manage.version+1,action:'save'})
+  expect((await api.get('/api/v1/suite/branding')).status()).toBe(401)
  })
 
  test('students and parents keep their own actions: homework submission and circular acknowledgement',async()=>{
@@ -342,7 +355,223 @@ test.describe.serial('Security boundaries against real Docker services',()=>{
  })
 
  test('internal services and the database are not reachable from the host',async()=>{
-  for(const port of [5000,6001,6002,6003,6004,6005,5432])
-   await expect(api.get('http://127.0.0.1:'+port+'/api/health',{timeout:3000}),'port '+port).rejects.toThrow()
+  // Other applications may use these host ports; inspect only this Compose project's containers.
+  for(const service of ['api-gateway','auth-service','student-service','teacher-service','parent-service','school-service','ai-service','postgres','ai-db']){
+   const ids=execFileSync('docker',['compose','--profile','ai','ps','-q',service],{cwd:root,encoding:'utf8'}).trim().split(/\r?\n/).filter(Boolean)
+   if(!ids.length&&['ai-service','ai-db'].includes(service))continue // Optional AI profile may be disabled.
+   expect(ids.length,service+' must be running').toBeGreaterThan(0)
+   for(const id of ids){const bindings=JSON.parse(execFileSync('docker',['inspect',id,'--format','{{json .HostConfig.PortBindings}}'],{cwd:root,encoding:'utf8'}));expect(Object.keys(bindings||{}),service+' must not publish internal ports').toEqual([])}
+  }
  })
+ test('free notification live delivery, preferences and tenant isolation',async({page})=>{
+  const {HubConnectionBuilder,HttpTransportType,LogLevel}=await import('@microsoft/signalr')
+  const base=process.env.EDUOS_TEST_URL||'http://localhost:8080'
+  const received:Record<string,any[]>={parent:[],student:[],other:[]}
+  const connections=[['parent',A,'Parent'],['student',A,'Student'],['other',B,'Administrator']].map(([name,school,role]:any[])=>{
+   const hub=new HubConnectionBuilder().withUrl(base+'/api/v1/notifications/live',{transport:HttpTransportType.LongPolling,accessTokenFactory:()=>school.tokens[role].accessToken}).configureLogging(LogLevel.None).build()
+   hub.on('NotificationsChanged',event=>received[name].push(event));return hub
+  })
+  try{
+   expect((await api.post('/api/v1/notifications/live/negotiate?negotiateVersion=1')).status()).toBe(401)
+   await Promise.all(connections.map(h=>h.start()))
+   await expect(connections[1].invoke('JoinGroup','school:'+A.id+':user:'+A.users.Parent)).rejects.toThrow()
+   await page.addInitScript(tokens=>{localStorage.setItem('accessToken',tokens.accessToken);localStorage.setItem('refreshToken',tokens.refreshToken);localStorage.setItem('user',JSON.stringify(tokens.user))},A.tokens.Parent)
+   await page.goto(base+'/notifications')
+   await expect(page.locator('.notification-toasts')).toHaveAttribute('data-live-state','connected')
+   await page.getByText('Notification preferences',{exact:true}).click()
+   const notices=page.getByRole('checkbox',{name:'Notices',exact:true})
+   const setNotices=async(enabled:boolean)=>{const saved=page.waitForResponse(r=>r.url().endsWith('/notifications/preferences')&&r.request().method()==='PUT');await notices.click();expect((await saved).status()).toBe(200);await expect(notices).toBeChecked({checked:enabled});await expect(notices).toBeEnabled()}
+   await setNotices(false)
+   const muted='Muted QA '+randomUUID(),live='Live QA '+randomUUID()
+   const publish=(title:string)=>ok(A,'Administrator','POST','/suite/records/circulars',{title,message:'Isolated notification test.',audience:'Parent',classId:A.cl,status:'Published'},201)
+   await publish(muted)
+   expect((await ok(A,'Parent','GET','/notifications')).items.some((x:any)=>x.title.includes(muted))).toBe(false)
+   await setNotices(true)
+   await publish(live)
+   await expect(page.locator('.notification-toast')).toContainText(live)
+   await expect.poll(()=>received.parent.length).toBeGreaterThan(0)
+   const item=(await ok(A,'Parent','GET','/notifications')).items.find((x:any)=>x.title.includes(live))
+   expect(item).toBeTruthy()
+   expect(received.parent.some(x=>x.id===item.id)).toBe(true)
+   expect(received.parent.every(x=>Object.keys(x).join(',')==='id')).toBe(true)
+   expect(received.student.some(x=>x.id===item.id)).toBe(false)
+   expect(received.other.some(x=>x.id===item.id)).toBe(false)
+   for(const [school,role] of [[A,'Student'],[B,'Administrator']] as const)expect((await ok(school,role,'GET','/notifications')).items.some((x:any)=>x.id===item.id)).toBe(false)
+   await ok(A,'Parent','POST','/notifications/'+item.id+'/read')
+   await expect.poll(()=>received.parent.some(x=>x.id===null)).toBe(true)
+   await page.context().grantPermissions(['notifications'],{origin:base})
+   await page.getByRole('checkbox',{name:'Allow browser alerts on this device'}).click()
+   await expect(page.getByRole('checkbox',{name:'Allow browser alerts on this device'})).toBeChecked()
+   expect(await page.evaluate(({school,user})=>localStorage.getItem('eduos.browser-alerts.'+school+'.'+user),{school:A.id,user:A.users.Parent})).toBe('1')
+  }finally{await Promise.all(connections.map(h=>h.stop()))}
+ })
+
+ test('school notification delivery settings enforce permission, isolation and audit',async({page})=>{
+  const key='circular.published',url='/notifications/settings/'+key
+  for(const role of lower){await denied(A,role,'GET','/notifications/settings');await denied(A,role,'GET','/notifications/settings/history');await denied(A,role,'PUT',url,{enabled:false,version:0,confirmRisk:true})}
+  await denied(A,'Administrator','PUT',url,{enabled:false,version:0},409)
+  await denied(A,'Administrator','PUT','/notifications/settings/not-real',{enabled:false,version:0},404)
+  const before=(await ok(A,'Parent','GET','/notifications')).items.map((x:any)=>x.id)
+  await page.addInitScript(tokens=>{localStorage.setItem('accessToken',tokens.accessToken);localStorage.setItem('refreshToken',tokens.refreshToken);localStorage.setItem('user',JSON.stringify(tokens.user))},A.tokens.Administrator)
+  await page.goto('/notifications/settings')
+  const settings=await ok(A,'Administrator','GET','/notifications/settings'),name=settings.find((r:any)=>r.key===key).name
+  const control=page.getByRole('switch',{name,exact:true})
+  await expect(control).toHaveAttribute('aria-checked','true')
+  await control.click()
+  await expect(page.getByRole('alert')).toContainText('Urgent notices')
+  await page.getByRole('button',{name:'Confirm disable',exact:true}).click()
+  await expect(control).toHaveAttribute('aria-checked','false')
+  await denied(A,'Administrator','PUT',url,{enabled:true,version:0},409)
+  const quiet='Disabled school alert '+randomUUID()
+  await ok(A,'Administrator','POST','/suite/records/circulars',{title:quiet,message:'Still available as a communication.',audience:'Parent',classId:A.cl,status:'Published',priority:'Urgent'},201)
+  expect((await ok(A,'Parent','GET','/notifications')).items.map((x:any)=>x.id)).toEqual(before)
+  expect((await ok(B,'Administrator','GET','/notifications/settings')).find((r:any)=>r.key===key).enabled).toBe(true)
+  expect(await ok(B,'Administrator','GET','/notifications/settings/history')).toEqual([])
+  await control.click();await expect(control).toHaveAttribute('aria-checked','true')
+  const live='Enabled school alert '+randomUUID()
+  await ok(A,'Administrator','POST','/suite/records/circulars',{title:live,message:'Delivery resumed.',audience:'Parent',classId:A.cl,status:'Published'},201)
+  expect((await ok(A,'Parent','GET','/notifications')).items.some((x:any)=>x.title.includes(live))).toBe(true)
+  const changes=await ok(A,'Administrator','GET','/notifications/settings/history')
+  expect(changes.map((x:any)=>x.enabled)).toEqual([true,false]);expect(changes.every((x:any)=>x.actor==='Security Admin'&&x.type===key)).toBe(true)
+  await expect(page.getByText('Recent delivery changes',{exact:true})).toBeVisible()
+  await page.setViewportSize({width:390,height:844})
+  await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+ })
+
+ test('school timezone scheduling, rescheduling, cancellation and automatic publication',async({page})=>{
+  for(const role of ['Parent','Student'])await denied(A,role,'GET','/suite/communications/config')
+  await denied(A,'Administrator','PUT','/suite/communications/config',{timeZone:'invalid/zone'},400)
+  await ok(A,'Administrator','PUT','/suite/communications/config',{timeZone:'Asia/Kolkata'})
+  expect((await ok(B,'Administrator','GET','/suite/communications/config')).timeZone).toBe('UTC')
+  await page.addInitScript(tokens=>{localStorage.setItem('accessToken',tokens.accessToken);localStorage.setItem('refreshToken',tokens.refreshToken);localStorage.setItem('user',JSON.stringify(tokens.user))},A.tokens.Administrator)
+  await page.goto('/suite/communications')
+  await page.getByRole('button',{name:'New communication',exact:true}).click()
+  const date=new Date(Date.now()+172800000).toISOString().slice(0,10)
+  const dialog=page.getByRole('dialog'),title='Schedule QA '+randomUUID()
+  await dialog.getByLabel('Title',{exact:true}).fill(title);await dialog.getByLabel('Message',{exact:true}).fill('A scheduled school announcement.')
+  await dialog.getByRole('button',{name:'Next',exact:true}).click()
+  await dialog.getByLabel('Audience',{exact:true}).selectOption('Parent');await dialog.getByLabel('Class',{exact:true}).selectOption(A.cl)
+  await dialog.getByRole('button',{name:'Next',exact:true}).click()
+  await dialog.getByRole('radio',{name:'Schedule for later'}).check()
+  await dialog.getByLabel('Publish at (Asia/Kolkata)',{exact:true}).fill(date+'T09:00')
+  await dialog.getByRole('button',{name:'Next',exact:true}).click()
+  await expect(dialog).toContainText('1 people');await expect(dialog).toContainText('Asia/Kolkata')
+  await dialog.getByRole('button',{name:'Schedule',exact:true}).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page).toHaveURL(/id=[0-9a-f-]{36}/)
+  await expect(page.getByRole('heading',{name:title,exact:true})).toBeVisible()
+  const id=new URL(page.url()).searchParams.get('id')!
+  let item=await ok(A,'Administrator','GET','/suite/communications/'+id)
+  expect(new Date(item.publishAt).toISOString()).toBe(date+'T03:30:00.000Z')
+  expect((await ok(A,'Parent','GET','/suite/communications/feed')).items.some((x:any)=>x.id===id)).toBe(false)
+  await page.getByRole('button',{name:'Change time',exact:true}).click()
+  await dialog.getByLabel('Publish at (Asia/Kolkata)',{exact:true}).fill(date+'T10:00')
+  await dialog.getByRole('button',{name:'Change time',exact:true}).click()
+  await expect(dialog).toHaveCount(0)
+  item=await ok(A,'Administrator','GET','/suite/communications/'+id)
+  expect(new Date(item.publishAt).toISOString()).toBe(date+'T04:30:00.000Z')
+  await page.getByRole('button',{name:'Cancel',exact:true}).click();await dialog.getByLabel('Reason',{exact:true}).fill('QA cancellation')
+  await dialog.getByRole('button',{name:'Cancel',exact:true}).click();await expect(dialog).toHaveCount(0)
+  expect((await ok(A,'Administrator','GET','/suite/communications/'+id)).status).toBe('Cancelled')
+  const automatic=(await ok(A,'Administrator','POST','/suite/records/circulars',{title:'Automatic '+title,message:'Worker publication.',audience:'Parent',classId:A.cl,status:'Scheduled',publishAt:new Date(Date.now()+5000).toISOString()},201)).id
+  await expect.poll(async()=>(await ok(A,'Administrator','GET','/suite/communications/'+automatic)).status,{timeout:45000,intervals:[1000,2000]}).toBe('Published')
+  await expect.poll(async()=>(await ok(A,'Parent','GET','/notifications')).items.filter((x:any)=>x.destination?.entityId===automatic).length).toBe(1)
+  expect((await ok(B,'Administrator','GET','/notifications')).items.some((x:any)=>x.destination?.entityId===automatic)).toBe(false)
+ })
+
+ test('inbox notice acknowledgement is scoped, confirmed and idempotent',async({page})=>{
+  const title='Acknowledge QA '+randomUUID(),message='Read the full school notice before confirming.'
+  const notice=(await ok(A,'Administrator','POST','/suite/records/circulars',{title,message,audience:'Parent',classId:A.cl,status:'Published',requiresAcknowledgement:'Yes'},201)).id
+  const item=(await ok(A,'Parent','GET','/notifications')).items.find((x:any)=>x.destination?.entityId===notice)
+  expect(item.requiresAcknowledgement).toBe(true);expect(item.acknowledgedAt).toBeNull()
+  await denied(B,'Administrator','GET','/notifications/'+item.id+'/notice',undefined,404)
+  await denied(A,'Student','GET','/notifications/'+item.id+'/notice',undefined,404)
+  expect((await ok(A,'Parent','GET','/notifications/'+item.id+'/notice')).message).toBe(message)
+  await page.addInitScript(tokens=>{localStorage.setItem('accessToken',tokens.accessToken);localStorage.setItem('refreshToken',tokens.refreshToken);localStorage.setItem('user',JSON.stringify(tokens.user))},A.tokens.Parent)
+  let posts=0;page.on('request',r=>{if(r.method()==='POST'&&r.url().includes('/circulars/'+notice+'/acknowledge'))posts++})
+  await page.goto('/notifications')
+  const row=page.locator('.inbox-list>li').filter({hasText:title}),dialog=page.getByRole('dialog')
+  await row.getByRole('button',{name:'Review & acknowledge',exact:true}).click()
+  await expect(dialog).toContainText(message)
+  await page.setViewportSize({width:390,height:844})
+  await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+  expect(posts).toBe(0)
+  await dialog.getByRole('button',{name:'Confirm acknowledgement',exact:true}).click()
+  await expect(dialog.getByRole('status')).toContainText('Acknowledged')
+  await expect(dialog.getByRole('button',{name:'Confirm acknowledgement',exact:true})).toHaveCount(0)
+  expect(posts).toBe(1)
+  await dialog.getByRole('button',{name:'Close',exact:true}).click()
+  await expect(row).toContainText('Acknowledged')
+  await page.reload();await expect(page.locator('.inbox-list>li').filter({hasText:title})).toContainText('Acknowledged')
+  await ok(A,'Parent','POST','/suite/circulars/'+notice+'/acknowledge')
+  const tracking=await ok(A,'Administrator','GET','/suite/communications/'+notice+'/acknowledgements')
+  expect(tracking.acknowledged.filter((x:any)=>x.name==='Parent QA')).toHaveLength(1)
+  // A newly signed-in account with read access but no acknowledgement grant can review, never confirm.
+  sql("DELETE FROM auth_db.role_permissions WHERE role_id=(SELECT role_id FROM auth_db.users WHERE id='"+A.users.Parent+"') AND permission_key='circulars.acknowledge'")
+  const originalTokens=A.tokens.Parent
+  try{
+   await login(A,'Parent')
+   expect((await ok(A,'Parent','GET','/notifications/'+item.id+'/notice')).canAcknowledge).toBe(false)
+   await denied(A,'Parent','POST','/suite/circulars/'+notice+'/acknowledge')
+  }finally{
+   sql("INSERT INTO auth_db.role_permissions(id,role_id,permission_key) SELECT gen_random_uuid(),role_id,'circulars.acknowledge' FROM auth_db.users WHERE id='"+A.users.Parent+"' ON CONFLICT DO NOTHING")
+   A.tokens.Parent=originalTokens
+  }
+ })
+
+ test('student setup creates one profile or links an existing record and connects class and parent',async({page})=>{
+  page.setDefaultTimeout(15000)
+  const roles=await ok(A,'Administrator','GET','/roles'),studentRole=roles.find((r:any)=>r.name==='Student').id
+  const createAccount=async(email:string)=>(await ok(A,'Administrator','POST','/users',{schoolId:A.id,roleId:studentRole,username:email,email,firstName:'Setup',lastName:'Learner',password},201)).id
+  const email='setup-'+randomUUID()+'@example.test',account=await createAccount(email)
+  for(const role of lower){await denied(A,role,'GET','/suite/student-setup/'+account);await denied(A,role,'POST','/suite/student-setup/'+account,{mode:'new'})}
+  await denied(B,'Administrator','GET','/suite/student-setup/'+account,undefined,404)
+  await denied(A,'Administrator','POST','/suite/student-setup/'+account,{mode:'existing',studentId:B.student,verified:true},400)
+  await page.addInitScript(tokens=>{localStorage.setItem('accessToken',tokens.accessToken);localStorage.setItem('refreshToken',tokens.refreshToken);localStorage.setItem('user',JSON.stringify(tokens.user))},A.tokens.Administrator)
+  await page.goto('/control/users')
+  await page.getByRole('searchbox',{name:'Search accounts',exact:true}).fill(email)
+  const row=page.locator('tbody tr').filter({hasText:email});await row.getByRole('button',{name:'Complete student setup',exact:true}).click()
+  const dialog=page.getByRole('dialog')
+  await dialog.getByRole('radio',{name:'Create missing student profile',exact:true}).check()
+  await dialog.getByLabel('Date of birth',{exact:true}).fill('2014-05-01');await dialog.getByLabel('Gender',{exact:true}).selectOption('Female')
+  await dialog.getByLabel('Class and section',{exact:true}).selectOption(A.cl)
+  await dialog.getByLabel('Guardian connection',{exact:true}).selectOption('new')
+  await dialog.getByLabel('Guardian first name',{exact:true}).fill('Parent');await dialog.getByLabel('Guardian last name',{exact:true}).fill('QA')
+  const parentEmail='parent-'+A.id+'@example.test'
+  await dialog.getByLabel('Guardian email',{exact:true}).fill(parentEmail)
+  await dialog.getByRole('checkbox',{name:"I verified this guardian's relationship to the student.",exact:true}).check()
+  await dialog.getByLabel('Parent login',{exact:true}).selectOption(A.users.Parent)
+  await dialog.getByRole('button',{name:'Review connections',exact:true}).click()
+  await expect(dialog).toContainText('Existing login')
+  await dialog.getByRole('button',{name:'Save connections',exact:true}).click();await expect(dialog).toHaveCount(0)
+  const saved=await ok(A,'Administrator','GET','/suite/student-setup/'+account),profile=saved.students.find((s:any)=>s.id===saved.linkedStudentId)
+  expect(profile.email).toBe(email);expect(profile.classId).toBe(A.cl);expect(profile.guardianId).toBeTruthy()
+  const repeated=await ok(A,'Administrator','POST','/suite/student-setup/'+account,{mode:'new'})
+  expect(repeated.alreadyLinked).toBe(true)
+  expect((await ok(A,'Administrator','GET','/suite/student-setup/'+account)).students.filter((s:any)=>s.email===email)).toHaveLength(1)
+  await login(A,'Parent')
+  expect((await ok(A,'Parent','GET','/suite/options')).students.some((s:any)=>s.id===profile.id)).toBe(true)
+  const email2='existing-'+randomUUID()+'@example.test',account2=await createAccount(email2)
+  const existing=(await ok(A,'Administrator','POST','/students',{schoolId:A.id,rollNumber:'LINK-'+randomUUID().slice(0,8),firstName:'Existing',lastName:'Learner',email:email2,currentClass:'Unallocated',dateOfBirth:'2013-03-02T00:00:00Z'},201)).id
+  await denied(A,'Administrator','POST','/suite/student-setup/'+account2,{mode:'new',dateOfBirth:'2013-03-02',gender:'Male',guardianMode:'keep'},409)
+  await page.goto('/control/users');await page.getByRole('searchbox',{name:'Search accounts',exact:true}).fill(email2)
+  await page.locator('tbody tr').filter({hasText:email2}).getByRole('button',{name:'Complete student setup',exact:true}).click()
+  await expect(dialog.getByRole('radio',{name:'Link existing student',exact:true})).toBeChecked()
+  await expect(dialog.getByLabel('Existing student',{exact:true})).toHaveValue(existing)
+  await dialog.getByRole('checkbox',{name:'I verified this record belongs to this student account.',exact:true}).check()
+  await dialog.getByLabel('Class and section',{exact:true}).selectOption(A.cl)
+  const existingGuardian=saved.parents.find((p:any)=>p.email==='kiran-'+A.id+'@example.test')
+  await dialog.getByLabel('Guardian connection',{exact:true}).selectOption('existing');await dialog.getByLabel('Existing guardian',{exact:true}).selectOption(existingGuardian.id)
+  await dialog.getByRole('checkbox',{name:"I verified this guardian's relationship to the student.",exact:true}).check()
+  await dialog.getByRole('button',{name:'Create parent login',exact:true}).click()
+  await expect(dialog.getByRole('status')).toContainText('Parent one-time recovery code')
+  const newParentId=await dialog.getByLabel('Parent login',{exact:true}).inputValue();expect(newParentId).not.toBe('')
+  await dialog.getByRole('button',{name:'Review connections',exact:true}).click();await dialog.getByRole('button',{name:'Save connections',exact:true}).click();await expect(dialog).toHaveCount(0)
+  const linked=await ok(A,'Administrator','GET','/suite/student-setup/'+account2)
+  expect(linked.parentLinks.some((l:any)=>l.userId===newParentId&&l.studentId===existing)).toBe(true)
+  expect(linked.linkedStudentId).toBe(existing);expect(linked.students.filter((s:any)=>s.email===email2)).toHaveLength(1)
+  expect(linked.students.find((s:any)=>s.id===existing).name).toBe('Existing Learner')
+  await denied(A,'Administrator','POST','/suite/student-setup/'+account2,{mode:'existing',studentId:A.student,verified:true,guardianMode:'keep'},409)
+ })
+
 })

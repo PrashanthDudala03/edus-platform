@@ -21,14 +21,14 @@ async function throttled(send:()=>Promise<APIResponse>){for(let i=0;;i++){const 
 async function login(role:string,pw=password){const r=await throttled(()=>api.post('/api/v1/auth/login',{data:{schoolId,username:'suite.'+role.toLowerCase(),password:pw}}));expect(r.status(),await r.text()).toBe(200);sessions[role]=(await r.json()).data}
 async function browserSession(page:Page,role='Administrator'){await page.addInitScript(s=>{localStorage.setItem('accessToken',s.accessToken);localStorage.setItem('refreshToken',s.refreshToken);localStorage.setItem('user',JSON.stringify(s.user))},sessions[role])}
 // Every module the suite serves, in catalog order. A new kind is a deliberate contract change: add it here with its feature.
-const CATALOG=['academic-years','classes','subjects','teaching-assignments','admissions','admission-fields','staff-attendance','leave-types','leave-requests','leave-adjustments','fee-heads','fee-structures','assessment-schemes','exams','marks','circulars','calendar','messages','homework','submissions','period-slots','timetable','substitutions','certificates','account-links','school-config']
+const CATALOG=['academic-years','classes','subjects','teaching-assignments','admissions','admission-fields','staff-attendance','leave-types','leave-requests','leave-adjustments','fee-heads','fee-structures','assessment-schemes','exams','marks','circulars','calendar','messages','homework','submissions','period-slots','timetable','substitutions','certificates','account-links','school-config','library-books','library-loans','inventory-items','inventory-assignments','transport-routes','transport-stops','transport-assignments']
 test.describe.serial('Complete school suite',()=>{
- test.beforeAll(async({playwright})=>{
+ test.beforeAll(async({playwright},testInfo)=>{
   test.setTimeout(180000)
   const role=randomUUID()
   sql("BEGIN; INSERT INTO school_db.schools(id,name) VALUES('"+schoolId+"','Suite QA School'); INSERT INTO auth_db.roles(id,school_id,name) VALUES('"+role+"','"+schoolId+"','Administrator'); INSERT INTO auth_db.users(id,school_id,username,email,password_hash,first_name,last_name,role_id) SELECT '"+adminId+"','"+schoolId+"','suite.administrator','suite-"+schoolId+"@example.test',password_hash,'Suite','Admin','"+role+"' FROM auth_db.users WHERE school_id='"+env.EDUOS_BOOTSTRAP_SCHOOL_ID+"' AND username='"+env.EDUOS_BOOTSTRAP_ADMIN_USERNAME.replaceAll("'","''")+"'; "+['Principal','Teacher','Parent','Student'].map(r=>"INSERT INTO auth_db.roles(id,school_id,name) VALUES(gen_random_uuid(),'"+schoolId+"','"+r+"');").join(' ')+" COMMIT;")
   sql(seedIamSql(schoolId))
-  api=await playwright.request.newContext({baseURL:process.env.EDUOS_TEST_URL||'http://localhost:8080'});await login('Administrator')
+  api=await playwright.request.newContext({baseURL:testInfo.project.use.baseURL});await login('Administrator')
   const roles=await good('GET','/roles')
   for(const role of ['Principal','Teacher','Parent','Student']){
    users[role]=(await good('POST','/users',{schoolId,roleId:roles.find((r:any)=>r.name===role).id,username:'suite.'+role.toLowerCase(),email:role.toLowerCase()+schoolId+'@example.test',firstName:role,lastName:'QA',password},'Administrator',201)).id

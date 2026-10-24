@@ -49,25 +49,14 @@ const send = (page: Page) => panel(page).getByRole('button', { name: 'Send quest
 async function ask(page: Page, question: string) { await input(page).fill(question); await send(page).click() }
 
 test.describe('Ask EduOS AI', () => {
-  // Demo visibility (SHOW_AI_DEMO_ENTRY): the button is shown to everyone signed in. Using it still needs the permission.
-  for (const [name, user] of [
-    ['a school user without the permission', { ...teacher, permissions: ['timetable.view', 'ai.knowledge.manage'] }],
-    ['the platform administrator', { ...teacher, roles: ['SuperAdmin'], dataScope: 'platform', permissions: ['platform.manage', 'ai.assistant.use'] }],
-  ] as const) test(`${name} can open the panel but is told it is not enabled, and nothing is asked`, async ({ page }) => {
-    let statusCalls = 0
-    const asked = await open(page, { user: user as typeof teacher, onStatus: () => { statusCalls++ } })
-    await expect(entry(page)).toBeVisible()
-    await entry(page).click()
-    await expect(panel(page).locator('.ai-banner')).toHaveText('EduOS AI is not enabled for your account yet.')
-    await expect(input(page)).toBeDisabled()
-    await expect(send(page)).toBeDisabled()
-    await expect(panel(page).getByRole('button', { name: 'Summarize the leave policy.' })).toBeDisabled()
-    // No assistant request and no status request is made for a user known to lack the permission.
-    await page.waitForTimeout(300)
-    expect(asked).toHaveLength(0)
-    expect(statusCalls).toBe(0)
-    await page.keyboard.press('Escape')
-    await expect(panel(page)).toHaveCount(0)
+  for (const [name,user] of [
+    ['a school user without the permission',{...teacher,permissions:['timetable.view','ai.knowledge.manage']}],
+    ['the platform administrator',{...teacher,roles:['SuperAdmin'],dataScope:'platform',permissions:['platform.manage','ai.assistant.use']}],
+  ] as const) test(name+' has no assistant entry and makes no assistant request',async({page})=>{
+    let statusCalls=0
+    const asked=await open(page,{user:user as typeof teacher,onStatus:()=>{statusCalls++}})
+    await expect(entry(page)).toHaveCount(0)
+    expect(asked).toHaveLength(0);expect(statusCalls).toBe(0)
   })
 
   test('floats at the bottom right, clear of the page content and the footer text', async ({ page }) => {
@@ -99,8 +88,8 @@ test.describe('Ask EduOS AI', () => {
     // Nothing about the machinery behind it.
     await expect(panel(page)).not.toContainText(/qwen|llama|bge|embedding|vector|model|provider|8091|8092/i)
     // An example fills the box; it is not sent until the user sends it.
-    await panel(page).getByRole('button', { name: 'Summarize the leave policy.' }).click()
-    await expect(input(page)).toHaveValue('Summarize the leave policy.')
+    await panel(page).getByRole('button', { name: 'How much fees have been collected?' }).click()
+    await expect(input(page)).toHaveValue('How much fees have been collected?')
     await page.keyboard.press('Escape')
     await expect(panel(page)).toHaveCount(0)
     await expect(entry(page)).toBeFocused()
@@ -202,7 +191,7 @@ test.describe('Ask EduOS AI', () => {
     await expect(panel(page).locator('.ai-banner')).toHaveText('EduOS AI is not currently enabled for your school. Your school administrator can tell you more.')
     await expect(input(page)).toBeDisabled()
     await expect(send(page)).toBeDisabled()
-    await expect(panel(page).getByRole('button', { name: 'Summarize the leave policy.' })).toBeDisabled()
+    await expect(panel(page).getByRole('button', { name: 'How much fees have been collected?' })).toBeDisabled()
     expect(asked).toHaveLength(0)
   })
 
@@ -237,12 +226,12 @@ test.describe('Ask EduOS AI', () => {
     await input(page).fill('What attendance is required?')
     await input(page).press('Enter')
     await expect(panel(page).locator('.thinking')).toContainText('Working on your question')
-    await expect(send(page)).toBeDisabled()
+    await expect(panel(page).getByRole('button',{name:'Stop response'})).toBeEnabled()
     // More presses and another question while it is working change nothing.
     await input(page).fill('Another question?')
     await input(page).press('Enter')
     await input(page).press('Enter')
-    await expect(send(page)).toBeDisabled()
+    await expect(panel(page).getByRole('button',{name:'Stop response'})).toBeEnabled()
     expect(asked).toHaveLength(1)
     await expect(panel(page).locator('.from-user')).toHaveCount(1)
     release()

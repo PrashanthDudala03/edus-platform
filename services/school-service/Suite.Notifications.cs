@@ -216,6 +216,7 @@ public static partial class Suite
         Require(NotificationRules.KnownType(type) && eventKey.StartsWith(type + ":"), "Unknown notification type.");
         var category = NotificationRules.Category(type); var wanted = candidates.Distinct().ToArray();
         if (wanted.Length == 0 || !await FeatureEnabled(c, school, "notifications")) return 0;
+        if ((await Q(c, "SELECT enabled FROM notify.school_settings WHERE school_id=@s AND type=@k", ("s", school), ("k", type))).Any(row => !Flag(row["enabled"]))) return 0;
         var members = await Ids(c, "SELECT id::text AS id FROM auth_db.users WHERE school_id=@s AND id=ANY(@ids) AND is_active AND deleted_at IS NULL", ("s", school), ("ids", wanted));
         // A school-required communication (urgent, or needing acknowledgement) reaches everyone it is for; a personal mute applies to the rest.
         var muted = required ? [] : await Ids(c, "SELECT user_id::text AS id FROM notify.preferences WHERE school_id=@s AND category=@c AND channel='in-app' AND NOT enabled AND user_id=ANY(@ids)", ("s", school), ("c", category), ("ids", wanted));
@@ -239,6 +240,7 @@ public static partial class Suite
                 SELECT @id,@s,d.user_id,'push',d.id::text,'pending',now() FROM notify.devices d WHERE d.school_id=@s AND d.user_id=ANY(@users) AND d.enabled AND d.revoked_at IS NULL
                 """, ("id", id), ("s", school), ("users", targets));
         await tx.CommitAsync();
+        await NotificationChanged(school,targets,id);
         return targets.Length;
     }
 
@@ -393,6 +395,7 @@ public static partial class Suite
 
     public static void MapNotifications(WebApplication app)
     {
+        MapNotificationLive(app);
         // Every school role has an inbox. The caller is always the person in the token; no route takes a user or school id.
         var group = app.MapGroup("/api/notifications").RequireAuthorization(EduOSPolicies.Suite);
         group.AddEndpointFilter(async (context, next) =>
@@ -401,6 +404,7 @@ public static partial class Suite
             catch (System.Text.Json.JsonException) { return Results.BadRequest(new { message = "Invalid JSON field value." }); }
             catch (SuiteError ex) { return Results.Json(new { message = ex.Message }, statusCode: ex.Status); }
         });
+        MapNotificationSettings(group);
         MapTemplates(group);
         MapHistory(group);
         group.MapGet("", async (HttpContext http, int page = 1, bool unread = false) =>
@@ -408,8 +412,11 @@ public static partial class Suite
             Require(page is > 0 and < 100000, "Invalid page.");
             await using var c = await Open(); var a = await Inbox(http, c);
             var rows = await Q(c, """
-                SELECT n.id,n.type,n.category,n.title,n.body,n.destination::text AS destination,n.created_at AS "createdAt",r.read_at AS "readAt"
+                SELECT n.id,n.type,n.category,n.title,n.body,n.destination::text AS destination,n.created_at AS "createdAt",r.read_at AS "readAt",
+                    COALESCE(notice.data->>'requiresAcknowledgement'='Yes',false) AS "requiresAcknowledgement",ack.created_at AS "acknowledgedAt"
                 FROM notify.recipients r JOIN notify.notifications n ON n.id=r.notification_id
+                LEFT JOIN suite.records notice ON notice.school_id=@s AND notice.id::text=n.destination->>'entityId' AND notice.kind='circulars' AND notice.archived_at IS NULL AND n.type='circular.published' AND notice.data->>'status' IN ('Published','Archived')
+                LEFT JOIN suite.acknowledgements ack ON ack.school_id=@s AND ack.record_id=notice.id AND ack.user_id=@u
                 WHERE r.school_id=@s AND r.user_id=@u AND n.school_id=@s AND (NOT @unread OR r.read_at IS NULL)
                 ORDER BY n.created_at DESC,n.id LIMIT @limit OFFSET @offset
                 """, ("s", a.School), ("u", a.User), ("unread", unread), ("limit", NotificationPage), ("offset", (page - 1) * NotificationPage));
@@ -417,6 +424,25 @@ public static partial class Suite
             var total = Number((await Q(c, "SELECT count(*) AS n FROM notify.recipients WHERE school_id=@s AND user_id=@u AND (NOT @unread OR read_at IS NULL)", ("s", a.School), ("u", a.User), ("unread", unread)))[0], "n");
             return Results.Ok(new { data = new { items = rows, unread = await Unread(c, a), totalCount = total, page, pageSize = NotificationPage } });
         });
+                group.MapGet("/{id:guid}/notice", async (Guid id, HttpContext http) =>
+        {
+            await using var c = await Open(); var inbox = await Inbox(http, c); var a = await Access(http, c);
+            Require(a.Can("circulars.view"), "Your role cannot read notices.", 403);
+            var mine = (await Q(c, """
+                SELECT n.destination->>'entityId' AS entity FROM notify.notifications n
+                JOIN notify.recipients r ON r.notification_id=n.id AND r.school_id=@s AND r.user_id=@u
+                WHERE n.school_id=@s AND n.id=@id AND n.type='circular.published'
+                """, ("s", inbox.School), ("u", inbox.User), ("id", id))).FirstOrDefault();
+            Require(mine is not null && Guid.TryParse(Text(mine, "entity"), out _), "Notice not found.", 404);
+            var recordId = Guid.Parse(Text(mine!, "entity")); var record = await Get(c, a.School, "circulars", recordId);
+            Require(Readable("circulars", record, a) && CommunicationRules.Live(Text(record, "status")), "Notice not found.", 404);
+            var acknowledged = (await Q(c, "SELECT created_at AS at FROM suite.acknowledgements WHERE school_id=@s AND record_id=@r AND user_id=@u", ("s", a.School), ("r", recordId), ("u", a.User))).FirstOrDefault();
+            var notice = Composed(record);
+            return Results.Ok(new { data = new { id = recordId, title = notice.Title, message = notice.Message,
+                requiresAcknowledgement = notice.Acknowledge == "Yes", canAcknowledge = a.Can("circulars.acknowledge"),
+                acknowledgedAt = acknowledged is null ? null : Text(acknowledged, "at") } });
+        });
+
         group.MapGet("/unread-count", async (HttpContext http) => { await using var c = await Open(); var a = await Inbox(http, c); return Results.Ok(new { data = new { unread = await Unread(c, a) } }); });
         group.MapPost("/{id:guid}/read", async (Guid id, HttpContext http) =>
         {
@@ -425,12 +451,14 @@ public static partial class Suite
             var mine = await Q(c, "SELECT 1 AS one FROM notify.recipients WHERE notification_id=@id AND school_id=@s AND user_id=@u", ("id", id), ("s", a.School), ("u", a.User));
             Require(mine.Count == 1, "Notification not found.", 404);
             await E(c, "UPDATE notify.recipients SET read_at=now() WHERE notification_id=@id AND school_id=@s AND user_id=@u AND read_at IS NULL", ("id", id), ("s", a.School), ("u", a.User));
+            await NotificationChanged(a.School,[a.User]);
             return Results.Ok(new { data = new { unread = await Unread(c, a) } });
         });
         group.MapPost("/read-all", async (HttpContext http) =>
         {
             await using var c = await Open(); var a = await Inbox(http, c);
             await E(c, "UPDATE notify.recipients SET read_at=now() WHERE school_id=@s AND user_id=@u AND read_at IS NULL", ("s", a.School), ("u", a.User));
+            await NotificationChanged(a.School,[a.User]);
             return Results.Ok(new { data = new { unread = 0 } });
         });
         group.MapGet("/preferences", async (HttpContext http) =>

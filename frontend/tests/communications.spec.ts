@@ -30,7 +30,10 @@ async function mock(page: Page, user = principal) {
   const json = (route: Route, body: unknown, code = 200) => route.fulfill({ status: code, contentType: 'application/json', body: JSON.stringify(body) })
   await page.route('**/*', async route => {
     const req = route.request(), url = new URL(req.url()), path = url.pathname.startsWith('/api/') ? url.pathname.replace('/api/v1', '') : '', method = req.method()
-    if (path && method !== 'GET') calls.push({ method, path, body: req.postData() ? req.postDataJSON() : null })
+    if (path && method !== 'GET' && !path.startsWith('/notifications/live')) calls.push({ method, path, body: req.postData() ? req.postDataJSON() : null })
+    if (path === '/suite/communications/config') return json(route,{data:{timeZone:'Asia/Kolkata'}})
+    if (path === '/notifications/preferences') return json(route,{data:{categories:['notices'],disabled:[]}})
+    if (path.startsWith('/notifications/live')) return json(route,{message:'Live transport is not used by mocked tests.'},503)
     if (path === '/control/me') return json(route, { data: user })
     if (path === '/suite/options') return json(route, { data: { classes: user.dataScope === 'teacher' ? [{ id: C1, label: 'Grade 8 - A (2026-27)' }] : [{ id: C1, label: 'Grade 8 - A (2026-27)' }, { id: C2, label: 'Grade 8 - B (2026-27)' }] } })
     if (path === '/suite/communications') return user.permissions.includes('circulars.manage') ? json(route, { data: workspace(url.searchParams.get('status')) }) : json(route, { message: 'Your role cannot manage communications.' }, 403)
@@ -180,7 +183,7 @@ test.describe('Communication 2.0', () => {
     await main(page).getByRole('button', { name: 'Mark all as read' }).click()
     await expect(main(page).getByRole('button', { name: 'Mark all as read' })).toHaveCount(0)
     await expect(page.getByRole('link', { name: 'Notifications', exact: true })).toBeVisible()
-    expect(calls.map(c => c.path)).toEqual(['/notifications/read-all'])
+    expect(calls.filter(c => !c.path.startsWith('/notifications/live')).map(c => c.path)).toEqual(['/notifications/read-all'])
   })
 
   for (const width of [1440, 1024, 768, 390, 360]) test(`at ${width}px the workspace, the detail, the feed and the inbox fit without sideways scrolling`, async ({ page }) => {

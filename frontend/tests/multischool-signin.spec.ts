@@ -30,7 +30,7 @@ async function mock(page: Page, user = admin, login?: (body: Record<string, stri
   const json = (route: Route, body: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
   await page.route('**/*', async route => {
     const request = route.request(), url = new URL(request.url()), path = url.pathname.startsWith('/api/') ? url.pathname.replace('/api/v1', '') : '', method = request.method()
-    if (url.pathname.startsWith('/api/') && method !== 'GET') calls.push({ method, path: path + url.search, body: request.postData() ? request.postDataJSON() : null })
+    if (url.pathname.startsWith('/api/') && method !== 'GET' && !path.startsWith('/notifications/live')) calls.push({ method, path: path + url.search, body: request.postData() ? request.postDataJSON() : null })
     if (path === '/auth/login' && login) { const answer = login(request.postDataJSON()); return json(route, answer.body, answer.status) }
     if (path === '/control/me') return json(route, { data: user })
     if (path === '/notifications/templates') return user.permissions.includes('notifications.manage')
@@ -73,11 +73,11 @@ test.describe('Sign-in with one name in several schools', () => {
     await page.goto('/login')
     await page.getByLabel('Email or username').fill('meera.admin')
     await page.getByLabel('Password', { exact: true }).fill('a-wrong-password')
-    await page.getByRole('button', { name: 'Sign in to workspace' }).click()
+    await page.getByRole('button', { name: 'Continue to workspace' }).click()
     await expect(page.getByRole('alert')).toContainText('incorrect')
     await expect(page.getByRole('group', { name: 'Choose your school' })).toHaveCount(0)
     await page.getByLabel('Password', { exact: true }).fill('not-a-real-password')
-    await page.getByRole('button', { name: 'Sign in to workspace' }).click()
+    await page.getByRole('button', { name: 'Continue to workspace' }).click()
     const choice = page.getByRole('group', { name: 'Choose your school' })
     await expect(choice.getByRole('button')).toHaveText(['Green Valley School', 'Hillview Academy'])
     await expect(choice).not.toContainText(other)

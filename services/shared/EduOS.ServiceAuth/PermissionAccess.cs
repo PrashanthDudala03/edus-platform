@@ -20,7 +20,7 @@ public static class PermissionAccess
             "usage" => "ai.usage.view", "admin" => "ai.platform.manage", _ => "unsupported" };
         // A person's own notification inbox, read state and preferences; the service binds every query to the caller.
         // Devices are the caller's own too. A school's wording and its delivery history are management areas.
-        if (resource == "notifications") return p.ElementAtOrDefault(3) is "templates" or "history" ? "notifications.manage" : null;
+        if (resource == "notifications") return p.ElementAtOrDefault(3) == "settings" ? "notifications.settings.manage" : p.ElementAtOrDefault(3) is "templates" or "history" ? "notifications.manage" : null;
         if (resource == "roles") return "roles.view";
         if (resource == "users") return read ? "users.view" : method == "DELETE" ? "users.disable" : method == "POST" && p.Length == 3 ? "users.create" : "users.update";
         if (resource is "students" or "teachers" or "parents") return resource + (read ? ".view" : method == "POST" ? ".create" : method == "DELETE" ? ".archive" : ".update");
@@ -33,6 +33,8 @@ public static class PermissionAccess
         var action = p.ElementAtOrDefault(3);
         return action switch {
             "school" or "catalog" or "options" => null,
+            "student-setup" => "account-links.manage",
+            "branding" => read ? null : "unsupported",
             // Every school user reads the published School Home and its images; the editor, preview and uploads need the permission.
             "home" => read && p.ElementAtOrDefault(4) is null or "images" ? null : "school-home.manage",
             // Assessment schemes are configuration of the exams module and share its permission.
@@ -48,6 +50,7 @@ public static class PermissionAccess
             "exams" => read ? "exams.view" : p.ElementAtOrDefault(5) == "marksheet" ? "marks.manage" : "exams.view",
             // Fees: reading the ledger, reports and receipts needs fees.view; recording a payment fees.collect; an online attempt belongs to the family (fees.view); reversals, concessions, plans and settings fees.manage.
             "fees" => read ? "fees.view" : p.ElementAtOrDefault(4) == "payments" && p.ElementAtOrDefault(6) is null ? "fees.collect" : p.ElementAtOrDefault(4) == "online" ? "fees.view" : "fees.manage",
+            "analytics" => read ? "reports.view" : "unsupported",
             "reports" => p.ElementAtOrDefault(4) == "audit" ? "audit.view" : "reports.view",
             "report-cards" => "reports.view", "certificates" => "certificates.view",
             // Student 360 reads with reports.view, which every school role holds for its own scope; the service narrows to that scope.

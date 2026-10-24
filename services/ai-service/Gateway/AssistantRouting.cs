@@ -48,6 +48,7 @@ public static partial class AssistantRouter
         // Live figures. A question about a rule or a policy is left to the school's documents.
         if (!Policy().IsMatch(text))
         {
+            if (SchoolLookupCatalogue.Match(text, true) is {} priorityTool) return new(AssistantRouteKind.Tool, priorityTool, Focus: CountIntent(text) ? "count" : null);
             var byClass = ClassScope().IsMatch(text); var dated = Today().IsMatch(text) || text.Contains("yesterday") || ExplicitDay().IsMatch(text);
             if ((AttendanceTopic().IsMatch(text) && (dated || AttendanceFigure().IsMatch(text))) || (Strength().IsMatch(text) && dated))
             {
@@ -55,10 +56,11 @@ public static partial class AssistantRouter
                 return new(AssistantRouteKind.Tool, "attendance_summary", new JsonObject { ["day"] = day }, ClassScoped: byClass);
             }
             if (StudentCount().IsMatch(text) || Strength().IsMatch(text)) return new(AssistantRouteKind.Tool, "student_count", ClassScoped: byClass);
-            if (FeeTopic().IsMatch(text) && FeeFigure().IsMatch(text) && !FeeProcedure().IsMatch(text)) return new(AssistantRouteKind.Tool, "fee_summary");
+            if ((FeeTopic().IsMatch(text) && FeeFigure().IsMatch(text) || CollectedMoney().IsMatch(text)) && !FeeProcedure().IsMatch(text)) return new(AssistantRouteKind.Tool, "fee_summary");
             if (ExamTopic().IsMatch(text) && ExamTiming().IsMatch(text))
                 return new(AssistantRouteKind.Tool, "exam_schedule", new JsonObject { ["period"] = ExamPast().IsMatch(text) ? "recent" : "upcoming" });
         }
+        if (!Policy().IsMatch(text) && SchoolLookupCatalogue.Match(text) is {} moduleTool) return new(AssistantRouteKind.Tool, moduleTool, Focus: CountIntent(text) ? "count" : null);
         return new(AssistantRouteKind.Knowledge);
     }
 
@@ -66,10 +68,11 @@ public static partial class AssistantRouter
     /// True for a request to explain, define or produce study material that names nothing of a particular school.
     /// Only such a question may be answered from the model's general knowledge when the school's documents have nothing.
     /// </summary>
+    public static bool CountIntent(string text) => Regex.IsMatch(text,@"\b(how many|number of|total|headcount|count of|count)\b");
     public static bool LooksGeneral(string question)
     {
         var text = Normalize(question);
-        return GeneralRequest().IsMatch(text) && !SchoolSpecific().IsMatch(text);
+        return GeneralRequest().IsMatch(text) && !SchoolSpecific().IsMatch(text) && !CollectedMoney().IsMatch(text);
     }
 
     [GeneratedRegex(@"\s+")] private static partial Regex Spaces();
@@ -92,6 +95,7 @@ public static partial class AssistantRouter
     [GeneratedRegex(@"\b\d{4}-\d{2}-\d{2}\b")] private static partial Regex ExplicitDay();
     [GeneratedRegex(@"\b(strength|headcount|head count|enrolment|enrollment|enrolled|on roll)\b")] private static partial Regex Strength();
     [GeneratedRegex(@"\b(how many|number of|no of|count of|total|total number of)\b.{0,30}\b(students?|pupils?|children|kids|learners)\b|\b(students?|pupils?) (count|total|numbers?|population)\b")] private static partial Regex StudentCount();
+    [GeneratedRegex(@"\b(amount|money|cash|revenue|funds)\s+((has|have) been |was |is |we have |already )?(collected|received)\b|\b(collected|received)\s+(amount|money|cash|revenue|funds)\b|^(what is |show |tell me )?(the )?(total )?collection( amount| total)?$|\bhow much (was |is |has been |have we )?(collected|received)\b")] private static partial Regex CollectedMoney();
     [GeneratedRegex(@"\b(fees?|dues|payments?|arrears)\b")] private static partial Regex FeeTopic();
     [GeneratedRegex(@"\b(pending|outstanding|overdue|unpaid|balance|collected|collection|how much|total|summary|dues?|arrears|owed?|owes|owing|paid|remaining|left|status|to pay|yet to)\b")] private static partial Regex FeeFigure();
     [GeneratedRegex(@"\bwhen\b|\bdeadline\b|\blast date\b|\bdue date\b|\bstructure\b|\bhow (to|do i|can i) pay\b|\bmode of payment\b")] private static partial Regex FeeProcedure();
@@ -134,7 +138,7 @@ public static class AssistantReplies
     public static string ForFailure(string status) => status is ToolResult.NotPermitted or ToolResult.Denied ? NoAccess : status == ToolResult.InvalidArguments ? BadDay : NotNow;
 
     /// <summary>Where live figures came from, in a reader's words. Never an identifier.</summary>
-    public static AssistantSource Source(string tool) => new(1, null, Live.First(l => l.Tool == tool).Title, "Live EduOS data", null, null);
+    public static AssistantSource Source(string tool) => new(1, null, SchoolLookupCatalogue.Title(tool) ?? Live.First(l => l.Tool == tool).Title, "Live EduOS data", null, null);
 
     static string Day(string? value) => DateOnly.TryParseExact(value, "yyyy-MM-dd", out var day) ? day.ToString("d MMMM yyyy", CultureInfo.InvariantCulture) : value ?? "";
     static string Count(int number, string one, string many) => number.ToString("N0", CultureInfo.InvariantCulture) + " " + (number == 1 ? one : many);
@@ -144,6 +148,7 @@ public static class AssistantReplies
     public static string ForTool(string tool, JsonObject data, bool family, AssistantRoute route)
     {
         var scope = route.ClassScoped ? WholeSchool : "";
+        if (SchoolLookupCatalogue.Title(tool) is not null) return route.Focus == "count" && data["total"] is not null ? SchoolLookupCatalogue.Title(tool) + ": " + data["total"] + " record(s) in your authorized scope." : SchoolLookupCatalogue.Format(data);
         switch (tool)
         {
             case "current_user_profile":

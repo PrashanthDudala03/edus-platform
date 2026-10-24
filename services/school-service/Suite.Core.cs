@@ -107,7 +107,7 @@ public static partial class Suite
             if(kind=="leave-requests"){Require(a.Teachers.Contains(Text(d,"teacherId")),"Leave must belong to your staff profile.",403);Require((Text(d,"status")=="Pending"||Text(d,"status")=="Cancelled"&&old is not null)&&Text(d,"approvalRemark")=="","Only school leadership can approve leave.",403);Require(old is null||Text(old,"status")=="Pending","Reviewed leave cannot be changed.",409);}
             else if(kind=="homework")Require(a.Classes.Contains(Text(d,"classId")),"This class is not assigned to you.",403);
             else if(kind=="marks")Require(a.Exams.Contains(Text(d,"examId"))&&a.Students.Contains(Text(d,"studentId")),"This result is outside your classes.",403);
-            else if(kind=="submissions")Require(old is not null&&a.Homework.Contains(Text(d,"homeworkId"))&&a.Students.Contains(Text(d,"studentId"))&&Text(d,"response")==Text(old,"response")&&Text(d,"homeworkId")==Text(old,"homeworkId")&&Text(d,"studentId")==Text(old,"studentId"),"Teachers may add feedback to assigned submissions only.",403);
+            else if(kind=="submissions")Require(a.Homework.Contains(Text(d,"homeworkId"))&&a.Students.Contains(Text(d,"studentId"))&&(old is null?Text(d,"response")=="":Text(d,"response")==Text(old,"response")&&Text(d,"homeworkId")==Text(old,"homeworkId")&&Text(d,"studentId")==Text(old,"studentId")),"Teachers may add feedback to assigned submissions only.",403);
             // A teacher given circulars.manage addresses the families of one of their own classes and changes only what they wrote.
             else if(kind=="circulars")Require(Text(d,"classId")!=""&&a.Classes.Contains(Text(d,"classId"))&&CommunicationRules.TeacherAudiences.Contains(Text(d,"audience"))&&(old is null||Text(old,"authorId")==a.User.ToString()),"Teachers may address the families of their own classes only.",403);
             else if(kind!="messages")throw new SuiteError(403,"Action is not allowed.");
@@ -142,7 +142,7 @@ public static partial class Suite
         group.MapPut("/records/{kind}/{id:guid}",async(string kind,Guid id,JsonObject data,HttpContext http)=>await Save(kind,id,data,http));
         group.MapDelete("/records/{kind}/{id:guid}",async(string kind,Guid id,HttpContext http)=>{
             Require(Schemas.ContainsKey(kind),"Module not found.",404);await using var c=await Open();var a=await Access(http,c);Require(a.Can(Perm(kind,"archive")),"Archive permission required.",403);
-            Require(!new[]{"academic-years","classes","subjects","fee-structures","fee-heads","exams","marks","assessment-schemes","school-config","certificates","admissions","leave-types","leave-adjustments"}.Contains(kind),"This record is retained for academic or financial history. Change its status instead.",409);
+            Require(!new[]{"library-books","library-loans","inventory-items","inventory-assignments","transport-routes","transport-stops","transport-assignments","academic-years","classes","subjects","fee-structures","fee-heads","exams","marks","assessment-schemes","school-config","certificates","admissions","leave-types","leave-adjustments"}.Contains(kind),"This record is retained for academic or financial history. Change its status instead.",409);
             Require(kind!="account-links","Profile links are retained. Contact platform support to correct a relationship.",409);
             var old=await Get(c,a.School,kind,id);
             await E(c,"UPDATE suite.records SET archived_at=now(),updated_by=@u,version=version+1 WHERE id=@id AND school_id=@s",("u",a.User),("id",id),("s",a.School));
@@ -165,7 +165,7 @@ public static partial class Suite
             }else result["users"]=Array.Empty<object>();
             return Results.Ok(new{data=result});
         });
-        MapAcademic(group);MapFinance(group);MapDocuments(group);MapReports(group);MapHome(group);
+        MapStudentSetup(group);MapAdvanced(group);MapAcademic(group);MapFinance(group);MapDocuments(group);MapReports(group);MapHome(group);
     }
     static string Label(string kind,JsonObject d)=>kind switch{
         "classes"=>Text(d,"name")+" - "+Text(d,"section"),

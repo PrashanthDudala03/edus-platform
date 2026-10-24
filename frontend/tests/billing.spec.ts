@@ -249,7 +249,7 @@ test.describe.serial('Subscriptions, pricing, offers and payments',()=>{
   expect(await shown('login')).toEqual(['QA sale '+tag]);expect(await shown('subscription')).not.toContain('QA sale '+tag);expect(await shown('student')).toEqual([])
   await page.goto('/login');await expect(page.getByText('QA sale '+tag,{exact:true})).toBeVisible()
   await ok(platform,'PUT','/billing/banners/'+live,{title:'QA sale '+tag,placement:'login',enabled:false,startsAt:at(-1),endsAt:at(1)})
-  expect(await shown('login')).toEqual([]);await page.reload();await expect(page.getByRole('heading',{name:'Good to see you.'})).toBeVisible();await expect(page.getByText('QA sale '+tag)).toHaveCount(0)
+  expect(await shown('login')).toEqual([]);await page.reload();await expect(page.getByRole('heading',{name:'Your day starts here.'})).toBeVisible();await expect(page.getByText('QA sale '+tag)).toHaveCount(0)
  })
 
  test('billing pages are shown to the right people',async({browser})=>{

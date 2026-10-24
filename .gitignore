@@ -101,3 +101,7 @@ obj/
 frontend/test-results/
 frontend/playwright-report/
 backups/
+
+# Local Codex workspace and browser report
+/Edus-platform/
+/playwright-report/

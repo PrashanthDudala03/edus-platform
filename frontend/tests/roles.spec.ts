@@ -37,9 +37,9 @@ async function expectStatus(who:string,method:string,url:string,expected:number|
 async function uiLogin(page:Page,username:string,password:string){
  for(let i=0;i<15;i++){
   await page.goto('/login');await page.getByLabel('Email or username',{exact:true}).fill(username);await page.getByLabel('Password',{exact:true}).fill(password)
-  await page.getByRole('button',{name:'Sign in to workspace'}).click()
+  await page.getByRole('button',{name:'Continue to workspace'}).click()
   const outcome=await Promise.race([page.waitForURL(u=>!u.pathname.startsWith('/login'),{timeout:15000}).then(()=>'ok').catch(()=>''),page.getByText('Too many sign-in attempts').waitFor({timeout:15000}).then(()=>'throttled').catch(()=>'')])
-  if(outcome==='ok')return
+  if(outcome==='ok'){const enter=page.getByRole('link',{name:'Enter Dashboard',exact:true}).first();await expect.poll(async()=>new URL(page.url()).pathname!=='/home'||await enter.isVisible()).toBe(true);if(new URL(page.url()).pathname==='/home')await enter.click();return}
   if(outcome!=='throttled')throw Error('Sign-in did not complete for '+username)
   await page.waitForTimeout(6500)
  }
@@ -49,9 +49,9 @@ const noOverflow=(page:Page)=>page.evaluate(()=>document.documentElement.scrollW
 
 test.describe.serial('Six role portals against the seeded demo school',()=>{
  test.describe.configure({timeout:180000})
- test.beforeAll(async({playwright})=>{
+ test.beforeAll(async({playwright},testInfo)=>{
   test.setTimeout(420000)
-  api=await playwright.request.newContext({baseURL:process.env.EDUOS_TEST_URL||'http://localhost:8080'})
+  api=await playwright.request.newContext({baseURL:testInfo.project.use.baseURL})
   for(const role of roles){
    const r=await throttled(()=>api.post('/api/v1/auth/login',{data:{username:demo[role].user,password:DEMO_PASSWORD}}))
    if(r.status()!==200)throw Error('Demo account '+demo[role].user+' cannot sign in ('+r.status()+'). Run: node scripts/seed-demo.mjs --confirm-demo')
@@ -112,11 +112,12 @@ test.describe.serial('Six role portals against the seeded demo school',()=>{
    for(const item of demo[role].has)await expect(nav.getByRole('link',{name:item,exact:true}),role+' should see '+item).toBeVisible()
    for(const item of demo[role].lacks)await expect(nav.getByRole('link',{name:item,exact:true}),role+' should not see '+item).toHaveCount(0)
    // Every dashboard figure loaded from an endpoint this role may call: no refusal alerts.
-   await expect(page.locator('.stat-card').first()).toBeVisible();await page.waitForLoadState('networkidle')
+   // Live notification long-polling never reaches network idle; wait for the rendered dashboard.
+   await expect(page.locator('.stat-card').first()).toBeVisible()
    await expect(page.locator('[role="alert"]'),role+' dashboard shows an error').toHaveCount(0)
    expect(await noOverflow(page)).toBe(true)
    await page.screenshot({path:path.join(screens,'role-'+role.toLowerCase()+'-desktop.png'),fullPage:true})
-   await page.getByRole('button',{name:'Sign out',exact:true}).click();await expect(page.getByRole('heading',{name:'Good to see you.'})).toBeVisible()
+   await page.getByRole('button',{name:'Sign out',exact:true}).click();await expect(page.getByRole('heading',{name:'Your day starts here.'})).toBeVisible()
    expect(errors,role).toEqual([]);await context.close()
   }
  })
@@ -212,9 +213,9 @@ test.describe.serial('Six role portals against the seeded demo school',()=>{
   await ok('adminB','PUT','/users/'+ids.parentB2,{isActive:false})
   await page.goto('/login');await page.getByLabel('Email or username',{exact:true}).fill('parentB2.'+B.tag);await page.getByLabel('Password',{exact:true}).fill(testPassword)
   await page.getByText('Signing in to another school?').click();await page.getByLabel('School ID',{exact:true}).fill(B.id)
-  await page.getByRole('button',{name:'Sign in to workspace'}).click();await expect(page.getByRole('alert')).toContainText(/disabled|Too many/)
+  await page.getByRole('button',{name:'Continue to workspace'}).click();await expect(page.getByRole('alert')).toContainText(/disabled|Too many/)
   await page.getByLabel('Password',{exact:true}).fill('definitely-not-the-password')
-  await page.getByRole('button',{name:'Sign in to workspace'}).click();await expect(page.getByRole('alert')).toContainText(/incorrect|Too many/)
+  await page.getByRole('button',{name:'Continue to workspace'}).click();await expect(page.getByRole('alert')).toContainText(/incorrect|Too many/)
   // A session that can no longer refresh returns to sign-in with a notice.
   await session(page,'parentB2');await page.goto('/parent');await expect(page.getByText('Your session has ended. Please sign in again.')).toBeVisible()
   await ok('adminB','PUT','/users/'+ids.parentB2,{isActive:true})
@@ -224,7 +225,8 @@ test.describe.serial('Six role portals against the seeded demo school',()=>{
   for(const [name,viewport] of [['desktop',{width:1440,height:900}],['tablet',{width:820,height:1180}],['mobile',{width:390,height:844}]] as const){
    for(const role of roles){
     const context=await browser.newContext({viewport}),page=await context.newPage();await session(page,role);await page.goto(demo[role].home)
-    await expect(page.getByRole('heading',{level:1,name:demo[role].heading})).toBeVisible();await page.waitForLoadState('networkidle')
+    await expect(page.getByRole('heading',{level:1,name:demo[role].heading})).toBeVisible()
+    await expect(page.locator('.stat-card').first()).toBeVisible()
     expect(await noOverflow(page),role+' '+name).toBe(true)
     if(name==='mobile'){
      await page.getByRole('button',{name:'Open navigation'}).click();await expect(page.getByRole('navigation',{name:'Main navigation'}).getByRole('link',{name:demo[role].has[0],exact:true})).toBeVisible()

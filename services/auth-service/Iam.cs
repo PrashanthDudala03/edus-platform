@@ -71,6 +71,12 @@ public static class Iam
         await db.Database.ExecuteSqlRawAsync(admissions.Replace("{","{{").Replace("}","}}"));
         var guardianPhone=await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory,"Migrations/20261007_01_guardian_phone_scope.sql"));
         await db.Database.ExecuteSqlRawAsync(guardianPhone.Replace("{","{{").Replace("}","}}"));
+        var advanced=await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory,"Migrations/20261021_01_advanced_operations.sql"));
+        await db.Database.ExecuteSqlRawAsync(advanced.Replace("{","{{").Replace("}","}}"));
+        var localAi=await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory,"Migrations/20261021_02_ai_assistant.sql"));
+        await db.Database.ExecuteSqlRawAsync(localAi.Replace("{","{{").Replace("}","}}"));
+        var notificationSettings=await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory,"Migrations/20261024_01_notification_settings.sql"));
+        await db.Database.ExecuteSqlRawAsync(notificationSettings.Replace("{","{{").Replace("}","}}"));
         await tx.CommitAsync();
     }
 
@@ -195,8 +201,8 @@ public static class Iam
         group.MapGet("/users",async(Guid? targetSchool,string? search,string? status,Guid? roleId,HttpContext http,AuthDbContext db,int page=1)=>{
             Permit(http,"users.view");var school=Scope(http,targetSchool);Check(page>0&&page<100000,"Invalid page.");
             var q=db.Users.Where(u=>u.SchoolId==school && (roleId==null||u.RoleId==roleId));
-            if(!string.IsNullOrWhiteSpace(search))q=q.Where(u=>u.Email.Contains(search)||u.Username.Contains(search)||((u.FirstName??"")+" "+(u.LastName??"")).Contains(search));
-            if(status=="active")q=q.Where(u=>u.IsActive);if(status=="disabled")q=q.Where(u=>!u.IsActive);
+            if(!string.IsNullOrWhiteSpace(search)){var term=search.Trim().ToLowerInvariant();q=q.Where(u=>u.Email.ToLower().Contains(term)||u.Username.ToLower().Contains(term)||((u.FirstName??"")+" "+(u.LastName??"")).ToLower().Contains(term));}
+            if(status=="active")q=q.Where(u=>u.IsActive);if(status=="disabled")q=q.Where(u=>!u.IsActive);if(status=="never")q=q.Where(u=>u.IsActive&&u.LastLoginAt==null);
             return Results.Ok(new{data=new{totalCount=await q.CountAsync(),data=await q.OrderBy(u=>u.Email).Skip((page-1)*20).Take(20).Select(u=>new{u.Id,u.FirstName,u.LastName,u.Email,u.PhoneNumber,u.RoleId,role=u.Role!.Name,u.IsActive,u.SchoolId,u.CreatedAt,u.LastLoginAt}).ToListAsync()}});
         });
         group.MapPost("/users",async(Guid? targetSchool,CreateUserRequest input,HttpContext http,AuthDbContext db)=>{
@@ -251,9 +257,19 @@ public static class Iam
             return Results.Ok(new{data=await db.Signups.Where(s=>s.SchoolId==school).OrderByDescending(s=>s.CreatedAt).Take(200).Select(s=>new{s.Id,s.FirstName,s.LastName,s.Email,s.Phone,s.RequestedRole,s.Status,s.CreatedAt,s.ApprovedRole,s.ReviewedBy,s.ReviewedAt,s.Reason}).ToListAsync()});
         });
         group.MapPost("/signup-requests/{id:guid}/review",Review);
-        group.MapGet("/access-history",async(Guid? targetSchool,HttpContext http,AuthDbContext db,int page=1)=>{
+        group.MapGet("/access-history",async(Guid? targetSchool,HttpContext http,AuthDbContext db,int page=1,string? search=null,string? action=null,DateOnly? from=null,DateOnly? to=null)=>{
             Permit(http,"access-history.view");var school=Scope(http,targetSchool);Check(page>0&&page<100000,"Invalid page.");
-            var rows=await db.Database.SqlQuery<string>($"SELECT row_to_json(a)::text AS \"Value\" FROM auth_db.iam_audit a WHERE school_id={school} ORDER BY created_at DESC,id LIMIT 50 OFFSET {(page-1)*50}").ToListAsync();
+            Check((search?.Length??0)<=100&&(action?.Length??0)<=100,"Keep history filters within 100 characters.");
+            Check(from is null||to is null||from<=to,"From date must not follow To date.");Check(to is null||to.Value.Year<9999,"Choose a valid end date.");
+            var term=(search??"").Trim().ToLowerInvariant();var kind=(action??"").Trim();
+            var start=(from??DateOnly.MinValue).ToDateTime(TimeOnly.MinValue,DateTimeKind.Utc);
+            var end=to is null?DateTime.SpecifyKind(DateTime.MaxValue,DateTimeKind.Utc):to.Value.AddDays(1).ToDateTime(TimeOnly.MinValue,DateTimeKind.Utc);
+            var rows=await db.Database.SqlQuery<string>($@"SELECT (to_jsonb(a)||jsonb_build_object('actor_name',trim(coalesce(u.first_name,'')||' '||coalesce(u.last_name,''))))::text AS ""Value""
+                FROM auth_db.iam_audit a LEFT JOIN auth_db.users u ON u.id=a.actor_id
+                WHERE a.school_id={school} AND a.created_at>={start} AND a.created_at<{end}
+                AND ({kind}='' OR a.action={kind})
+                AND ({term}='' OR strpos(lower(coalesce(a.action,'')||' '||coalesce(a.actor_role,'')||' '||coalesce(u.first_name,'')||' '||coalesce(u.last_name,'')||' '||coalesce(u.email,'')||' '||coalesce(u.username,'')||' '||coalesce(a.target_id::text,'')),{term})>0)
+                ORDER BY a.created_at DESC,a.id LIMIT 50 OFFSET {(page-1)*50}").ToListAsync();
             return Results.Ok(new{data=rows.Select(x=>JsonSerializer.Deserialize<JsonElement>(x))});
         });
         group.MapPut("/boundary",async(Guid? targetSchool,BoundaryEdit input,HttpContext http,AuthDbContext db)=>{

@@ -18,6 +18,7 @@ export function PlatformDashboard() {
   const overview = useQuery<Overview>({ queryKey: ['platform', 'overview'], queryFn: async () => (await client.get('/platform/overview')).data.data })
   const o = overview.data
   return <><PageHeader eyebrow="SUPER ADMIN PORTAL" title={'Platform overview, ' + (user?.firstName || 'administrator') + '.'} description="Schools on this EduOS deployment, their status and the accounts they hold."><Link className="button primary" to="/super-admin/schools"><Building2 size={17} />Manage schools</Link></PageHeader>
+    <section className="platform-strip"><div><span className="eyebrow">YOUR NETWORK, AT A GLANCE</span><h2>Good things happen when schools connect.</h2><p>Manage your community and keep every school moving forward.</p></div><Link className="button secondary" to="/super-admin/schools">View schools <Building2 size={17}/></Link></section>
     {overview.isError ? <ErrorBox message={errorMessage(overview.error)} /> : overview.isPending ? <Loading /> : <>
       <div className="stats-grid">
         <StatTile label="Total schools" value={o!.schools.total} note="Registered on the platform" icon={Building2} tone="teal" to="/super-admin/schools" />
